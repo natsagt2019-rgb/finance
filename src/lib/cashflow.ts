@@ -30,6 +30,9 @@ export type CashflowReport = {
   months: number[]; // [1..12]
 };
 
+// Ангилал код → 12 сарын дүн (урьдчилан нэгтгэсэн).
+export type CodeMonthly = Record<string, number[]>;
+
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 function zeros(): number[] {
@@ -42,9 +45,9 @@ function subArr(a: number[], b: number[]): number[] {
   return a.map((v, i) => v - (b[i] ?? 0));
 }
 
-// Ангилал код тус бүрийн 12 сарын дүнгийн map үүсгэнэ.
-function aggregate(txns: CashflowTxn[]): Record<string, number[]> {
-  const map: Record<string, number[]> = {};
+// Ангилал код тус бүрийн 12 сарын дүнгийн map үүсгэнэ (түүхий гүйлгээнээс).
+export function aggregateTxns(txns: CashflowTxn[]): CodeMonthly {
+  const map: CodeMonthly = {};
   for (const t of txns) {
     const m = (t.month ?? 0) - 1;
     if (m < 0 || m > 11) continue;
@@ -64,13 +67,13 @@ function label(code: string): string {
 }
 
 // Дотоод мөнгөн урсгалын тайлан байгуулна.
+// byCode — ангилал код → 12 сарын дүн (view-аас урьдчилан нэгтгэсэн).
 // openingCash — сонгосон оны эхний мөнгөн үлдэгдэл (account_balances-аас).
 export function buildInternalCashflow(
-  txns: CashflowTxn[],
+  byCode: CodeMonthly,
   openingCash: number,
 ): CashflowReport {
-  const map = aggregate(txns);
-  const get = (code: string): number[] => (map[code] ? map[code].slice() : zeros());
+  const get = (code: string): number[] => (byCode[code] ? byCode[code].slice() : zeros());
 
   const rows: CashflowRow[] = [];
 

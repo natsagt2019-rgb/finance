@@ -38,6 +38,8 @@ export function ImportClient() {
   const [isPending, startTransition] = useTransition();
 
   const includedCount = rows.filter((r) => r.include).length;
+  const newCount = rows.filter((r) => !r.isDuplicate).length;
+  const dupCount = rows.length - newCount;
 
   function handlePreview() {
     const input = fileInputRef.current;
@@ -58,9 +60,12 @@ export function ImportClient() {
       try {
         const result = await previewImport(formData);
         setFiles(result.files);
-        setRows(result.rows.map((r) => ({ ...r, include: true })));
+        // Давхардсан мөрийг анхдагчаар хасна (зөвхөн шинэ нь сонгогдоно).
+        setRows(result.rows.map((r) => ({ ...r, include: !r.isDuplicate })));
         if (result.rows.length === 0) {
-          setMessage("Шинэ гүйлгээ олдсонгүй.");
+          setMessage("Файлаас гүйлгээ олдсонгүй.");
+        } else if (result.rows.every((r) => r.isDuplicate)) {
+          setMessage("Бүх гүйлгээ аль хэдийн орсон байна (давхардал). Шинэ гүйлгээ алга.");
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Уншихад алдаа гарлаа.");
@@ -148,7 +153,8 @@ export function ImportClient() {
                 <span className="font-medium">{f.filename}</span>
                 {f.error
                   ? ` — ${f.error}`
-                  : ` — ${f.account_id} · ${f.count} мөр`}
+                  : ` — ${f.account_id} · ${f.count} мөр` +
+                    (f.duplicates > 0 ? ` (${f.duplicates} давхардал)` : "")}
               </li>
             ))}
           </ul>
@@ -182,8 +188,10 @@ export function ImportClient() {
                 Урьдчилан харах
               </h2>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Нийт {rows.length} мөр · {includedCount} сонгогдсон. Ангилал,
-                харилцагчийг засаад «Батлах» дарна уу.
+                Нийт {rows.length} мөр · {newCount} шинэ
+                {dupCount > 0 ? ` · ${dupCount} давхардал (хасагдсан)` : ""} ·{" "}
+                {includedCount} сонгогдсон. Ангилал, харилцагчийг засаад «Батлах»
+                дарна уу.
               </p>
             </div>
             <button
@@ -218,7 +226,9 @@ export function ImportClient() {
                   return (
                     <tr
                       key={i}
-                      className={row.include ? "" : "opacity-40"}
+                      className={`${row.isDuplicate ? "bg-amber-50" : ""} ${
+                        row.include ? "" : "opacity-50"
+                      }`}
                     >
                       <td className="px-3 py-2 align-top">
                         <input
@@ -231,6 +241,11 @@ export function ImportClient() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 align-top text-zinc-600">
                         {fmtDate(row.txn_date)}
+                        {row.isDuplicate && (
+                          <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                            давхардал
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 align-top text-zinc-500">
                         {row.bank}

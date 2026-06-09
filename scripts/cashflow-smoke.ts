@@ -1,5 +1,5 @@
 // buildInternalCashflow-ийн тооцоог синтетик өгөгдлөөр шалгах.
-import { buildInternalCashflow, type CashflowTxn } from "../src/lib/cashflow";
+import { buildInternalCashflow, aggregateTxns, type CashflowTxn } from "../src/lib/cashflow";
 
 const txns: CashflowTxn[] = [
   { month: 1, income: 1000, expense: null, income_code: "1.1.1", expense_code: null },
@@ -10,7 +10,7 @@ const txns: CashflowTxn[] = [
   { month: 3, income: null, expense: 400, income_code: null, expense_code: "5.2.3" },
 ];
 
-const { rows } = buildInternalCashflow(txns, 100);
+const { rows } = buildInternalCashflow(aggregateTxns(txns), 100);
 
 function show(label: string) {
   const r = rows.find(

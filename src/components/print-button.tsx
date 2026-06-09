@@ -1,5 +1,6 @@
 "use client";
 
+// Тайлангуудад хэрэглэх хэвлэх товч.
 export function PrintButton() {
   return (
     <button

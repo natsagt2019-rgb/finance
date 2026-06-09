@@ -10,6 +10,7 @@ export const navItems: NavItem[] = [
   { href: "/import", label: "Дансны хуулга цэгцлэгч", icon: "↧" },
   { href: "/statements", label: "Дансны хуулга", icon: "₮" },
   { href: "/reports/cashflow", label: "Мөнгөн урсгал", icon: "≈" },
+  { href: "/cash/bank-summary", label: "Мөнгөн хөрөнгийн нэгтгэл", icon: "🏦" },
   { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
   // Жишээ нь дараа нэмэх модулиуд:
   // { href: "/settings", label: "Тохиргоо", icon: "⚙" },

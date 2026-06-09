@@ -57,22 +57,70 @@ export default async function StatementsPage({
     .order("txn_date", { ascending: false })
     .limit(ROW_LIMIT);
 
-  // Нэгтгэлийн query — ижил шүүлт, бүх мөрийн income/expense.
-  let totalsQuery = supabase.from("transactions").select("income,expense");
-  if (sp.account) totalsQuery = totalsQuery.eq("account_id", sp.account);
-  if (sp.year) totalsQuery = totalsQuery.eq("year", Number(sp.year));
-  if (sp.month) totalsQuery = totalsQuery.eq("month", Number(sp.month));
-  if (sp.dir === "income") totalsQuery = totalsQuery.not("income", "is", null);
-  if (sp.dir === "expense") totalsQuery = totalsQuery.not("expense", "is", null);
+  // Нэгтгэл — monthly_cashflow view ашиглана (DB дотор GROUP BY хийдэг тул
+  // 1000 мөрийн хязгаарт өртөхгүй, бүх гүйлгээг бүрэн хамруулна).
+  let mcQuery = supabase
+    .from("monthly_cashflow")
+    .select("total_income,total_expense");
+  if (sp.account) mcQuery = mcQuery.eq("account_id", sp.account);
+  if (sp.year) mcQuery = mcQuery.eq("year", Number(sp.year));
+  if (sp.month) mcQuery = mcQuery.eq("month", Number(sp.month));
 
-  const { data: totalsData } = await totalsQuery;
+  const { data: mcData } = await mcQuery;
+  const mcRows =
+    (mcData as { total_income: number | null; total_expense: number | null }[] | null) ?? [];
+  const sumIncome = mcRows.reduce((s, r) => s + (Number(r.total_income) || 0), 0);
+  const sumExpense = mcRows.reduce((s, r) => s + (Number(r.total_expense) || 0), 0);
+
+  // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).
+  const totalIncome = sp.dir === "expense" ? 0 : sumIncome;
+  const totalExpense = sp.dir === "income" ? 0 : sumExpense;
+  const net = totalIncome - totalExpense;
 
   const txns = (rows as Txn[] | null) ?? [];
-  const totalsRows = (totalsData as Pick<Txn, "income" | "expense">[] | null) ?? [];
 
-  const totalIncome = totalsRows.reduce((s, r) => s + (r.income ?? 0), 0);
-  const totalExpense = totalsRows.reduce((s, r) => s + (r.expense ?? 0), 0);
-  const net = totalIncome - totalExpense;
+  // ── Эхний / эцсийн үлдэгдэл ──────────────────────────────────────────
+  // Он сонгосон үед account_balances-аас (данс шүүлтэд тохируулан) авна.
+  // Гүйлгээт үлдэгдэл тул орлого/зарлага хоёуланг тооцно (dir шүүлтээс үл хамаарна).
+  const selYear = sp.year ? Number(sp.year) : null;
+  const selMonth = sp.month ? Number(sp.month) : null;
+  const balanceAccounts = sp.account ? [sp.account] : ACCOUNTS;
+  let openingCash = 0;
+  let closingCash = 0;
+  let hasBalance = false;
+
+  if (selYear) {
+    hasBalance = true;
+    const { data: balRows } = await supabase
+      .from("account_balances")
+      .select("opening_balance")
+      .eq("year", selYear)
+      .in("account_id", balanceAccounts);
+    const yearOpening = ((balRows as { opening_balance: number }[] | null) ?? []).reduce(
+      (s, r) => s + Number(r.opening_balance),
+      0,
+    );
+
+    const { data: netRows } = await supabase
+      .from("monthly_cashflow")
+      .select("month,total_income,total_expense")
+      .eq("year", selYear)
+      .in("account_id", balanceAccounts);
+
+    let priorNet = 0;
+    let periodNet = 0;
+    for (const r of (netRows as { month: number; total_income: number | null; total_expense: number | null }[] | null) ?? []) {
+      const n = (Number(r.total_income) || 0) - (Number(r.total_expense) || 0);
+      if (selMonth) {
+        if (r.month < selMonth) priorNet += n;
+        else if (r.month === selMonth) periodNet += n;
+      } else {
+        periodNet += n;
+      }
+    }
+    openingCash = yearOpening + priorNet;
+    closingCash = openingCash + periodNet;
+  }
 
   // Бүх шүүлт хадгалсан select-ийн утга
   const sel = (name: keyof SearchParams) => sp[name] ?? "";
@@ -156,7 +204,19 @@ export default async function StatementsPage({
       </form>
 
       {/* Нэгтгэл */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div
+        className={`mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 ${
+          hasBalance ? "lg:grid-cols-5" : ""
+        }`}
+      >
+        {hasBalance && (
+          <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-4">
+            <div className="text-xs text-zinc-500">Эхний үлдэгдэл</div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-800">
+              {fmtMoney(openingCash)}
+            </div>
+          </div>
+        )}
         <div className="rounded-2xl border border-zinc-200 bg-white p-4">
           <div className="text-xs text-zinc-500">Нийт орлого</div>
           <div className="mt-1 text-lg font-semibold tabular-nums text-green-700">
@@ -179,7 +239,24 @@ export default async function StatementsPage({
             {fmtMoney(net)}
           </div>
         </div>
+        {hasBalance && (
+          <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-4">
+            <div className="text-xs text-zinc-500">Эцсийн үлдэгдэл</div>
+            <div
+              className={`mt-1 text-lg font-semibold tabular-nums ${
+                closingCash < 0 ? "text-red-700" : "text-zinc-800"
+              }`}
+            >
+              {fmtMoney(closingCash)}
+            </div>
+          </div>
+        )}
       </div>
+      {!hasBalance && (
+        <p className="mt-2 text-xs text-zinc-400">
+          Эхний/эцсийн үлдэгдэл харахын тулд тодорхой он сонгоно уу.
+        </p>
+      )}
 
       {/* Хүснэгт */}
       <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">

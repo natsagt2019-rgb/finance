@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { buildInternalCashflow, type CashflowTxn } from "@/lib/cashflow";
-import { PrintButton } from "./print-button";
+import { buildInternalCashflow, type CodeMonthly } from "@/lib/cashflow";
+import { PrintButton } from "@/components/print-button";
 
 type SearchParams = { mode?: string; year?: string; company?: string };
 
@@ -41,10 +41,11 @@ export default async function CashflowPage({
   if (years.length === 0) years.push(2026);
   const selYear = sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
 
-  // Гүйлгээ (сонгосон он + компанийн данс).
-  const { data: txnData, error } = await supabase
-    .from("transactions")
-    .select("month,income,expense,income_code,expense_code")
+  // Ангилал × сарын нэгтгэл — monthly_by_category view ашиглана.
+  // (DB дотор GROUP BY хийдэг тул 1000 мөрийн хязгаарт өртөхгүй, бүх гүйлгээг хамруулна.)
+  const { data: catData, error } = await supabase
+    .from("monthly_by_category")
+    .select("month,category_code,total")
     .eq("year", selYear)
     .in("account_id", group.accounts);
 
@@ -60,8 +61,13 @@ export default async function CashflowPage({
     0,
   );
 
-  const txns = ((txnData as CashflowTxn[] | null) ?? []);
-  const report = buildInternalCashflow(txns, openingCash);
+  // Код × сар → дүн map (дансуудаар нэгтгэнэ).
+  const byCode: CodeMonthly = {};
+  for (const r of (catData as { month: number; category_code: string; total: number }[] | null) ?? []) {
+    if (!r.category_code || r.month < 1 || r.month > 12) continue;
+    (byCode[r.category_code] ??= new Array(12).fill(0))[r.month - 1] += Number(r.total);
+  }
+  const report = buildInternalCashflow(byCode, openingCash);
 
   const colCount = 2 + 12 + 1; // код + тайлбар + 12 сар + нийт
 
