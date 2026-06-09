@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Хэвлэх үед удирдлага, цэс зэргийг нуух */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

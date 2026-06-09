@@ -18,8 +18,11 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     -- Огноо
     txn_date        TIMESTAMPTZ NOT NULL,
-    month           SMALLINT GENERATED ALWAYS AS (EXTRACT(MONTH FROM txn_date)::SMALLINT) STORED,
-    year            SMALLINT GENERATED ALWAYS AS (EXTRACT(YEAR  FROM txn_date)::SMALLINT) STORED,
+    -- month/year нь generated багана. TIMESTAMPTZ-ээс шууд EXTRACT хийвэл
+    -- session timezone-оос хамаарч immutable бус болдог тул тогтмол +08:00
+    -- (Монголын цагийн бүс) offset ашиглаж immutable болгов.
+    month           SMALLINT GENERATED ALWAYS AS (EXTRACT(MONTH FROM (txn_date AT TIME ZONE INTERVAL '+08:00'))::SMALLINT) STORED,
+    year            SMALLINT GENERATED ALWAYS AS (EXTRACT(YEAR  FROM (txn_date AT TIME ZONE INTERVAL '+08:00'))::SMALLINT) STORED,
 
     -- Гүйлгээний мэдээлэл
     description     TEXT,
