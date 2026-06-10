@@ -25,12 +25,13 @@ export type AccountRow = {
   bank_account: string | null;
   is_temp: boolean;
   temp_percent: number | null;
+  is_cogs: boolean;
 };
 
 export const ACCOUNT_SELECT =
   "id, code, name, name_en, type, parent_id, is_active, note, fs_line, " +
   "account_number, currency, nature, journal_type, department_code, " +
-  "department_name, bank_name, bank_account, is_temp, temp_percent";
+  "department_name, bank_name, bank_account, is_temp, temp_percent, is_cogs";
 
 export const ACCOUNT_TYPES: AccountType[] = [
   "asset",

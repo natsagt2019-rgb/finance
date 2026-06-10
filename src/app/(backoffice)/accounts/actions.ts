@@ -43,6 +43,7 @@ function readForm(formData: FormData) {
     bank_account: get("bank_account") || null,
     is_temp: formData.get("is_temp") != null,
     temp_percent: Number.isFinite(tempPct) ? tempPct : 0,
+    is_cogs: formData.get("is_cogs") != null,
   };
 }
 

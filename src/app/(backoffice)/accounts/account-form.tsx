@@ -327,6 +327,28 @@ export function AccountForm({ mode, account, parents }: Props) {
         </label>
       )}
 
+      {/* Борлуулсан бүтээгдэхүүний өртөг (ББӨ) */}
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+        <label className="flex items-start gap-2 text-sm text-zinc-700">
+          <input
+            type="checkbox"
+            name="is_cogs"
+            defaultChecked={account?.is_cogs ?? false}
+            className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+          />
+          <span>
+            <span className="font-medium">
+              Борлуулсан бүтээгдэхүүний өртөг (ББӨ)
+            </span>
+            <span className="mt-0.5 block text-xs text-zinc-500">
+              Үйлчилгээний компанийн шууд зардлыг ББӨ-д тооцох бол энэ дансыг
+              тэмдэглэнэ. Зардлын төвийн тайланд Нийт ашгийг зөв тооцоход
+              хэрэглэнэ.
+            </span>
+          </span>
+        </label>
+      </div>
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
