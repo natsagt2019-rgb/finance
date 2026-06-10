@@ -43,10 +43,10 @@ function Cells({
 }
 
 export function TrialBalanceView({
-  year,
+  label,
   accounts,
 }: {
-  year: number;
+  label: string;
   accounts: TbAccount[];
 }) {
   const view = buildTrialBalanceView(accounts);
@@ -55,7 +55,7 @@ export function TrialBalanceView({
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h2 className="text-lg font-semibold text-zinc-900">
-          Гүйлгээ баланс — {year} он
+          Гүйлгээ баланс — {label}
           <span className="ml-2 rounded-lg bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">
             {view.accountCount} данс
           </span>
