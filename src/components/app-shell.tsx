@@ -12,8 +12,17 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto p-3">
       {navItems.map((item) => {
-        const active =
+        const matches =
           pathname === item.href || pathname.startsWith(item.href + "/");
+        // Илүү тодорхой (урт) тохирол байвал эх замыг идэвхгүй болгоно
+        // (жишээ нь /cash/bank-summary дээр /cash-ийг тодруулахгүй).
+        const active =
+          matches &&
+          !navItems.some(
+            (o) =>
+              o.href.length > item.href.length &&
+              (pathname === o.href || pathname.startsWith(o.href + "/")),
+          );
         return (
           <Link
             key={item.href}
