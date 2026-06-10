@@ -94,11 +94,12 @@ function Chevron({ open }: { open: boolean }) {
 
 export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
   const tree = buildTree(accounts);
-  // Хэсгүүд анхдагчаар нээлттэй, бүлгүүд хаалттай.
-  const [openSec, setOpenSec] = useState<Set<string>>(
-    () => new Set(tree.map((s) => s.key)),
-  );
-  const [openGrp, setOpenGrp] = useState<Set<string>>(new Set());
+  const allSec = tree.map((s) => s.key);
+  const allGrp = tree.flatMap((s) => s.groups.map((g) => g.prefix));
+
+  // Анхдагчаар БҮГД нээлттэй — данснууд шууд харагдана.
+  const [openSec, setOpenSec] = useState<Set<string>>(() => new Set(allSec));
+  const [openGrp, setOpenGrp] = useState<Set<string>>(() => new Set(allGrp));
 
   const toggle = (set: Set<string>, k: string, setter: (s: Set<string>) => void) => {
     const next = new Set(set);
@@ -106,8 +107,34 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
     setter(next);
   };
 
+  const expandAll = () => {
+    setOpenSec(new Set(allSec));
+    setOpenGrp(new Set(allGrp));
+  };
+  const collapseAll = () => {
+    setOpenSec(new Set());
+    setOpenGrp(new Set());
+  };
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+    <div>
+      <div className="mb-2 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={expandAll}
+          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+        >
+          Бүгд нээх
+        </button>
+        <button
+          type="button"
+          onClick={collapseAll}
+          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+        >
+          Бүгд хаах
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
       {tree.map((sec) => {
         const secOpen = openSec.has(sec.key);
         return (
@@ -147,7 +174,8 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
                     </button>
 
                     {grpOpen && (
-                      <table className="w-full text-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
                         <tbody className="divide-y divide-zinc-100">
                           {grp.accounts.map((a) => {
                             const badge = TYPE_BADGE[a.type];
@@ -189,7 +217,8 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
                             );
                           })}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
                     )}
                   </div>
                 );
@@ -197,6 +226,7 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
