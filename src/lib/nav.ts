@@ -18,6 +18,7 @@ export const navItems: NavItem[] = [
   { href: "/reports/equity-changes", label: "Өмчийн өөрчлөлтийн тайлан", icon: "🔄" },
   { href: "/reports/cash-flow", label: "Мөнгөн гүйлгээний тайлан", icon: "💵" },
   { href: "/reports/fx-revaluation", label: "Ханшийн тэгшитгэл", icon: "💱" },
+  { href: "/cash", label: "Касс", icon: "🪙" },
   { href: "/cash/bank-summary", label: "Мөнгөн хөрөнгийн нэгтгэл", icon: "🏦" },
   { href: "/partners", label: "Харилцагчид", icon: "👥" },
   { href: "/invoices", label: "Нэхэмжлэх", icon: "📑" },

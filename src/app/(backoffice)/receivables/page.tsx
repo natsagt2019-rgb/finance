@@ -1,17 +1,16 @@
-import Link from "next/link";
-
 import { createClient } from "@/lib/supabase/server";
 import {
   AGING_BUCKETS,
   AGING_LABEL,
   isReceivableAccount,
+  normalizePartner,
   settleFifo,
   summarizeReceivables,
   type DatedAmount,
   type ReceivableItem,
 } from "@/lib/receivables-calc";
 
-const LINE_LIMIT = 100000;
+const ENTRY_LIMIT = 100000;
 const INVOICE_LIMIT = 5000;
 const NO_PARTNER = "Тодорхойгүй (партнергүй)";
 
@@ -19,17 +18,20 @@ function fmt(n: number): string {
   return n ? Math.round(n).toLocaleString("en-US") : "—";
 }
 
-type AccRow = { id: number; code: string; name: string; type: string | null };
+type AccRow = {
+  code: string;
+  name: string;
+  type: string | null;
+  fs_line: string | null;
+};
 
-type LineRow = {
-  account_id: number;
-  debit: number;
-  credit: number;
-  journals: { status: string; partner_id: number | null; date: string } | null;
+type EntryRow = {
+  txn_date: string;
+  partner_name: string | null;
+  amount: number;
 };
 
 type InvRow = {
-  partner_id: number | null;
   partner_name: string | null;
   inv_date: string;
   due_date: string | null;
@@ -40,85 +42,62 @@ type InvRow = {
 export default async function ReceivablesPage() {
   const supabase = await createClient();
 
-  // Өнөөдөр (МУ цагийн бүс) — насжилтын суурь огноо.
+  // Өнөөдөр (МУ цагийн бүс) — насжилт ба as-of огноо.
   const today = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Ulaanbaatar",
   });
 
-  // 1) Авлагын данснууд (актив + нэрэндээ "авлага").
+  // 1) Авлагын дансны кодууд (актив + нэр/fs_line-д "авлага").
   const { data: accData } = await supabase
     .from("accounts")
-    .select("id, code, name, type")
+    .select("code, name, type, fs_line")
     .eq("is_active", true)
     .limit(5000);
-  const recvAccounts = ((accData as AccRow[] | null) ?? []).filter((a) =>
-    isReceivableAccount(a.name, a.type),
-  );
-  const recvAccountIds = recvAccounts.map((a) => a.id);
+  const recvCodes = ((accData as AccRow[] | null) ?? [])
+    .filter((a) => isReceivableAccount(a.name, a.type, a.fs_line))
+    .map((a) => a.code);
 
-  // 2) Журналын мөрүүд — авлагын данс, батлагдсан журнал.
-  // Харилцагч тус бүрээр дебет (авлага үүсэх) мөрүүд + нийт кредит (төлөлт).
-  const jDebits = new Map<string, DatedAmount[]>(); // key = partnerId | "__none__"
+  // 2) Ерөнхий журналаас (journal_entries) авлагын дансны Дт ба Кт.
+  //    Дт → авлага үүснэ (огноотой), Кт → төлөгдөнө (нийт дүн, FIFO хаалт).
+  const jDebits = new Map<string, DatedAmount[]>(); // key = нормчилсон нэр
   const jCredit = new Map<string, number>();
-  const jPartnerId = new Map<string, number | null>();
+  const displayName = new Map<string, string>(); // key → дэлгэцийн нэр
 
-  if (recvAccountIds.length > 0) {
-    const { data: lineData } = await supabase
-      .from("journal_lines")
-      .select("account_id, debit, credit, journals!inner(status, partner_id, date)")
-      .in("account_id", recvAccountIds)
-      .eq("journals.status", "posted")
-      .limit(LINE_LIMIT);
+  if (recvCodes.length > 0) {
+    const [{ data: dr }, { data: cr }] = await Promise.all([
+      supabase
+        .from("journal_entries")
+        .select("txn_date, partner_name, amount")
+        .in("debit_code", recvCodes)
+        .lte("txn_date", today)
+        .limit(ENTRY_LIMIT),
+      supabase
+        .from("journal_entries")
+        .select("partner_name, amount")
+        .in("credit_code", recvCodes)
+        .lte("txn_date", today)
+        .limit(ENTRY_LIMIT),
+    ]);
 
-    for (const l of (lineData as LineRow[] | null) ?? []) {
-      const j = l.journals;
-      if (!j) continue;
-      const pid = j.partner_id;
-      const key = pid == null ? "__none__" : String(pid);
-      jPartnerId.set(key, pid);
-      const net = (Number(l.debit) || 0) - (Number(l.credit) || 0);
-      if (net > 0) {
-        const arr = jDebits.get(key) ?? [];
-        arr.push({ date: j.date, amount: net });
-        jDebits.set(key, arr);
-      } else if (net < 0) {
-        jCredit.set(key, (jCredit.get(key) ?? 0) + -net);
-      }
+    for (const e of (dr as EntryRow[] | null) ?? []) {
+      const key = normalizePartner(e.partner_name);
+      if (key && !displayName.has(key)) displayName.set(key, e.partner_name!.trim());
+      const arr = jDebits.get(key) ?? [];
+      arr.push({ date: e.txn_date, amount: Number(e.amount) || 0 });
+      jDebits.set(key, arr);
     }
-  }
-
-  // 3) Журналаас гарсан партнеруудын нэр.
-  const jPids = [...jPartnerId.values()].filter((x): x is number => x != null);
-  const partnerName = new Map<number, string>();
-  if (jPids.length > 0) {
-    const { data: parts } = await supabase
-      .from("partners")
-      .select("id, name")
-      .in("id", jPids);
-    for (const p of (parts as { id: number; name: string }[] | null) ?? [])
-      partnerName.set(p.id, p.name);
+    for (const e of (cr as { partner_name: string | null; amount: number }[] | null) ?? []) {
+      const key = normalizePartner(e.partner_name);
+      jCredit.set(key, (jCredit.get(key) ?? 0) + (Number(e.amount) || 0));
+    }
   }
 
   const items: ReceivableItem[] = [];
-  for (const [key, debits] of jDebits) {
-    const pid = jPartnerId.get(key) ?? null;
-    const name = pid == null ? NO_PARTNER : partnerName.get(pid) ?? `#${pid}`;
-    const open = settleFifo(debits, jCredit.get(key) ?? 0);
-    for (const chunk of open) {
-      items.push({
-        partnerId: pid,
-        partnerName: name,
-        amount: chunk.amount,
-        date: chunk.date,
-        source: "journal",
-      });
-    }
-  }
 
-  // 4) Нээлттэй нэхэмжлэх (open/partial) — үлдэгдэл авлага.
+  // 3) Нээлттэй нэхэмжлэх (эхэлж — дэлгэцийн нэрний цэвэр бичлэг давамгайлахаар).
   const { data: invData } = await supabase
     .from("invoices")
-    .select("partner_id, partner_name, inv_date, due_date, amount, paid_amount")
+    .select("partner_name, inv_date, due_date, amount, paid_amount")
     .eq("is_active", true)
     .neq("status", "paid")
     .limit(INVOICE_LIMIT);
@@ -126,13 +105,31 @@ export default async function ReceivablesPage() {
   for (const r of (invData as InvRow[] | null) ?? []) {
     const remaining = (Number(r.amount) || 0) - (Number(r.paid_amount) || 0);
     if (remaining <= 0.005) continue;
+    const key = normalizePartner(r.partner_name);
+    if (key && !displayName.has(key) && r.partner_name)
+      displayName.set(key, r.partner_name.trim());
     items.push({
-      partnerId: r.partner_id,
-      partnerName: r.partner_name || NO_PARTNER,
+      partnerKey: key,
+      partnerName: key ? displayName.get(key) ?? r.partner_name ?? NO_PARTNER : NO_PARTNER,
       amount: remaining,
       date: r.due_date || r.inv_date,
       source: "invoice",
     });
+  }
+
+  // 4) Журналын авлага — харилцагч бүрээр FIFO хаалт хийж нээлттэй хэсгүүд.
+  for (const [key, debits] of jDebits) {
+    const open = settleFifo(debits, jCredit.get(key) ?? 0);
+    const name = key ? displayName.get(key) ?? key : NO_PARTNER;
+    for (const chunk of open) {
+      items.push({
+        partnerKey: key,
+        partnerName: name,
+        amount: chunk.amount,
+        date: chunk.date,
+        source: "journal",
+      });
+    }
   }
 
   const sum = summarizeReceivables(items, today);
@@ -145,8 +142,8 @@ export default async function ReceivablesPage() {
             📥 Авлагын насжилт
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Авлагын дансны журнал (FIFO хаалт) болон нээлттэй нэхэмжлэхээс
-            харилцагч бүрийн авлагыг насжилтаар нэгтгэв.
+            Ерөнхий журналын авлагын данс (FIFO хаалт) болон нээлттэй
+            нэхэмжлэхээс харилцагч бүрийн авлагыг насжилтаар нэгтгэв.
           </p>
         </div>
       </div>
@@ -201,8 +198,8 @@ export default async function ReceivablesPage() {
       <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
         {sum.partners.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-zinc-500">
-            Авлага олдсонгүй. Авлагын дансны батлагдсан журнал эсвэл нээлттэй
-            нэхэмжлэх байхгүй байна.
+            Авлага олдсонгүй. Авлагын дансны журнал эсвэл нээлттэй нэхэмжлэх
+            байхгүй байна.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -220,10 +217,7 @@ export default async function ReceivablesPage() {
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {sum.partners.map((p) => (
-                  <tr
-                    key={p.partnerId ?? "none"}
-                    className="hover:bg-zinc-50"
-                  >
+                  <tr key={p.partnerKey || "none"} className="hover:bg-zinc-50">
                     <td className="px-4 py-2 text-zinc-800">
                       {p.partnerName}
                       {p.fromInvoice > 0 && p.fromJournal > 0 && (
@@ -277,9 +271,11 @@ export default async function ReceivablesPage() {
       </div>
 
       <p className="mt-4 text-xs text-zinc-400">
-        Насжилт нь журналын огноо (нэхэмжлэхэд төлөх хугацаа эсвэл огноо)-оос
-        өнөөдрийг ({today}) хүртэлх хоногоор тооцов. Журнал ба нэхэмжлэх
-        тусдаа эх сурвалж тул нэг авлагыг хоёр газар бүртгэвэл давхар тоологдоно.
+        Насжилт нь гүйлгээний огноо (нэхэмжлэхэд төлөх хугацаа эсвэл огноо)-оос
+        өнөөдрийг ({today}) хүртэлх хоногоор тооцов. Журналын авлага нь дансны
+        Дт−Кт цэвэр үлдэгдэл (төлбөрийг хуучин авлагаас FIFO-гоор хаасан).
+        Журнал ба нэхэмжлэх тусдаа эх сурвалж тул нэг авлагыг хоёр газар бүртгэвэл
+        давхар тоологдоно.
       </p>
     </div>
   );

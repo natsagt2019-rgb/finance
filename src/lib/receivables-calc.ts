@@ -1,10 +1,10 @@
 // ── Авлагын насжилт (Receivables aging) — цэвэр тооцооллын логик ──────────────
 // Авлагыг хоёр эх сурвалжаас нэгтгэнэ:
-//   • Журнал  — батлагдсан journal_lines-ийн авлагын данс дээрх Дт−Кт цэвэр
-//               үлдэгдэл, журналын partner_id-аар бүлэглэнэ.
+//   • Журнал (journal_entries) — авлагын дансны Дт−Кт цэвэр үлдэгдэл, харилцагчийн
+//     нэрээр бүлэглэж, гүйлгээний огноогоор FIFO-гоор хааж насжуулна.
 //   • Нэхэмжлэх — бүрэн төлөгдөөгүй (open/partial) нэхэмжлэлийн үлдэгдэл.
-// Нэхэмжлэх нь журнал автоматаар үүсгэдэггүй тул хоёр эх сурвалж давхцахгүй —
-// нийлбэр нь зөв (хэрэв гараар журнал бичсэн бол давхар тооцогдож болзошгүй).
+// Хоёр эх сурвалжийг харилцагчийн нэрийг нормчлон (том үсэг, зай цэгцлэх) нэг
+// мөрөнд нэгтгэнэ. Нэг авлагыг хоёр газар бүртгэвэл давхар тоологдож болзошгүй.
 
 export type AgingBucket = "0-30" | "31-60" | "61-90" | "90+";
 
@@ -46,17 +46,23 @@ export function settleFifo(
   return out;
 }
 
-// Дансны төлөвлөгөөн дэх "авлага" мөн эсэх:
-// актив данс + нэрэндээ "авлага" + эргэлзээтэй авлагын хасагдуулга (контр) биш.
+// Данс "авлага" мөн эсэх: актив + нэр эсвэл fs_line-д "авлага" + хасагдуулга
+// (эргэлзээтэй авлагын контр-актив) биш.
 export function isReceivableAccount(
   name: string | null | undefined,
   type: string | null | undefined,
+  fsLine?: string | null | undefined,
 ): boolean {
-  const n = (name ?? "").toLowerCase();
   if (type !== "asset") return false;
-  if (!n.includes("авлага")) return false;
-  if (n.includes("хасагдуулга")) return false; // эргэлзээтэй авлагын хасагдуулга (контр-актив)
+  const hay = `${name ?? ""} ${fsLine ?? ""}`.toLowerCase();
+  if (!hay.includes("авлага")) return false;
+  if (hay.includes("хасагдуулга")) return false;
   return true;
+}
+
+// Харилцагчийн нэрийг нэгтгэх түлхүүр (том үсэг, илүү зай арилгах).
+export function normalizePartner(name: string | null | undefined): string {
+  return (name ?? "").trim().replace(/\s+/g, " ").toUpperCase();
 }
 
 // Хоёр огнооны хоорондын хоногийн зөрүү (toDate − fromDate). Сөрөг бол 0.
@@ -79,15 +85,15 @@ export function bucketOf(date: string, today: string): AgingBucket {
 
 // Нэг авлагын мөр (эх сурвалжаас үл хамаарсан нэгдсэн дүрс).
 export type ReceivableItem = {
-  partnerId: number | null;
-  partnerName: string; // партнергүй бол тогтсон шошго
+  partnerKey: string; // нэгтгэх түлхүүр (нормчилсон нэр); "" бол партнергүй
+  partnerName: string; // дэлгэцэнд харуулах нэр
   amount: number; // авлагын үлдэгдэл (эерэг)
   date: string; // насжилтыг тооцох огноо (YYYY-MM-DD)
   source: ReceivableSource;
 };
 
 export type PartnerReceivable = {
-  partnerId: number | null;
+  partnerKey: string;
   partnerName: string;
   total: number;
   fromJournal: number;
@@ -108,8 +114,6 @@ export type ReceivablesSummary = {
   partnerCount: number;
 };
 
-const NO_PARTNER_KEY = "__none__";
-
 // Авлагын мөрүүдийг харилцагчаар бүлэглэж, насжилтаар задлан нэгтгэнэ.
 // 0.005-аас бага (бараг тэг) болон сөрөг үлдэгдлийг алгасна.
 export function summarizeReceivables(
@@ -122,11 +126,11 @@ export function summarizeReceivables(
     const amount = Number(it.amount) || 0;
     if (amount <= 0.005) continue; // тэг буюу сөрөг (кредит) үлдэгдлийг тооцохгүй
 
-    const key = it.partnerId == null ? NO_PARTNER_KEY : String(it.partnerId);
+    const key = it.partnerKey;
     let p = byPartner.get(key);
     if (!p) {
       p = {
-        partnerId: it.partnerId,
+        partnerKey: key,
         partnerName: it.partnerName,
         total: 0,
         fromJournal: 0,
