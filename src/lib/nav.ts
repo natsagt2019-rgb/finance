@@ -20,6 +20,7 @@ export const navItems: NavItem[] = [
   { href: "/partners", label: "Харилцагчид", icon: "👥" },
   { href: "/invoices", label: "Нэхэмжлэх", icon: "📑" },
   { href: "/vat", label: "НӨАТ бүртгэл", icon: "🧾" },
+  { href: "/journals", label: "Журнал", icon: "📒" },
   { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
   // Жишээ нь дараа нэмэх модулиуд:
   // { href: "/settings", label: "Тохиргоо", icon: "⚙" },

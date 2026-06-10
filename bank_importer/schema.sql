@@ -331,3 +331,49 @@ CREATE TABLE IF NOT EXISTS cash_flow_lines (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cash_flow_year ON cash_flow_lines (year, period);
+
+
+-- ── 16. Ерөнхий журнал (General Journal) ────────────────────────────────
+-- Гүйлгээ бүр нэг мөр: debit_code/credit_code дансыг amount-аар хөдөлгөнө.
+-- Энэ нь дансны үлдэгдэл, гүйлгээ баланс, тайлангуудын ҮНДСЭН эх сурвалж.
+-- Эхний үлдэгдлийг өмнөх оны 12-31-нээр (opening) бичилтээр оруулна.
+-- cf_code = мөнгөн гүйлгээний код (мөнгөн гүйлгээний тайланд ашиглана).
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id           BIGSERIAL PRIMARY KEY,
+    entry_no     INTEGER,                       -- журналын дугаар
+    txn_date     DATE NOT NULL,                 -- гүйлгээний огноо
+    description  TEXT,                          -- гүйлгээний утга
+    partner_code TEXT,
+    partner_name TEXT,
+    amount       NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    debit_code   TEXT,                          -- accounts.code (Дт)
+    credit_code  TEXT,                          -- accounts.code (Кт)
+    cf_code      TEXT,                          -- мөнгөн гүйлгээний код
+    is_opening   BOOLEAN DEFAULT FALSE,         -- эхний үлдэгдлийн бичилт эсэх
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_journal_date   ON journal_entries (txn_date);
+CREATE INDEX IF NOT EXISTS idx_journal_debit  ON journal_entries (debit_code);
+CREATE INDEX IF NOT EXISTS idx_journal_credit ON journal_entries (credit_code);
+CREATE INDEX IF NOT EXISTS idx_journal_cf     ON journal_entries (cf_code);
+
+
+-- ── 17. Журналаас дансны үлдэгдэл (динамик) view ────────────────────────
+-- Данс бүрийн нийт Дт, Кт, цэвэр үлдэгдэл (debit-positive). Огноогоор
+-- шүүхийн тулд эндээс цааш query-д WHERE нэмж болно.
+CREATE OR REPLACE VIEW journal_account_balances AS
+SELECT
+    EXTRACT(YEAR FROM txn_date)::SMALLINT AS year,
+    code,
+    SUM(debit)  AS total_debit,
+    SUM(credit) AS total_credit,
+    SUM(debit) - SUM(credit) AS net_balance
+FROM (
+    SELECT txn_date, debit_code  AS code, amount AS debit, 0::numeric AS credit
+      FROM journal_entries WHERE debit_code IS NOT NULL
+    UNION ALL
+    SELECT txn_date, credit_code AS code, 0::numeric AS debit, amount AS credit
+      FROM journal_entries WHERE credit_code IS NOT NULL
+) t
+GROUP BY EXTRACT(YEAR FROM txn_date), code;
