@@ -158,3 +158,176 @@ SELECT
 FROM transactions
 GROUP BY account_id, year, display_name, master_code
 ORDER BY total_expense DESC;
+
+
+-- ── 8. Харилцагчийн бүртгэл (Partners) ───────────────────────────────────
+-- Master Data-аас цэгцэлсэн харилцагчдын лавлах.
+-- transactions.master_code = partners.code-оор гүйлгээтэй холбогдоно.
+CREATE TABLE IF NOT EXISTS partners (
+    id          BIGSERIAL PRIMARY KEY,
+    code        TEXT,                       -- 'C10001-01' гэх мэт (хоосон байж болно)
+    name        TEXT NOT NULL,
+    register    TEXT,                       -- улсын бүртгэлийн дугаар
+    type        TEXT DEFAULT 'both',        -- 'customer' | 'supplier' | 'both'
+    phone       TEXT,
+    email       TEXT,
+    address     TEXT,
+    aliases     JSONB,                      -- Master Data-аас өөр нэрсийн жагсаалт
+    is_active   BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- code давхцахгүй (зөвхөн хоосон биш кодод). Хоосон код олон байж болно.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_partners_code_uniq
+    ON partners (code) WHERE code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_partners_name ON partners (name);
+
+
+-- ── 9. Харилцагчийн мөнгөн гүйлгээний нэгтгэл view ───────────────────────
+-- master_code-оор бүлэглэсэн нийт орлого/зарлага. Жагсаалтад харилцагч бүрийн
+-- дүнг харуулахад ашиглана (transactions-д master_code бөглөгдсөн үед утга гарна).
+CREATE OR REPLACE VIEW partner_cashflow AS
+SELECT
+    master_code,
+    SUM(COALESCE(income,  0)) AS total_income,
+    SUM(COALESCE(expense, 0)) AS total_expense,
+    COUNT(*)                  AS txn_count
+FROM transactions
+WHERE master_code IS NOT NULL AND master_code <> ''
+GROUP BY master_code;
+
+
+-- ── 10. Дансны мод (Chart of Accounts) ──────────────────────────────────
+-- Аж ахуйн нэгжийн дансны жагсаалт. parent_id-аар модлог бүтэц үүснэ.
+-- type: 'asset' | 'liability' | 'equity' | 'income' | 'expense'
+CREATE TABLE IF NOT EXISTS accounts (
+    id              BIGSERIAL PRIMARY KEY,
+    code            TEXT NOT NULL,              -- '311005' гэх мэт дансны код (AABBCC)
+    name            TEXT NOT NULL,              -- дансны нэр (монгол)
+    name_en         TEXT,                       -- дансны нэр (англи)
+    type            TEXT NOT NULL,              -- asset|liability|equity|income|expense
+    parent_id       BIGINT REFERENCES accounts(id) ON DELETE SET NULL,  -- эх данс
+    is_active       BOOLEAN DEFAULT TRUE,
+    note            TEXT,                       -- тайлбар / тэмдэглэл (татвар, МУСГАА г.м)
+    fs_line         TEXT,                       -- санхүүгийн тайлангийн мөр (СС №361 маягт)
+    -- Fino.mn-тэй нийцүүлсэн нэмэлт талбарууд
+    account_number  TEXT,                       -- дансны дугаар
+    currency        TEXT DEFAULT 'MNT',         -- мөнгөн тэмдэгт
+    nature          TEXT,                       -- шинж: 'Актив' | 'Пассив'
+    journal_type    TEXT,                       -- журнал
+    department_code TEXT,                       -- хэлтэс код
+    department_name TEXT,                       -- хэлтэс нэр
+    bank_name       TEXT,                       -- банк
+    bank_account    TEXT,                       -- банкны данс
+    is_temp         BOOLEAN DEFAULT FALSE,      -- түр данс эсэх
+    temp_percent    DOUBLE PRECISION DEFAULT 0, -- түр данс хувь
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- code давхцахгүй (зөвхөн идэвхтэй дансдын дунд)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_code_uniq
+    ON accounts (code) WHERE is_active;
+CREATE INDEX IF NOT EXISTS idx_accounts_parent ON accounts (parent_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_type   ON accounts (type);
+
+
+-- ── 11. Нэхэмжлэх (Invoices / Авлага) ────────────────────────────────────
+-- Худалдан авагчид гаргасан нэхэмжлэх ба түүний төлбөрийн төлөв.
+-- partner_id-аар partners-тэй холбогдоно. partner_name нь снапшот
+-- (харилцагч устгагдсан ч нэр үлдэнэ).
+-- status: 'open' (нээлттэй) | 'partial' (хэсэгчлэн) | 'paid' (төлөгдсөн).
+-- "Хэтэрсэн" төлөв нь зөвхөн дэлгэцийн тооцоо (due_date < өнөөдөр ба paid биш),
+-- мэдээллийн баазад хадгалагдахгүй.
+CREATE TABLE IF NOT EXISTS invoices (
+    id            BIGSERIAL PRIMARY KEY,
+    invoice_no    TEXT,                        -- Нэхэмж № (давхцахгүй)
+    inv_date      DATE NOT NULL,               -- нэхэмжилсэн огноо
+    due_date      DATE,                        -- төлөх эцсийн хугацаа
+    partner_id    BIGINT REFERENCES partners(id) ON DELETE SET NULL,
+    partner_name  TEXT,                        -- харилцагчийн нэр (снапшот)
+    responsible   TEXT,                        -- хариуцагч (KAM)
+    description   TEXT,                        -- тайлбар
+    amount        NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- нийт дүн
+    paid_amount   NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- төлсөн дүн
+    status        TEXT NOT NULL DEFAULT 'open',        -- open|partial|paid
+    currency      TEXT DEFAULT 'MNT',
+    is_active     BOOLEAN DEFAULT TRUE,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- invoice_no давхцахгүй (зөвхөн идэвхтэй, кодтой нэхэмжлэлийн дунд)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_no_uniq
+    ON invoices (invoice_no) WHERE is_active AND invoice_no IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_invoices_partner ON invoices (partner_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_date    ON invoices (inv_date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_status  ON invoices (status);
+
+
+-- ── 12. Нэхэмжлэлийн сараар нэгтгэл view ─────────────────────────────────
+-- Жил, сараар нэгтгэсэн дүн (тайлангийн график/нэгтгэлд ашиглана).
+CREATE OR REPLACE VIEW invoice_monthly AS
+SELECT
+    EXTRACT(YEAR  FROM inv_date)::SMALLINT AS year,
+    EXTRACT(MONTH FROM inv_date)::SMALLINT AS month,
+    COUNT(*)                  AS invoice_count,
+    SUM(amount)               AS total_amount,
+    SUM(paid_amount)          AS total_paid,
+    SUM(amount - paid_amount) AS total_remaining
+FROM invoices
+WHERE is_active
+GROUP BY year, month
+ORDER BY year, month;
+
+
+-- ── 13. Гүйлгээ баланс (Trial Balance) ──────────────────────────────────
+-- Данс бүрийн эхний/эцсийн үлдэгдэл тайлант үеэр. Excel-ээс импортолно.
+-- Энэ нь санхүүгийн тайлан (E-balance) гаргах эх өгөгдөл.
+-- account_code = accounts.code-той тааруулна. balance нь дансны ЖИНХЭНЭ
+-- чиглэлийн (debit-positive) тэмдэгтэй: актив/зардал +, пассив/орлого -.
+CREATE TABLE IF NOT EXISTS trial_balances (
+    id              BIGSERIAL PRIMARY KEY,
+    year            SMALLINT NOT NULL,
+    period          TEXT NOT NULL DEFAULT 'annual',  -- 'annual'|'Q1'..'Q4'|'01'..'12'
+    account_code    TEXT NOT NULL,                   -- accounts.code
+    account_name    TEXT,                            -- импортын үеийн нэр (лавлах)
+    opening_balance NUMERIC(18, 2) NOT NULL DEFAULT 0,  -- эхний (өмнөх он харьцуулалт)
+    closing_balance NUMERIC(18, 2) NOT NULL DEFAULT 0,  -- эцсийн (тайлант он)
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (year, period, account_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trial_balances_year ON trial_balances (year, period);
+CREATE INDEX IF NOT EXISTS idx_trial_balances_code ON trial_balances (account_code);
+
+
+-- ── 14. Тайлангийн мөрөөр нэгтгэсэн view ─────────────────────────────────
+-- trial_balances-ийг accounts.fs_line-аар нэгтгэнэ. Санхүүгийн тайлангийн
+-- мөр бүрийн дүн (эхний/эцсийн) шууд гарна.
+CREATE OR REPLACE VIEW fs_line_balances AS
+SELECT
+    tb.year,
+    tb.period,
+    a.fs_line,
+    SUM(tb.opening_balance) AS opening_total,
+    SUM(tb.closing_balance) AS closing_total
+FROM trial_balances tb
+JOIN accounts a ON a.code = tb.account_code AND a.is_active
+WHERE a.fs_line IS NOT NULL
+GROUP BY tb.year, tb.period, a.fs_line;
+
+
+-- ── 15. Мөнгөн гүйлгээний мөрүүд (Cash Flow) ────────────────────────────
+-- Мөнгөн гүйлгээний тайлан (шууд арга). cf_code = E-balance МГТ-ийн мөрийн
+-- код ('1.1.1', '1.2.5' г.м). Ерөнхий журналаас мөнгөн гүйлгээний кодоор
+-- нэгтгэж импортолно. amount = эерэг (орлого ч, зарлага ч).
+CREATE TABLE IF NOT EXISTS cash_flow_lines (
+    id          BIGSERIAL PRIMARY KEY,
+    year        SMALLINT NOT NULL,
+    period      TEXT NOT NULL DEFAULT 'annual',
+    cf_code     TEXT NOT NULL,                  -- МГТ мөрийн код
+    amount      NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (year, period, cf_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_flow_year ON cash_flow_lines (year, period);

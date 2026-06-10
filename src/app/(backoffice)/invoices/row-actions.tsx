@@ -1,0 +1,74 @@
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+
+import { markPaid, deleteInvoice } from "./actions";
+
+export function RowActions({
+  id,
+  label,
+  isPaid,
+}: {
+  id: number;
+  label: string;
+  isPaid: boolean;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function handlePay() {
+    if (!confirm(`${label} — бүрэн төлөгдсөн гэж тэмдэглэх үү?`)) return;
+    startTransition(async () => {
+      const res = await markPaid(id);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function handleDelete() {
+    if (!confirm(`${label} нэхэмжлэлийг устгах уу?`)) return;
+    startTransition(async () => {
+      const res = await deleteInvoice(id);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <Link
+        href={`/invoices/${id}/edit`}
+        className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+      >
+        Засах
+      </Link>
+      {!isPaid && (
+        <button
+          type="button"
+          onClick={handlePay}
+          disabled={isPending}
+          title="Бүрэн төлөгдсөн гэж тэмдэглэх"
+          className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
+        >
+          ✓
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={isPending}
+        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+      >
+        Устгах
+      </button>
+    </div>
+  );
+}
