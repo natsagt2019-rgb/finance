@@ -122,14 +122,17 @@ export default async function PartnersPage({
           </Link>
         </div>
 
-        <form method="get" className="ml-auto flex items-center gap-2">
+        <form
+          method="get"
+          className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"
+        >
           {selType && <input type="hidden" name="type" value={selType} />}
           <input
             type="text"
             name="q"
             defaultValue={search}
             placeholder="Нэр / код / регистр хайх…"
-            className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900"
+            className="w-full min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 sm:w-64 sm:flex-none"
           />
           <button
             type="submit"

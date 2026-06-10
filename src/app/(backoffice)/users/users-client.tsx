@@ -92,7 +92,7 @@ export function UsersClient({
           onSubmit={handleCreate}
           className="mt-4 flex flex-wrap items-end gap-3"
         >
-          <div className="flex-1 min-w-[220px]">
+          <div className="w-full sm:flex-1 sm:min-w-[200px]">
             <label className="mb-1 block text-xs font-medium text-zinc-600">
               Мэйл хаяг
             </label>
@@ -105,7 +105,7 @@ export function UsersClient({
               className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900"
             />
           </div>
-          <div className="flex-1 min-w-[180px]">
+          <div className="w-full sm:flex-1 sm:min-w-[180px]">
             <label className="mb-1 block text-xs font-medium text-zinc-600">
               Нууц үг (6+ тэмдэгт)
             </label>

@@ -297,7 +297,7 @@ export default async function VatPage({
             ))}
           </select>
         </div>
-        <div className="min-w-[240px] flex-1">
+        <div className="w-full sm:w-auto sm:min-w-[240px] sm:flex-1">
           <label className="mb-1 block text-xs font-semibold text-zinc-600">
             Хайх (харилцагч / ТТД / ДДТД / дүн)
           </label>
