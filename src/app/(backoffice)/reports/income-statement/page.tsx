@@ -5,8 +5,11 @@ import {
   computeStatement,
   type FsBalanceMap,
 } from "@/lib/fs-report";
+import { fsBalancesFromJournal } from "@/lib/fs-from-journal";
 
-type SearchParams = { year?: string; period?: string };
+type SearchParams = { year?: string; period?: string; from?: string; to?: string };
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function fmt(n: number): string {
   if (!n) return "0.00";
@@ -39,22 +42,35 @@ export default async function IncomeStatementPage({
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
   const period = sp.period || "annual";
 
-  const { data: fsRows, error } = await supabase
-    .from("fs_line_balances")
-    .select("fs_line, opening_total, closing_total")
-    .eq("year", selYear)
-    .eq("period", period);
+  // Огнооны муж идэвхтэй бол журналаас динамик (мужийн орлого/зардал).
+  const from = sp.from && ISO.test(sp.from) ? sp.from : "";
+  const to = sp.to && ISO.test(sp.to) ? sp.to : "";
+  const rangeMode = !!(from && to);
 
-  const balances: FsBalanceMap = new Map();
-  for (const r of (fsRows as
-    | { fs_line: string; opening_total: number | null; closing_total: number | null }[]
-    | null) ?? []) {
-    balances.set(r.fs_line, {
-      opening: Number(r.opening_total) || 0,
-      closing: Number(r.closing_total) || 0,
-    });
+  let balances: FsBalanceMap = new Map();
+  let error: { message: string } | null = null;
+
+  if (rangeMode) {
+    const { is } = await fsBalancesFromJournal(supabase, from, to);
+    balances = is;
+  } else {
+    const { data: fsRows, error: e } = await supabase
+      .from("fs_line_balances")
+      .select("fs_line, opening_total, closing_total")
+      .eq("year", selYear)
+      .eq("period", period);
+    error = e;
+    for (const r of (fsRows as
+      | { fs_line: string; opening_total: number | null; closing_total: number | null }[]
+      | null) ?? []) {
+      balances.set(r.fs_line, {
+        opening: Number(r.opening_total) || 0,
+        closing: Number(r.closing_total) || 0,
+      });
+    }
   }
 
+  const label = rangeMode ? `${from} → ${to}` : `${selYear} он`;
   const rows = computeStatement(INCOME_STATEMENT, balances);
   const hasData = balances.size > 0;
 
@@ -66,30 +82,50 @@ export default async function IncomeStatementPage({
             Орлогын дэлгэрэнгүй тайлан
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            E-balance (СС №361) загвар. Эх өгөгдөл: гүйлгээ баланс (жилийн
-            эргэлт).
+            E-balance (СС №361) загвар — {label}.{" "}
+            {rangeMode ? "Журналаас динамик." : "Эх өгөгдөл: гүйлгээ баланс."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <form method="get" className="flex items-center gap-2">
-            <select
-              name="year"
-              defaultValue={String(selYear)}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y} он
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-wrap items-end gap-2">
+          {!rangeMode && (
+            <form method="get" className="flex items-center gap-2">
+              <select
+                name="year"
+                defaultValue={String(selYear)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y} он
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Шинэчлэх
+              </button>
+            </form>
+          )}
+          <form method="get" className="flex items-end gap-2">
+            <input type="date" name="from" defaultValue={from} className="rounded-lg border border-zinc-300 px-2 py-2 text-sm" />
+            <input type="date" name="to" defaultValue={to} className="rounded-lg border border-zinc-300 px-2 py-2 text-sm" />
             <button
               type="submit"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
             >
-              Шинэчлэх
+              Муж
             </button>
           </form>
+          {rangeMode && (
+            <a
+              href="/reports/income-statement"
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              Цэвэрлэх
+            </a>
+          )}
           <PrintButton />
         </div>
       </div>
@@ -106,8 +142,10 @@ export default async function IncomeStatementPage({
 
       {!hasData && !error ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-800">
-          {selYear} оны гүйлгээ баланс ороогүй байна. Эхлээд дансны үлдэгдлийг
-          импортолно уу.
+          {label} — өгөгдөл алга.{" "}
+          {rangeMode
+            ? "Энэ хугацаанд журналд гүйлгээ байхгүй."
+            : "Эхлээд гүйлгээ баланс эсвэл журнал оруулна уу."}
         </div>
       ) : null}
 
