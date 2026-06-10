@@ -221,8 +221,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     bank_account    TEXT,                       -- банкны данс
     is_temp         BOOLEAN DEFAULT FALSE,      -- түр данс эсэх
     temp_percent    DOUBLE PRECISION DEFAULT 0, -- түр данс хувь
+    is_cogs         BOOLEAN DEFAULT FALSE,      -- борлуулсан бүтээгдэхүүний өртөг (ББӨ) данс эсэх
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Одоо байгаа хүснэгтэд багана нэмэх (idempotent)
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_cogs BOOLEAN DEFAULT FALSE;
 
 -- code давхцахгүй (зөвхөн идэвхтэй дансдын дунд)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_code_uniq
