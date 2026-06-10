@@ -8,6 +8,7 @@ import {
   type InvoiceStatus,
 } from "./types";
 import { RowActions } from "./row-actions";
+import { InvoiceToolbar, type ExportRow } from "./invoice-toolbar";
 
 const ROW_LIMIT = 2000;
 
@@ -104,6 +105,29 @@ export default async function InvoicesPage({
   const footAmt = shown.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const footPaid = shown.reduce((s, r) => s + (Number(r.paid_amount) || 0), 0);
 
+  // Excel-д гаргах өгөгдөл (харагдаж буй мөрүүд)
+  const exportRows: ExportRow[] = shown.map((r) => {
+    const amount = Number(r.amount) || 0;
+    const paid = Number(r.paid_amount) || 0;
+    const overdue = isOverdue(r.due_date, r.status, today);
+    const statusLabel =
+      overdue && r.status !== "paid"
+        ? "Хэтэрсэн"
+        : STATUS_BADGE[r.status].label;
+    return {
+      invoice_no: r.invoice_no || `#${r.id}`,
+      inv_date: r.inv_date,
+      partner: r.partner_name || "",
+      responsible: r.responsible || "",
+      description: r.description || "",
+      due_date: r.due_date || "",
+      amount,
+      paid,
+      remaining: amount - paid,
+      status: statusLabel,
+    };
+  });
+
   const buildHref = (over: Partial<SearchParams>) => {
     const params = new URLSearchParams();
     const status = over.status ?? selStatus;
@@ -134,12 +158,15 @@ export default async function InvoicesPage({
             Худалдан авагчид гаргасан нэхэмжлэх, төлбөрийн төлөв, авлагын үлдэгдэл.
           </p>
         </div>
-        <Link
-          href="/invoices/new"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-        >
-          + Нэхэмжлэх нэмэх
-        </Link>
+        <div className="no-print flex flex-wrap items-center gap-2">
+          <InvoiceToolbar rows={exportRows} fileLabel={today} />
+          <Link
+            href="/invoices/new"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            + Нэхэмжлэх нэмэх
+          </Link>
+        </div>
       </div>
 
       {/* Нэгтгэлийн картууд */}
@@ -184,7 +211,7 @@ export default async function InvoicesPage({
       </div>
 
       {/* Шүүлт: төлөв tab + сар + хайлт */}
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div className="no-print mt-6 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">
           <Link href={buildHref({ status: "" })} className={tabCls(!selStatus)}>
             Бүгд ({scoped.length})
@@ -275,7 +302,7 @@ export default async function InvoicesPage({
                   <th className="px-4 py-2 text-right">Төлсөн</th>
                   <th className="px-4 py-2 text-right">Үлдэгдэл</th>
                   <th className="px-4 py-2">Төлөв</th>
-                  <th className="px-4 py-2 text-right">Үйлдэл</th>
+                  <th className="no-print px-4 py-2 text-right">Үйлдэл</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -351,7 +378,7 @@ export default async function InvoicesPage({
                           </div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-right">
+                      <td className="no-print whitespace-nowrap px-4 py-2 text-right">
                         <RowActions
                           id={r.id}
                           label={r.invoice_no || `#${r.id}`}

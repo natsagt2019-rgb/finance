@@ -30,4 +30,25 @@ body {
   .no-print {
     display: none !important;
   }
+
+  /* Бүх агуулга бүтнээр хэвлэгдэхийн тулд scroll/height хязгаарлалтыг болиулна */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .h-screen {
+    height: auto !important;
+  }
+  .overflow-hidden,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* Хүснэгтийн мөр хуудас дамжин таслагдахгүй */
+  tr {
+    break-inside: avoid;
+  }
 }
