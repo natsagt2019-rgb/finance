@@ -9,6 +9,7 @@ export const navItems: NavItem[] = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: "▦" },
   { href: "/accounts", label: "Дансны жагсаалт", icon: "🗂" },
   { href: "/import", label: "Дансны хуулга цэгцлэгч", icon: "↧" },
+  { href: "/categorize", label: "AI ангилал", icon: "✨" },
   { href: "/statements", label: "Дансны хуулга", icon: "₮" },
   { href: "/reports/cashflow", label: "Мөнгөн урсгал", icon: "≈" },
   { href: "/reports/trial-balance", label: "Гүйлгээ баланс (импорт)", icon: "↥" },

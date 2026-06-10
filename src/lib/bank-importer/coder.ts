@@ -87,9 +87,10 @@ export function codeTt(
     if (d.includes("томилолт")) return ["N", "2.1.3"];
     if (d.includes("сургалт")) return ["N", "2.1.5"];
 
-    // Гацуурт түрээс
-    if (ctp.includes("гацуурт")) return ["N", "2.1.10"];
-    if (d.includes("түрээс")) return ["N", "2.1.10"];
+    // Түрээс — ЗӨВХӨН Гацуурт ХХК-д төлсөн түрээс л энд орно. Бусад "түрээс"
+    // (машин/кран түрээс гэх мэт) нь тээврийн төлбөр тул доорх тээврийн дүрэмд
+    // унаж 1.2.1/1.2.2 болно.
+    if (ctp.includes("гацуурт") || d.includes("гацуурт")) return ["N", "2.1.10"];
 
     // Техник хэрэгсэл / тавилга
     if (
@@ -166,8 +167,8 @@ export function codeTr(
     if (["эмндш", "ндш"].some((x) => d.includes(x))) return ["N", "2.2.4"];
     if (d.includes("томилолт")) return ["N", "2.1.3"];
     if (d.includes("сургалт")) return ["N", "2.1.5"];
-    if (ctp.includes("гацуурт")) return ["N", "2.1.10"];
-    if (d.includes("түрээс")) return ["N", "2.1.10"];
+    // Түрээс — ЗӨВХӨН Гацуурт ХХК-д төлсөн (бусад түрээс → тээвэр).
+    if (ctp.includes("гацуурт") || d.includes("гацуурт")) return ["N", "2.1.10"];
 
     if (["dell", "notebook", "laptop", "ноутбук", "компьютер"].some((x) => d.includes(x))) {
       return ["N", "3.2.1"];
