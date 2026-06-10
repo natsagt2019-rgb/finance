@@ -8,7 +8,16 @@ export default async function UsersPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const users = await listUsers();
+  // listUsers унавал (ж: service_role түлхүүр дутуу) бүх хуудсыг 500 болгохгүй,
+  // харин форм нь ажиллах хэвээр, алдааг client-д харуулна.
+  let users: Awaited<ReturnType<typeof listUsers>> = [];
+  let loadError: string | null = null;
+  try {
+    users = await listUsers();
+  } catch (e) {
+    loadError =
+      e instanceof Error ? e.message : "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа.";
+  }
 
   return (
     <div>
@@ -18,7 +27,11 @@ export default async function UsersPage() {
       </p>
 
       <div className="mt-6">
-        <UsersClient initialUsers={users} currentUserId={user?.id ?? ""} />
+        <UsersClient
+          initialUsers={users}
+          currentUserId={user?.id ?? ""}
+          loadError={loadError}
+        />
       </div>
     </div>
   );

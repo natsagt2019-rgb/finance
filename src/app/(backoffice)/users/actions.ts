@@ -64,23 +64,30 @@ export async function createUser(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой." };
   }
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true, // шууд баталгаажуулна (мэйл илгээхгүй)
-  });
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // шууд баталгаажуулна (мэйл илгээхгүй)
+    });
 
-  if (error) {
-    // Давхардсан мэйлийн алдааг ойлгомжтой болгоно.
-    const msg = /already.*registered|exists/i.test(error.message)
-      ? "Энэ мэйл хаягтай хэрэглэгч аль хэдийн бүртгэлтэй байна."
-      : error.message;
-    return { ok: false, error: msg };
+    if (error) {
+      // Давхардсан мэйлийн алдааг ойлгомжтой болгоно.
+      const msg = /already.*registered|exists/i.test(error.message)
+        ? "Энэ мэйл хаягтай хэрэглэгч аль хэдийн бүртгэлтэй байна."
+        : error.message;
+      return { ok: false, error: msg };
+    }
+
+    revalidatePath("/users");
+    return { ok: true, email: data.user.email ?? email };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Хэрэглэгч үүсгэхэд алдаа гарлаа.",
+    };
   }
-
-  revalidatePath("/users");
-  return { ok: true, email: data.user.email ?? email };
 }
 
 // ── Хэрэглэгч устгах ───────────────────────────────────────────────────────
@@ -90,10 +97,17 @@ export async function deleteUser(userId: string): Promise<ActionResult> {
     return { ok: false, error: "Та өөрийгөө устгах боломжгүй." };
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(userId);
-  if (error) return { ok: false, error: error.message };
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/users");
-  return { ok: true, email: "" };
+    revalidatePath("/users");
+    return { ok: true, email: "" };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Хэрэглэгч устгахад алдаа гарлаа.",
+    };
+  }
 }

@@ -13,14 +13,16 @@ function fmtDate(iso: string | null): string {
 export function UsersClient({
   initialUsers,
   currentUserId,
+  loadError = null,
 }: {
   initialUsers: UserRow[];
   currentUserId: string;
+  loadError?: string | null;
 }) {
   const [users, setUsers] = useState<UserRow[]>(initialUsers);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(loadError);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -34,18 +36,20 @@ export function UsersClient({
     formData.set("password", password);
 
     startTransition(async () => {
-      const res = await createUser(formData);
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setMessage(`${res.email} хэрэглэгч амжилттай үүслээ.`);
-      setEmail("");
-      setPassword("");
       try {
+        const res = await createUser(formData);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        setMessage(`${res.email} хэрэглэгч амжилттай үүслээ.`);
+        setEmail("");
+        setPassword("");
         setUsers(await listUsers());
-      } catch {
-        /* жагсаалт дараа дахин ачаалагдана */
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Хэрэглэгч үүсгэхэд алдаа гарлаа.",
+        );
       }
     });
   }
@@ -56,16 +60,18 @@ export function UsersClient({
     setMessage(null);
 
     startTransition(async () => {
-      const res = await deleteUser(u.id);
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setMessage("Хэрэглэгч устгагдлаа.");
       try {
+        const res = await deleteUser(u.id);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        setMessage("Хэрэглэгч устгагдлаа.");
         setUsers(await listUsers());
-      } catch {
-        /* */
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Хэрэглэгч устгахад алдаа гарлаа.",
+        );
       }
     });
   }
