@@ -21,11 +21,12 @@ export function detectAccountId(filename: string): AccountId | null {
   return null;
 }
 
-// account_id → company нэр (importer.py-тэй ижил бүлэглэл).
+// TT компанийн данс уу? (MNT TT + GM + MB + гадаад валют TTU/TTE)
+const TT_FAMILY: AccountId[] = ["TT", "GM", "MB", "TTU", "TTE"];
+
+// account_id → company нэр.
 export function companyOf(accountId: AccountId): string {
-  return accountId === "TT" || accountId === "GM" || accountId === "MB"
-    ? COMPANY_TT
-    : COMPANY_TR;
+  return TT_FAMILY.includes(accountId) ? COMPANY_TT : COMPANY_TR;
 }
 
 // Нэг файлыг parse + ангилал + company хийж нормчилсон мөрүүд буцаана (DB-гүй).
@@ -35,16 +36,17 @@ export function normalizeFile(
   cutoff: Date,
 ): NormalizedTxn[] {
   const company = companyOf(accountId);
+  // Ангиллын дүрэм компаниар сонгоно (TT-гэр бүл → codeTt, бусад → codeTr).
+  const companyKey = TT_FAMILY.includes(accountId) ? "TT" : "TR";
 
   let txns = parseFile(buffer, accountId, cutoff);
+  txns = txns.map((t) => applyCodes(t, companyKey));
 
-  // Ангилал нэмэх (auto-coding). coder нь account_id-аар TT/TR дүрэм сонгоно.
-  txns = txns.map((t) => applyCodes(t, accountId));
-
-  // Company нэр болон Master Data талбар (одоохондоо null).
+  // Company нэр, валют (анхдагч MNT), Master Data талбар.
   return txns.map((t) => ({
     ...t,
     company,
+    currency: t.currency ?? "MNT",
     master_code: null,
     master_name: null,
   }));

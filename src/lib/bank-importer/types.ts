@@ -8,6 +8,7 @@ export type NormalizedTxn = {
   counterparty: string;
   account_no: string;
   exchange_rate: number;
+  currency?: string; // 'MNT' | 'USD' | 'EUR' … (анхдагч MNT)
   income: number | null;
   expense: number | null;
   // apply_codes-ийн дараа нэмэгдэнэ
@@ -20,7 +21,8 @@ export type NormalizedTxn = {
   master_name?: string | null;
 };
 
-export type AccountId = "TT" | "TR" | "GM" | "MB";
+// MNT дансууд: TT/TR/GM/MB. Гадаад валютын ТДБ дансууд: TTU(USD), TTE(EUR) — TT компани.
+export type AccountId = "TT" | "TR" | "GM" | "MB" | "TTU" | "TTE";
 
 // Ангилалын чиглэл: 'M' = орлого, 'N' = зарлага, '' = тодорхойгүй
 export type Direction = "M" | "N" | "";

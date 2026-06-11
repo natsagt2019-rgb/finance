@@ -8,9 +8,9 @@
 import * as XLSX from "xlsx";
 
 import {
-  TDB_COL, GOLOMT_COL, MBANK_COL,
+  TDB_COL, GOLOMT_COL, MBANK_COL, TDB_COMPACT_COL,
   BANK_DISPLAY, SKIP_KEYWORDS, GENERIC_COUNTERPARTIES,
-  TDB_TT_ACCOUNT, TDB_TR_ACCOUNT,
+  TDB_TT_ACCOUNT, TDB_TR_ACCOUNT, ACCOUNT_CURRENCY,
 } from "./config";
 import type { AccountId, NormalizedTxn } from "./types";
 
@@ -230,13 +230,78 @@ function sheetRows(buffer: ArrayBuffer | Buffer): Row[] {
   });
 }
 
-// Файлын төрлийг account_id-оор тодорхойлж парсер дуудна.
+// Компакт форматын харилцагч (col5: "MN…IBAN НЭР" эсвэл "12345 НЭР") → нэр гаргах.
+function compactCounterparty(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const m = s.match(/^(?:MN\d+|\d{6,})\s+(.+)$/i);
+  return (m ? m[1] : s).trim();
+}
+
+// ТДБ "Депозит дансны хуулга" компакт формат унших (MNT/USD/EUR данс).
+// Орлого/зарлага тусдаа багана, ханш col4-д, валют толгойн мөр 0-оос.
+export function parseTdbCompact(
+  rows: Row[],
+  accountId: AccountId,
+  cutoff: Date,
+): NormalizedTxn[] {
+  const col = TDB_COMPACT_COL;
+  // Валют: толгой мөр 0, col3 "Дансны дугаар: 411099342 USD" → эсвэл config-оос.
+  const hdr = String(rows[0]?.[3] ?? "");
+  const curMatch = hdr.match(/\b(MNT|USD|EUR|CNY|RUB|JPY|GBP|KRW)\b/);
+  const currency = curMatch ? curMatch[1] : ACCOUNT_CURRENCY[accountId] ?? "MNT";
+
+  const result: NormalizedTxn[] = [];
+  for (let i = col.data_start_row; i < rows.length; i++) {
+    const row = rows[i] ?? [];
+    const txnDate = toIsoDate(cell(row, col.date));
+    if (!txnDate) continue; // footer ("Нийт:"/"Хуудас:") болон хоосон мөр таслагдана
+    if (txnDate.getTime() <= cutoff.getTime()) continue;
+
+    const income = toNum(cell(row, col.income));
+    const expense = toNum(cell(row, col.expense));
+    if (income === 0 && expense === 0) continue;
+
+    const rawDesc = String(cell(row, col.description) ?? "");
+    if (shouldSkip(rawDesc)) continue;
+
+    const rate = toNum(cell(row, col.rate)) || 1;
+    const ctpy = compactCounterparty(cell(row, col.counterparty));
+    const desc = cleanDescription(rawDesc);
+
+    result.push({
+      account_id: accountId,
+      txn_date: txnDate,
+      bank: BANK_DISPLAY[accountId] ?? "ТДБ",
+      description: desc,
+      counterparty: ctpy,
+      account_no: "",
+      exchange_rate: rate,
+      currency,
+      income: income > 0 ? income : null,
+      expense: expense > 0 ? expense : null,
+    });
+  }
+  return result;
+}
+
+// Компакт формат мөн эсэхийг таних (толгой мөр 0-д "Хэвлэсэн огноо").
+function isTdbCompact(rows: Row[]): boolean {
+  return String(rows[0]?.[0] ?? "").includes("Хэвлэсэн огноо");
+}
+
+// Файлын төрлийг тодорхойлж парсер дуудна.
 export function parseFile(
   buffer: ArrayBuffer | Buffer,
   accountId: AccountId,
   cutoff: Date,
 ): NormalizedTxn[] {
   const rows = sheetRows(buffer);
+
+  // ТДБ компакт формат — данснаас үл хамаарч агуулгаар танина (TT/TTU/TTE/TR).
+  if (isTdbCompact(rows)) {
+    return parseTdbCompact(rows, accountId, cutoff);
+  }
 
   if (accountId === "TT" || accountId === "TR") {
     return parseTdb(rows, accountId, cutoff);

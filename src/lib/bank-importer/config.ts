@@ -9,10 +9,12 @@ export const COMPANY_TR = "ТҮМЭН РЕСУРС ХХК";
 // ── Данс → account_id mapping ─────────────────────────────────────────────
 // Файлын нэрнд агуулагдах тоогоор автоматаар танина.
 export const ACCOUNT_PATTERNS: Record<string, AccountId> = {
-  "411096635": "TT", // TDB Түмэн Тээх
-  "435013050": "TR", // TDB Түмэн Ресурс
+  "411096635": "TT", // TDB Түмэн Тээх (MNT)
+  "435013050": "TR", // TDB Түмэн Ресурс (MNT)
   C000074932: "GM", // Golomt
   "9006906192": "MB", // M Bank
+  "411099342": "TTU", // TDB Түмэн Тээх — USD
+  "411099343": "TTE", // TDB Түмэн Тээх — EUR
 };
 
 // ── Банкны дэлгэрэнгүй нэр (UI харуулах) ─────────────────────────────────
@@ -21,11 +23,24 @@ export const BANK_DISPLAY: Record<AccountId, string> = {
   TR: "ТДБ — 435013050",
   GM: "Голомт банк — 1175156757",
   MB: "М Банк — 9006906192",
+  TTU: "ТДБ — 411099342 (USD)",
+  TTE: "ТДБ — 411099343 (EUR)",
+};
+
+// ── Данс → валют ──────────────────────────────────────────────────────────
+export const ACCOUNT_CURRENCY: Record<AccountId, string> = {
+  TT: "MNT",
+  TR: "MNT",
+  GM: "MNT",
+  MB: "MNT",
+  TTU: "USD",
+  TTE: "EUR",
 };
 
 // ── Компани → данс бүлэг ──────────────────────────────────────────────────
+// TT компанид USD/EUR данс ч багтана (гэхдээ MNT тайлан валютаар шүүгдэнэ).
 export const COMPANY_ACCOUNTS: Record<"TT" | "TR", AccountId[]> = {
-  TT: ["TT", "GM", "MB"],
+  TT: ["TT", "GM", "MB", "TTU", "TTE"],
   TR: ["TR"],
 };
 
@@ -54,6 +69,21 @@ export const TDB_COL = {
 // TDB дансны дугаар (description цэвэрлэхэд ашиглана)
 export const TDB_TT_ACCOUNT = "411096635";
 export const TDB_TR_ACCOUNT = "435013050";
+
+// ── ТДБ "Депозит дансны хуулга" компакт формат (.XLS) ─────────────────────
+// Толгой мөр 0-д (Харилцагч, Данс+валют, Эхний үлдэгдэл), өгөгдөл мөр 1-ээс.
+// Footer ("Нийт:"/"Хуудас:") нь огнооны шалгалтаар таслагдана.
+export const TDB_COMPACT_COL = {
+  date: 0, // Огноо
+  teller: 1, // Теллер
+  income: 2, // Орлого
+  expense: 3, // Зарлага
+  rate: 4, // Ханш (валют→MNT; MNT-д 1)
+  counterparty: 5, // Харьцсан данс + нэр
+  balance: 6, // Үлдэгдэл
+  description: 7, // Гүйлгээний утга
+  data_start_row: 1,
+} as const;
 
 // ── Golomt XLSX файлын баганын индекс ────────────────────────────────────
 export const GOLOMT_COL = {
