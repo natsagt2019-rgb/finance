@@ -312,5 +312,11 @@ export function parseFile(
   if (accountId === "MB") {
     return parseMbank(rows, cutoff);
   }
+  if (accountId === "TTU" || accountId === "TTE") {
+    throw new Error(
+      "ТДБ гадаад валютын хуулга нь компакт форматтай (мөр 0-д толгой) байх ёстой. " +
+        "Энэ файл өөр (wide) форматтай тул дэмжигдээгүй байна.",
+    );
+  }
   throw new Error(`Танихгүй account_id: ${accountId}`);
 }

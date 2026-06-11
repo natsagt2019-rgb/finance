@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     income_code     TEXT,                   -- '1.1.1' гэх мэт
     expense_code    TEXT,                   -- '1.2.1' гэх мэт
 
+    -- Валют (MNT-ээс бусад нь тайлангуудаас тусгаарлагдана)
+    currency        TEXT DEFAULT 'MNT',     -- 'MNT' | 'USD' | 'EUR' …
+
     -- Харилцагч Master Data
     master_code     TEXT,                   -- 'C10164-01' гэх мэт
     master_name     TEXT,                   -- 'Юрика' гэх мэт
@@ -108,6 +111,7 @@ SELECT
     SUM(COALESCE(income, 0)) - SUM(COALESCE(expense, 0)) AS net_cashflow,
     COUNT(*)     AS txn_count
 FROM transactions
+WHERE currency = 'MNT'          -- гадаад валютыг MNT тайлангаас тусгаарлана
 GROUP BY year, month, account_id
 ORDER BY year, month, account_id;
 
@@ -123,6 +127,7 @@ SELECT
     SUM(COALESCE(income, expense, 0)) AS total
 FROM transactions
 WHERE COALESCE(income_code, expense_code) IS NOT NULL
+  AND currency = 'MNT'          -- гадаад валютыг MNT тайлангаас тусгаарлана
 GROUP BY year, month, account_id, category_code, direction
 ORDER BY year, month, account_id, category_code;
 

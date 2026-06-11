@@ -20,6 +20,7 @@ export type PreviewRow = {
   counterparty: string;
   account_no: string;
   exchange_rate: number;
+  currency: string;
   income: number | null;
   expense: number | null;
   income_code: string | null;
@@ -57,6 +58,7 @@ function toPreviewRow(t: NormalizedTxn): PreviewRow {
     counterparty: t.counterparty,
     account_no: t.account_no,
     exchange_rate: t.exchange_rate,
+    currency: t.currency ?? "MNT",
     income: t.income,
     expense: t.expense,
     income_code: t.income_code ?? null,
@@ -224,6 +226,7 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
     counterparty: r.counterparty,
     account_no: r.account_no,
     exchange_rate: r.exchange_rate,
+    currency: r.currency,
     income: r.income,
     expense: r.expense,
     income_code: r.income_code,
