@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { mirrorToLedger } from "@/lib/post-journal";
 import type { LineInput } from "./types";
 
 export type ActionResult =
@@ -119,6 +120,22 @@ export async function createJournal(input: {
     return { ok: false, error: `Мөр хадгалахад алдаа: ${e2.message}` };
   }
 
+  // Posted журналыг тайлангийн эх сурвалж (journal_entries) руу тусгана.
+  if (input.status === "posted") {
+    const mir = await mirrorToLedger(supabase, {
+      date: input.date,
+      description: input.description.trim() || null,
+      source: "manual",
+      journalId,
+      lines,
+    });
+    if (!mir.ok) {
+      await supabase.from("journal_lines").delete().eq("journal_id", journalId);
+      await supabase.from("journals").delete().eq("id", journalId);
+      return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
+    }
+  }
+
   revalidatePath("/journals");
   return { ok: true, id: journalId, number: jrn.number as string };
 }
@@ -126,6 +143,8 @@ export async function createJournal(input: {
 // ── Журнал устгах (мөрүүд cascade-аар устана) ───────────────────────────────
 export async function deleteJournal(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
+  // Эхлээд ерөнхий дэвтрийн тусгалыг устгана (FK байхгүй тул гараар).
+  await supabase.from("journal_entries").delete().eq("journal_id", id);
   const { data, error } = await supabase
     .from("journals")
     .delete()

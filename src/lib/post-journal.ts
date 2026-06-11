@@ -4,6 +4,11 @@
 // journals + journal_lines-д давхар бичилт оруулна. Σдебет = Σкредит шалгана.
 // Модулиуд (inventory, salary settlement, ...) энэ функцийг дуудна — журнал
 // бичих логикийн нэг эх сурвалж. journals/actions.ts-ийн гар форм тусдаа.
+//
+// ТАЙЛАНГИЙН УЯЛДАА: postJournal нь posted журнал бүрийг тайлангийн эх сурвалж
+// journal_entries рүү ТУСГАНА (mirrorToLedger). Ингэснээр модулиар оруулсан
+// гүйлгээ /reports/* тайлангуудад шууд тусна. journals/journal_lines нь
+// журналын баримтын (voucher) дэлгэрэнгүй, journal_entries нь ерөнхий дэвтэр (GL).
 // ============================================================
 
 import type { createClient } from "@/lib/supabase/server";
@@ -13,6 +18,90 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 
 function r2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+// Тусгах мөрийн хөнгөн хэлбэр (description заавал биш).
+type LedgerLine = { account_id: number | null; debit: number; credit: number };
+
+// ── Posted журналыг journal_entries (GL, тайлангийн эх сурвалж) рүү тусгах ──
+// Олон мөрт балансжсан журналыг accounts.code-оор Дт/Кт хос болгон задална
+// (two-pointer). Данс бүрийн цэвэр нөлөө яг хадгалагдана. status='draft' бол
+// дуудахгүй (ноорог тайланд тусахгүй).
+export async function mirrorToLedger(
+  supabase: Supa,
+  opts: {
+    date: string;
+    description: string | null;
+    partner_name?: string | null;
+    source: string;
+    journalId: number;
+    lines: LedgerLine[];
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ids = [
+    ...new Set(
+      opts.lines
+        .map((l) => l.account_id)
+        .filter((x): x is number => x != null),
+    ),
+  ];
+  if (ids.length === 0) return { ok: false, error: "Тусгах данс алга." };
+
+  // account_id → accounts.code.
+  const { data: accs, error: ae } = await supabase
+    .from("accounts")
+    .select("id, code")
+    .in("id", ids);
+  if (ae) return { ok: false, error: ae.message };
+  const codeOf = new Map<number, string>();
+  for (const a of (accs as { id: number; code: string }[] | null) ?? [])
+    codeOf.set(a.id, a.code);
+  for (const id of ids)
+    if (!codeOf.has(id))
+      return { ok: false, error: `Дансны код олдсонгүй (id=${id}).` };
+
+  // Дт ба Кт талуудыг тусад нь цуглуулаад two-pointer-аар хос болгоно.
+  const debits = opts.lines
+    .filter((l) => l.account_id != null && r2(l.debit) > 0)
+    .map((l) => ({ code: codeOf.get(l.account_id as number)!, amt: r2(l.debit) }));
+  const credits = opts.lines
+    .filter((l) => l.account_id != null && r2(l.credit) > 0)
+    .map((l) => ({ code: codeOf.get(l.account_id as number)!, amt: r2(l.credit) }));
+
+  const rows: { debit_code: string; credit_code: string; amount: number }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < debits.length && j < credits.length) {
+    const amt = r2(Math.min(debits[i].amt, credits[j].amt));
+    if (amt > 0)
+      rows.push({
+        debit_code: debits[i].code,
+        credit_code: credits[j].code,
+        amount: amt,
+      });
+    debits[i].amt = r2(debits[i].amt - amt);
+    credits[j].amt = r2(credits[j].amt - amt);
+    if (debits[i].amt <= 0.005) i++;
+    if (credits[j].amt <= 0.005) j++;
+  }
+  if (rows.length === 0) return { ok: false, error: "Тусгах мөр алга." };
+
+  const { error: ie } = await supabase.from("journal_entries").insert(
+    rows.map((r) => ({
+      txn_date: opts.date,
+      description: opts.description,
+      partner_name: opts.partner_name ?? null,
+      amount: r.amount,
+      debit_code: r.debit_code,
+      credit_code: r.credit_code,
+      cf_code: null,
+      is_opening: false,
+      source: opts.source,
+      journal_id: opts.journalId,
+    })),
+  );
+  if (ie) return { ok: false, error: ie.message };
+  return { ok: true };
 }
 
 export type PostJournalResult =
@@ -86,6 +175,22 @@ export async function postJournal(
   if (e2) {
     await supabase.from("journals").delete().eq("id", journalId);
     return { ok: false, error: `Журналын мөр: ${e2.message}` };
+  }
+
+  // Posted журналыг тайлангийн эх сурвалж руу тусгана (draft бол тусгахгүй).
+  if ((input.status ?? "posted") === "posted") {
+    const mir = await mirrorToLedger(supabase, {
+      date: input.date,
+      description: input.description || null,
+      source: input.source,
+      journalId,
+      lines,
+    });
+    if (!mir.ok) {
+      await supabase.from("journal_lines").delete().eq("journal_id", journalId);
+      await supabase.from("journals").delete().eq("id", journalId);
+      return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
+    }
   }
   return { ok: true, id: journalId, number: jrn.number as string };
 }

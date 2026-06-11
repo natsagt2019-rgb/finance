@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { mirrorToLedger } from "@/lib/post-journal";
 import {
   buildFxJournalLines,
   computeFxLine,
@@ -229,6 +230,28 @@ export async function createRevaluation(input: {
     await supabase.from("fx_revaluations").delete().eq("id", revId);
     await supabase.from("journals").delete().eq("id", journalId);
     return { ok: false, error: `Тэгшитгэлийн мөр хадгалахад алдаа: ${e4.message}` };
+  }
+
+  // Posted тэгшитгэлийг тайлангийн эх сурвалж руу тусгана.
+  if (input.status === "posted") {
+    const mir = await mirrorToLedger(supabase, {
+      date: input.date,
+      description:
+        input.description.trim() || `Ханшийн тэгшитгэл — ${input.date}`,
+      source: "fx",
+      journalId,
+      lines: jLines.map((l) => ({
+        account_id: l.account_id,
+        debit: l.debit,
+        credit: l.credit,
+      })),
+    });
+    if (!mir.ok) {
+      await supabase.from("fx_revaluation_lines").delete().eq("reval_id", revId);
+      await supabase.from("fx_revaluations").delete().eq("id", revId);
+      await supabase.from("journals").delete().eq("id", journalId);
+      return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
+    }
   }
 
   revalidatePath("/reports/fx-revaluation");

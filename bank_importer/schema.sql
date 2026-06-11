@@ -354,6 +354,8 @@ CREATE TABLE IF NOT EXISTS journal_entries (
     credit_code  TEXT,                          -- accounts.code (Кт)
     cf_code      TEXT,                          -- мөнгөн гүйлгээний код
     is_opening   BOOLEAN DEFAULT FALSE,         -- эхний үлдэгдлийн бичилт эсэх
+    source       TEXT,                          -- модулийн эх сурвалж (manual/cash/inventory/salary/asset/vat/fx)
+    journal_id   BIGINT,                        -- journals(id) тусгал — устгахад холбоно
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -361,6 +363,10 @@ CREATE INDEX IF NOT EXISTS idx_journal_date   ON journal_entries (txn_date);
 CREATE INDEX IF NOT EXISTS idx_journal_debit  ON journal_entries (debit_code);
 CREATE INDEX IF NOT EXISTS idx_journal_credit ON journal_entries (credit_code);
 CREATE INDEX IF NOT EXISTS idx_journal_cf     ON journal_entries (cf_code);
+CREATE INDEX IF NOT EXISTS idx_journal_src    ON journal_entries (journal_id);
+-- Хуучин хүснэгтэд багана нэмэх (idempotent):
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS source     TEXT;
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS journal_id BIGINT;
 
 
 -- ── 17. Журналаас дансны үлдэгдэл (динамик) view ────────────────────────
