@@ -95,20 +95,31 @@ function cell(row: Row, idx: number): unknown {
 
 // ── Parser функцүүд ───────────────────────────────────────────────────────
 
-// TDB XLS файл унших (TT болон TR хоёуланд). cutoff-аас хойших гүйлгээг л авна.
+// ТДБ дансны дугаар (description цэвэрлэхэд).
+const TDB_ACCOUNT_NO: Record<string, string> = {
+  TT: TDB_TT_ACCOUNT,
+  TR: TDB_TR_ACCOUNT,
+  TTU: "411099342",
+  TTE: "411099343",
+};
+
+// ТДБ "wide" XLS формат унших (TT/TR/TTU/TTE). Гадаад валютад ханш col16-аас.
+// cutoff-аас хойших гүйлгээг л авна.
 export function parseTdb(
   rows: Row[],
-  accountId: "TT" | "TR",
+  accountId: AccountId,
   cutoff: Date,
 ): NormalizedTxn[] {
-  const accountNo = accountId === "TT" ? TDB_TT_ACCOUNT : TDB_TR_ACCOUNT;
+  const accountNo = TDB_ACCOUNT_NO[accountId] ?? "";
+  const currency = ACCOUNT_CURRENCY[accountId] ?? "MNT";
   const col = TDB_COL;
   const result: NormalizedTxn[] = [];
 
   for (let i = col.data_start_row; i < rows.length; i++) {
     const row = rows[i] ?? [];
-    const txnDate = toExcelDate(cell(row, col.date));
-    if (!txnDate) continue; // Зөвхөн огноотой (serial) мөрүүд
+    // Огноо: serial, Date эсвэл ISO string бүгдийг дэмжинэ.
+    const txnDate = toExcelDate(cell(row, col.date)) ?? toIsoDate(cell(row, col.date));
+    if (!txnDate) continue; // огноогүй мөр (хоосон/footer) таслагдана
 
     if (txnDate.getTime() <= cutoff.getTime()) continue;
 
@@ -122,15 +133,18 @@ export function parseTdb(
     const rawCtpy = String(cell(row, col.counterparty) ?? "").trim();
     const ctpy = extractCounterparty(rawDesc, rawCtpy);
     const desc = cleanDescription(rawDesc, accountNo);
+    // MNT-д ханш 1; гадаад валютад файлын ханш (col16).
+    const rate = currency === "MNT" ? 1 : toNum(cell(row, col.rate)) || 1;
 
     result.push({
       account_id: accountId,
       txn_date: txnDate,
-      bank: BANK_DISPLAY[accountId],
+      bank: BANK_DISPLAY[accountId] ?? "ТДБ",
       description: desc,
       counterparty: ctpy,
       account_no: "",
-      exchange_rate: 1.0,
+      exchange_rate: rate,
+      currency,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
     });
@@ -303,7 +317,8 @@ export function parseFile(
     return parseTdbCompact(rows, accountId, cutoff);
   }
 
-  if (accountId === "TT" || accountId === "TR") {
+  // ТДБ wide формат — бүх ТДБ данс (MNT ба гадаад валют).
+  if (accountId === "TT" || accountId === "TR" || accountId === "TTU" || accountId === "TTE") {
     return parseTdb(rows, accountId, cutoff);
   }
   if (accountId === "GM") {
@@ -311,12 +326,6 @@ export function parseFile(
   }
   if (accountId === "MB") {
     return parseMbank(rows, cutoff);
-  }
-  if (accountId === "TTU" || accountId === "TTE") {
-    throw new Error(
-      "ТДБ гадаад валютын хуулга нь компакт форматтай (мөр 0-д толгой) байх ёстой. " +
-        "Энэ файл өөр (wide) форматтай тул дэмжигдээгүй байна.",
-    );
   }
   throw new Error(`Танихгүй account_id: ${accountId}`);
 }

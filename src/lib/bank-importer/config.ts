@@ -57,9 +57,10 @@ export const GENERIC_COUNTERPARTIES = new Set([
 
 // ── TDB XLS файлын баганын индекс (0-indexed) ─────────────────────────────
 export const TDB_COL = {
-  date: 0, // Огноо (Excel serial number)
+  date: 0, // Огноо (Excel serial эсвэл Date)
   income: 7, // Орлого
   expense: 11, // Зарлага
+  rate: 16, // Ханш (валют→MNT; MNT-д 1)
   counterparty: 23, // Харилцагч
   description: 28, // Гүйлгээний утга
   balance: 26, // Үлдэгдэл

@@ -5,7 +5,11 @@ import {
   computeStatement,
   type FsBalanceMap,
 } from "@/lib/fs-report";
-import { fsBalancesFromJournal } from "@/lib/fs-from-journal";
+import {
+  fsBalancesFromJournal,
+  journalHasYear,
+  reportYears,
+} from "@/lib/fs-from-journal";
 
 type SearchParams = { year?: string; period?: string; from?: string; to?: string };
 
@@ -27,16 +31,7 @@ export default async function IncomeStatementPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const { data: yearRows } = await supabase
-    .from("trial_balances")
-    .select("year");
-  const years = [
-    ...new Set(
-      ((yearRows as { year: number }[] | null) ?? [])
-        .map((r) => r.year)
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => b - a);
+  const years = await reportYears(supabase);
   if (years.length === 0) years.push(new Date().getFullYear());
   const selYear =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
@@ -47,12 +42,26 @@ export default async function IncomeStatementPage({
   const to = sp.to && ISO.test(sp.to) ? sp.to : "";
   const rangeMode = !!(from && to);
 
+  // Жил сонгоход журналд гүйлгээ байвал журналаас, үгүй бол snapshot.
+  const yearFromJournal = !rangeMode && (await journalHasYear(supabase, selYear));
+  const journalMode = rangeMode || yearFromJournal;
+
   let balances: FsBalanceMap = new Map();
   let error: { message: string } | null = null;
 
   if (rangeMode) {
     const { is } = await fsBalancesFromJournal(supabase, from, to);
     balances = is;
+  } else if (yearFromJournal) {
+    // Тайлант он = эргэлт (closing); өмнөх он = харьцуулах багана (opening).
+    const cur = await fsBalancesFromJournal(supabase, `${selYear}-01-01`, `${selYear}-12-31`);
+    const prev = await fsBalancesFromJournal(supabase, `${selYear - 1}-01-01`, `${selYear - 1}-12-31`);
+    for (const [fs, v] of cur.is) balances.set(fs, { opening: 0, closing: v.closing });
+    for (const [fs, v] of prev.is) {
+      const b = balances.get(fs) ?? { opening: 0, closing: 0 };
+      b.opening = v.closing;
+      balances.set(fs, b);
+    }
   } else {
     const { data: fsRows, error: e } = await supabase
       .from("fs_line_balances")
@@ -70,7 +79,11 @@ export default async function IncomeStatementPage({
     }
   }
 
-  const label = rangeMode ? `${from} → ${to}` : `${selYear} он`;
+  const label = rangeMode
+    ? `${from} → ${to}`
+    : yearFromJournal
+      ? `${selYear} он (журналаас)`
+      : `${selYear} он`;
   const rows = computeStatement(INCOME_STATEMENT, balances);
   const hasData = balances.size > 0;
 
@@ -83,7 +96,7 @@ export default async function IncomeStatementPage({
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             E-balance (СС №361) загвар — {label}.{" "}
-            {rangeMode ? "Журналаас динамик." : "Эх өгөгдөл: гүйлгээ баланс."}
+            {journalMode ? "Журналаас динамик." : "Эх өгөгдөл: гүйлгээ баланс."}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

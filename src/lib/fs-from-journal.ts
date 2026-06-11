@@ -10,6 +10,46 @@ import type { FsBalanceMap } from "@/lib/fs-report";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
+// Тухайн жилд ерөнхий журналд БОДИТ гүйлгээ (эхний үлдэгдэл биш) байгаа эсэх.
+// Байвал тайланг журналаас гаргана (нэг эх сурвалжийн зарчим). Үгүй бол
+// trial_balances snapshot руу буцна (Excel-ээр импортолсон хуучин он).
+export async function journalHasYear(
+  supabase: SupabaseClient,
+  year: number,
+): Promise<boolean> {
+  const { count } = await supabase
+    .from("journal_entries")
+    .select("id", { count: "exact", head: true })
+    .gte("txn_date", `${year}-01-01`)
+    .lte("txn_date", `${year}-12-31`)
+    .eq("is_opening", false);
+  return (count ?? 0) > 0;
+}
+
+// Тайланд сонгох боломжит онууд: trial_balances (snapshot) + журналын
+// бодит гүйлгээтэй онуудын нэгдэл. Эхний-үлдэгдэл-зөвхөн он (2024) орохгүй.
+export async function reportYears(
+  supabase: SupabaseClient,
+): Promise<number[]> {
+  const [{ data: tb }, { data: jb }] = await Promise.all([
+    supabase.from("trial_balances").select("year"),
+    supabase.from("journal_account_balances").select("year"),
+  ]);
+  const cand = new Set<number>(
+    ((tb as { year: number }[] | null) ?? []).map((r) => r.year).filter(Boolean),
+  );
+  const jbYears = [
+    ...new Set(
+      ((jb as { year: number }[] | null) ?? []).map((r) => r.year).filter(Boolean),
+    ),
+  ];
+  for (const y of jbYears) {
+    if (cand.has(y)) continue;
+    if (await journalHasYear(supabase, y)) cand.add(y);
+  }
+  return [...cand].sort((a, b) => b - a);
+}
+
 export async function fsBalancesFromJournal(
   supabase: SupabaseClient,
   from: string,

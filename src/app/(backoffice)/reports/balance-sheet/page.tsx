@@ -5,7 +5,11 @@ import {
   computeStatement,
   type FsBalanceMap,
 } from "@/lib/fs-report";
-import { fsBalancesFromJournal } from "@/lib/fs-from-journal";
+import {
+  fsBalancesFromJournal,
+  journalHasYear,
+  reportYears,
+} from "@/lib/fs-from-journal";
 
 type SearchParams = { year?: string; period?: string; from?: string; to?: string };
 
@@ -27,17 +31,8 @@ export default async function BalanceSheetPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  // Боломжит онууд (trial_balances-аас).
-  const { data: yearRows } = await supabase
-    .from("trial_balances")
-    .select("year");
-  const years = [
-    ...new Set(
-      ((yearRows as { year: number }[] | null) ?? [])
-        .map((r) => r.year)
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => b - a);
+  // Боломжит онууд: snapshot + журналын бодит гүйлгээтэй онууд.
+  const years = await reportYears(supabase);
   if (years.length === 0) years.push(new Date().getFullYear());
   const selYear =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
@@ -48,11 +43,18 @@ export default async function BalanceSheetPage({
   const to = sp.to && ISO.test(sp.to) ? sp.to : "";
   const rangeMode = !!(from && to);
 
+  // Жил сонгоход журналд гүйлгээ байвал журналаас (нэг эх сурвалж), үгүй бол
+  // fs_line_balances snapshot-оос.
+  const yearFromJournal = !rangeMode && (await journalHasYear(supabase, selYear));
+  const journalMode = rangeMode || yearFromJournal;
+
   let balances: FsBalanceMap = new Map();
   let error: { message: string } | null = null;
 
-  if (rangeMode) {
-    const { bs } = await fsBalancesFromJournal(supabase, from, to);
+  if (journalMode) {
+    const dFrom = rangeMode ? from : `${selYear}-01-01`;
+    const dTo = rangeMode ? to : `${selYear}-12-31`;
+    const { bs } = await fsBalancesFromJournal(supabase, dFrom, dTo);
     balances = bs;
   } else {
     const { data: fsRows, error: e } = await supabase
@@ -71,7 +73,11 @@ export default async function BalanceSheetPage({
     }
   }
 
-  const label = rangeMode ? `${from} → ${to}` : `${selYear} он`;
+  const label = rangeMode
+    ? `${from} → ${to}`
+    : yearFromJournal
+      ? `${selYear} он (журналаас)`
+      : `${selYear} он`;
   const rows = computeStatement(BALANCE_SHEET, balances);
 
   // Тэнцлийн шалгалт: Актив (1.3) ↔ Өр+Өмч (2.4).
@@ -90,7 +96,7 @@ export default async function BalanceSheetPage({
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             E-balance (СС №361) загвар — {label}.{" "}
-            {rangeMode ? "Журналаас (огнооны эцэст)." : "Эх өгөгдөл: гүйлгээ баланс."}
+            {journalMode ? "Журналаас (огнооны эцэст)." : "Эх өгөгдөл: гүйлгээ баланс."}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

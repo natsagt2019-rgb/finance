@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { journalHasYear, reportYears } from "@/lib/fs-from-journal";
 import { TrialBalanceImportClient } from "./import-client";
 import { TrialBalanceView } from "./trial-balance-view";
 import { PnlSummaryBox, type PnlSummary } from "./pnl-summary";
@@ -18,15 +19,8 @@ export default async function TrialBalancePage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  // Аль хэдийн орсон онуудыг харуулна.
-  const { data: yearRows } = await supabase.from("trial_balances").select("year");
-  const years = [
-    ...new Set(
-      ((yearRows as { year: number }[] | null) ?? [])
-        .map((r) => r.year)
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => b - a);
+  // Сонгох боломжит онууд: snapshot + журналын бодит гүйлгээтэй онууд.
+  const years = await reportYears(supabase);
 
   const defaultYear = years[0] ?? new Date().getFullYear();
   const viewYear =
@@ -37,13 +31,21 @@ export default async function TrialBalancePage({
   const to = sp.to && ISO.test(sp.to) ? sp.to : "";
   const rangeMode = !!(from && to);
 
+  // Жил сонгоход тухайн онд журналд гүйлгээ байвал журналаас (нэг эх сурвалж),
+  // үгүй бол trial_balances snapshot-оос (Excel-ээр оруулсан хуучин он).
+  const yearFromJournal =
+    !rangeMode && years.length > 0 && (await journalHasYear(supabase, viewYear));
+  const journalMode = rangeMode || yearFromJournal;
+
   let accounts: TbAccount[] = [];
   let label = "";
 
-  if (rangeMode) {
+  if (journalMode) {
+    const dFrom = rangeMode ? from : `${viewYear}-01-01`;
+    const dTo = rangeMode ? to : `${viewYear}-12-31`;
     const { data: tbr } = await supabase.rpc("trial_balance_range", {
-      d_from: from,
-      d_to: to,
+      d_from: dFrom,
+      d_to: dTo,
     });
     accounts = (
       (tbr as
@@ -55,7 +57,7 @@ export default async function TrialBalancePage({
       opening: Number(r.opening) || 0,
       closing: Number(r.closing) || 0,
     }));
-    label = `${from} → ${to}`;
+    label = rangeMode ? `${from} → ${to}` : `${viewYear} он (журналаас)`;
   } else if (years.length > 0) {
     const { data: tb } = await supabase
       .from("trial_balances")
