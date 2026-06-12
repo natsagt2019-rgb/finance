@@ -420,3 +420,74 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   WHERE a.opening <> 0 OR a.period <> 0
   ORDER BY a.code;
 $$;
+
+
+-- ── 19. Харицсан менежер (cost center) ──────────────────────────────────
+-- Гүйлгээний утгын эхэн K1–K10 = хариуцсан хүн. Нэхэмжлэх.responsible-тэй
+-- нэрээр, банкны зарлага K-кодоор холбогдоно.
+CREATE TABLE IF NOT EXISTS managers (
+    code       TEXT PRIMARY KEY,       -- 'K1' … 'K10'
+    name       TEXT NOT NULL,
+    is_active  BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO managers (code, name) VALUES
+    ('K1','Отгонбаатар'),('K2','Нямдорж'),('K3','Баяраа'),('K4','Чингүүн'),('K5','Алтансүх'),
+    ('K6','Эрдэнэтуяа'),('K7','Уранзаяа'),('K8','Одонтунгалаг'),('K9','Амар'),('K10','Тэргэл')
+ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
+
+-- ── 20. Менежерийн тайлан (борлуулалт/цуглуулалт/авлага/өртөг/ашиг) ──────
+-- Орлого/авлага нэхэмжлэхээс (responsible), өртөг банкнаас (K-код). supabase.rpc.
+CREATE OR REPLACE FUNCTION manager_report(d_from DATE, d_to DATE)
+RETURNS TABLE(code TEXT, name TEXT, sales NUMERIC, collected NUMERIC,
+             receivable NUMERIC, cost NUMERIC, profit NUMERIC, inv_count INT, txn_count INT)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  WITH rev AS (
+    SELECT m.code,
+      SUM(i.amount) AS sales,
+      SUM(COALESCE(i.paid_amount,0)) AS collected,
+      SUM(i.amount - COALESCE(i.paid_amount,0)) AS receivable,
+      COUNT(*)::int AS n
+    FROM invoices i JOIN managers m ON m.name = i.responsible
+    WHERE i.is_active AND i.inv_date >= d_from AND i.inv_date <= d_to
+    GROUP BY m.code
+  ),
+  cost AS (
+    SELECT 'K' || (regexp_match(upper(t.description), '^K(10|[1-9])'))[1] AS code,
+           SUM(COALESCE(t.expense,0)) AS amt, COUNT(*)::int AS n
+    FROM transactions t
+    WHERE (t.txn_date AT TIME ZONE INTERVAL '+08:00')::date BETWEEN d_from AND d_to
+      AND (regexp_match(upper(t.description), '^K(10|[1-9])')) IS NOT NULL
+    GROUP BY 1
+  )
+  SELECT m.code, m.name,
+    COALESCE(rev.sales,0)::numeric, COALESCE(rev.collected,0)::numeric,
+    COALESCE(rev.receivable,0)::numeric, COALESCE(cost.amt,0)::numeric,
+    (COALESCE(rev.sales,0) - COALESCE(cost.amt,0))::numeric,
+    COALESCE(rev.n,0), COALESCE(cost.n,0)
+  FROM managers m
+  LEFT JOIN rev  ON rev.code  = m.code
+  LEFT JOIN cost ON cost.code = m.code
+  WHERE m.is_active
+  ORDER BY (COALESCE(rev.sales,0) - COALESCE(cost.amt,0)) DESC;
+$$;
+
+
+-- ── 21. Өглөг (дэд гүйцэтгэгчийн тээврийн өртөг) ────────────────────────
+-- Excel "Өглөг" хуудаснаас. Тээврийн ББӨ-ийн эх сурвалж (Дт 711701/Кт 310101).
+-- Шилжүүлэгч = өөрийн компани (Түмэн Тээх / Түмэн Ресурс).
+CREATE TABLE IF NOT EXISTS payables (
+    id             BIGSERIAL PRIMARY KEY,
+    pay_date       DATE,
+    company        TEXT,        -- Шилжүүлэгч (өөрийн компани)
+    manager        TEXT,        -- Кам
+    transport_type TEXT,        -- Тээврийн төрөл
+    subcontractor  TEXT,        -- Нэхэмжлэгч (дэд гүйцэтгэгч)
+    description    TEXT,
+    has_vat        BOOLEAN,
+    amount         NUMERIC(18, 2),
+    status         TEXT,
+    is_active      BOOLEAN DEFAULT TRUE,
+    created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_payables_date ON payables (pay_date);

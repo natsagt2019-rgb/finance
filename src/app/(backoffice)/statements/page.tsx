@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { StatementsTable, type AccountOpt } from "./statements-table";
 
 type SearchParams = {
   account?: string;
@@ -19,6 +20,8 @@ type Txn = {
   expense: number | null;
   income_code: string | null;
   expense_code: string | null;
+  debit_code: string | null;
+  credit_code: string | null;
 };
 
 const ACCOUNTS = ["TT", "TR", "GM", "MB"];
@@ -45,7 +48,7 @@ export default async function StatementsPage({
   let rowsQuery = supabase
     .from("transactions")
     .select(
-      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,income_code,expense_code",
+      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,income_code,expense_code,debit_code,credit_code",
     );
   if (sp.account) rowsQuery = rowsQuery.eq("account_id", sp.account);
   if (sp.year) rowsQuery = rowsQuery.eq("year", Number(sp.year));
@@ -78,6 +81,15 @@ export default async function StatementsPage({
   const net = totalIncome - totalExpense;
 
   const txns = (rows as Txn[] | null) ?? [];
+
+  // Дансны сонголтын жагсаалт (Дт/Кт засахад).
+  const { data: accRows } = await supabase
+    .from("accounts")
+    .select("code,name")
+    .eq("is_active", true)
+    .order("code")
+    .limit(5000);
+  const accounts = (accRows as AccountOpt[] | null) ?? [];
 
   // ── Эхний / эцсийн үлдэгдэл ──────────────────────────────────────────
   // Он сонгосон үед account_balances-аас (данс шүүлтэд тохируулан) авна.
@@ -272,52 +284,15 @@ export default async function StatementsPage({
             Гүйлгээ алга. Дансны хуулга цэгцлэгчээс хуулга оруулна уу.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
-                <tr>
-                  <th className="px-3 py-2">Огноо</th>
-                  <th className="px-3 py-2">Банк</th>
-                  <th className="px-3 py-2">Гүйлгээний утга</th>
-                  <th className="px-3 py-2">Харилцагч</th>
-                  <th className="px-3 py-2 text-right">Орлого</th>
-                  <th className="px-3 py-2 text-right">Зарлага</th>
-                  <th className="px-3 py-2">Ангилал</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {txns.map((t) => (
-                  <tr key={t.id}>
-                    <td className="whitespace-nowrap px-3 py-2 text-zinc-600">
-                      {t.txn_date.slice(0, 10)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
-                      {t.bank}
-                    </td>
-                    <td className="max-w-xs px-3 py-2 text-zinc-700">
-                      <span title={t.description ?? ""}>{t.description}</span>
-                    </td>
-                    <td className="px-3 py-2 text-zinc-700">{t.counterparty}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-green-700">
-                      {fmtMoney(t.income)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-red-700">
-                      {fmtMoney(t.expense)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
-                      {t.income_code ?? t.expense_code ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <>
+            <StatementsTable rows={txns} accounts={accounts} />
             {txns.length === ROW_LIMIT && (
               <div className="border-t border-zinc-100 px-6 py-3 text-xs text-zinc-400">
                 Зөвхөн сүүлийн {ROW_LIMIT} мөр харагдаж байна. Нэгтгэл нь бүх
                 шүүсэн мөрийг тооцсон.
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>
