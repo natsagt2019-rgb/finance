@@ -70,6 +70,27 @@ export async function toggleVatType(
   return { ok: true, type: next };
 }
 
+// ── Олон баримтын төрлийг нэг дор тогтоох (харилцагчаар бөөнөөр засах) ───────
+export async function bulkSetVatType(
+  ids: number[],
+  type: VatType,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const supabase = await requireAuth();
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: true, count: 0 };
+  if (type !== "out" && type !== "in")
+    return { ok: false, error: "Төрөл буруу." };
+
+  const { data, error } = await supabase
+    .from("vat_records")
+    .update({ type })
+    .in("id", ids)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/vat");
+  return { ok: true, count: data?.length ?? 0 };
+}
+
 // Өгөгдсөн ДДТД-уудаас DB-д аль хэдийн орсон болохыг олно.
 async function existingDdtds(
   supabase: SupabaseClient,

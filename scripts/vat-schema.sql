@@ -57,9 +57,24 @@ CREATE INDEX IF NOT EXISTS vat_records_date_idx        ON vat_records (date DESC
 CREATE INDEX IF NOT EXISTS vat_records_partner_id_idx  ON vat_records (partner_id);
 CREATE INDEX IF NOT EXISTS vat_records_register_idx    ON vat_records (partner_register);
 
--- ── Сар × төрлийн нэгтгэл view ───────────────────────────────────────────────
--- PostgREST-ийн max-rows (1000) хязгаараас зайлсхийхийн тулд нэгтгэлийг
--- server талд GROUP BY хийнэ (≤24 мөр буцаана). /vat хуудас үүнийг ашиглана.
+-- ── Хүчин төгөлдөр баримтын view (давхар тооллогоос сэргийлнэ) ───────────────
+-- eBarimt-д нэг гүйлгээ 2 мөр болж ирдэг: толгой нэхэмжлэх (parent_ddtd хоосон)
+-- + хаалтын баримт (parent_ddtd = толгойн ддтд). Хоёуланг тоолбол НӨАТ давхар.
+-- Хаалтын баримттай болсон ТОЛГОЙ нэхэмжлэлийг хасч, хүчин төгөлдөр баримтыг
+-- (болон хаалтгүй ганц баримтыг) үлдээнэ.
+CREATE OR REPLACE VIEW vat_active AS
+SELECT v.*
+FROM vat_records v
+WHERE NOT EXISTS (
+    SELECT 1 FROM vat_records c
+    WHERE c.parent_ddtd IS NOT NULL
+      AND c.parent_ddtd <> ''
+      AND c.parent_ddtd = v.ddtd
+);
+
+-- ── Сар × төрлийн нэгтгэл view (vat_active дээр) ─────────────────────────────
+-- PostgREST-ийн max-rows (1000) хязгаараас зайлсхийхийн тулд server талд
+-- GROUP BY хийнэ (≤24 мөр). /vat хуудас үүнийг ашиглана.
 CREATE OR REPLACE VIEW vat_monthly_summary AS
 SELECT
     month,
@@ -67,5 +82,5 @@ SELECT
     COUNT(*)::int      AS cnt,
     SUM(vat_amount)    AS vat_sum,
     SUM(total_amount)  AS total_sum
-FROM vat_records
+FROM vat_active
 GROUP BY month, type;

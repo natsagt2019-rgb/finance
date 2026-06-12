@@ -98,9 +98,17 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-// Файлын нэрнээс төрөл: "худалдан авалт" → in, бусад → out.
+// Файлын нэрнээс төрөл тодорхойлно:
+//   "худалдан авалт"          → in  (манай худалдан авалт)
+//   "борлуулалт"              → out (манай борлуулалт)
+//   "нэхэмжлэх" (борлуулалтгүй) → in  (манайд ИРСЭН нэхэмжлэл = худалдан авалт)
+//   бусад                      → out
 export function vatTypeFromFilename(name: string): VatType {
-  return name.toLowerCase().includes("худалдан авалт") ? "in" : "out";
+  const n = name.toLowerCase();
+  if (n.includes("худалдан авалт")) return "in";
+  if (n.includes("борлуулалт")) return "out";
+  if (n.includes("нэхэмжлэх")) return "in";
+  return "out";
 }
 
 function round2safe(n: number): number {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { VAT_SELECT, type VatRow, type VatType } from "./types";
 import { TypeToggle } from "./type-toggle";
+import { BulkTypeBar } from "./bulk-type-bar";
 
 const ROW_LIMIT = 300; // жагсаалтад харуулах дээд хэмжээ (нэгтгэл view-ээс бүрэн)
 
@@ -98,8 +99,8 @@ export default async function VatPage({
     .filter((r) => r.type === "in")
     .reduce((s, r) => s + Number(r.cnt ?? 0), 0);
 
-  // ── Баримтын жагсаалт (бүх шүүлт, жинхэнэ тоог count-аар) ─────────────────
-  let query = supabase.from("vat_records").select(VAT_SELECT, { count: "exact" });
+  // ── Баримтын жагсаалт (vat_active — хаалтаар орлуулагдсан толгойг хасна) ───
+  let query = supabase.from("vat_active").select(VAT_SELECT, { count: "exact" });
   if (selType) query = query.eq("type", selType);
   if (selMonth) query = query.eq("month", selMonth);
   if (search) {
@@ -153,33 +154,61 @@ export default async function VatPage({
 
       {/* Stat картууд */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white">
-          <h6 className="text-sm font-medium opacity-90">Борлуулалтын НӨАТ</h6>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{fmt(outVat)}₮</div>
-          <div className="mt-1 text-xs opacity-75">Нийт дүн: {fmt(outTotal)}₮</div>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-blue-600">
+            Борлуулалтын НӨАТ
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-blue-900">
+            {fmt(outVat)}₮
+          </p>
+          <p className="mt-1 text-xs text-blue-500">Нийт дүн: {fmt(outTotal)}₮</p>
         </div>
-        <div className="rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 p-5 text-white">
-          <h6 className="text-sm font-medium opacity-90">Худалдан авалтын НӨАТ</h6>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{fmt(inVat)}₮</div>
-          <div className="mt-1 text-xs opacity-75">Нийт дүн: {fmt(inTotal)}₮</div>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-600">
+            Худалдан авалтын НӨАТ
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-amber-900">
+            {fmt(inVat)}₮
+          </p>
+          <p className="mt-1 text-xs text-amber-600">Нийт дүн: {fmt(inTotal)}₮</p>
         </div>
         <div
-          className={`rounded-2xl p-5 text-white ${
+          className={`rounded-2xl border p-5 ${
             netVat >= 0
-              ? "bg-gradient-to-br from-rose-500 to-red-600"
-              : "bg-gradient-to-br from-emerald-500 to-green-600"
+              ? "border-rose-100 bg-rose-50"
+              : "border-emerald-100 bg-emerald-50"
           }`}
         >
-          <h6 className="text-sm font-medium opacity-90">Төлбөл зохих НӨАТ</h6>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{fmt(netVat)}₮</div>
-          <div className="mt-1 text-xs opacity-75">Борлуулалт − Суутгал</div>
+          <p
+            className={`text-xs font-medium uppercase tracking-wide ${
+              netVat >= 0 ? "text-rose-600" : "text-emerald-600"
+            }`}
+          >
+            Төлбөл зохих НӨАТ
+          </p>
+          <p
+            className={`mt-2 text-2xl font-bold tabular-nums ${
+              netVat >= 0 ? "text-rose-900" : "text-emerald-900"
+            }`}
+          >
+            {fmt(netVat)}₮
+          </p>
+          <p
+            className={`mt-1 text-xs ${
+              netVat >= 0 ? "text-rose-500" : "text-emerald-600"
+            }`}
+          >
+            Борлуулалт − Суутгал
+          </p>
         </div>
-        <div className="rounded-2xl bg-gradient-to-br from-purple-500 to-violet-600 p-5 text-white">
-          <h6 className="text-sm font-medium opacity-90">Нийт баримт</h6>
-          <div className="mt-2 text-2xl font-bold tabular-nums">
+        <div className="rounded-2xl border border-purple-100 bg-purple-50 p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-purple-600">
+            Нийт баримт
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-purple-900">
             {fmt(totalCount)}
-          </div>
-          <div className="mt-1 text-xs opacity-75">Хайлтын үр дүн</div>
+          </p>
+          <p className="mt-1 text-xs text-purple-500">Хайлтын үр дүн</p>
         </div>
       </div>
 
@@ -191,7 +220,7 @@ export default async function VatPage({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-800 text-left text-xs font-medium text-zinc-100">
+              <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
                 <tr>
                   <th className="px-4 py-2 text-center">Сар</th>
                   <th className="px-4 py-2 text-right">Борл. баримт</th>
@@ -323,6 +352,13 @@ export default async function VatPage({
         </Link>
       </form>
 
+      {/* Бөөн ангилал засах — зөвхөн хайлт идэвхтэй үед (санамсаргүй массын засваргүй) */}
+      {search && records.length > 0 ? (
+        <div className="mt-4">
+          <BulkTypeBar ids={records.map((r) => r.id)} />
+        </div>
+      ) : null}
+
       {/* Баримтын жагсаалт */}
       <div className="mt-4 rounded-2xl border border-zinc-200 bg-white">
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3">
@@ -350,7 +386,7 @@ export default async function VatPage({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-800 text-left text-xs font-medium text-zinc-100">
+              <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
                 <tr>
                   <th className="px-3 py-2">Огноо</th>
                   <th className="px-3 py-2 text-center">Сар</th>
