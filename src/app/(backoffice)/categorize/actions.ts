@@ -28,14 +28,27 @@ async function requireAuth() {
   return supabase;
 }
 
-// ── Ангилагдаагүй гүйлгээ татах (код хоосон) ──────────────────────────────
+// ── Шалгах шаардлагатай гүйлгээ татах ─────────────────────────────────────
+// Импорт нь гүйлгээ бүрт код онооно — дүрэм тодорхойгүй үед default код
+// (орлого 1.1.1, зарлага 1.2.1) хэрэглэдэг тул хоосон код бараг үүсэхгүй.
+// Тиймээс "шалгах шаардлагатай" = код хоосон ЭСВЭЛ default кодтой гүйлгээ.
+// Эдгээрийг AI-аар дахин нарийвчлан ангилна.
+const DEFAULT_INCOME_CODE = "1.1.1";
+const DEFAULT_EXPENSE_CODE = "1.2.1";
+
 export async function loadUncategorized(limit = 100): Promise<UncatTxn[]> {
   const supabase = await requireAuth();
+  const orFilter = [
+    `and(income.gt.0,income_code.is.null)`,
+    `and(income.gt.0,income_code.eq.${DEFAULT_INCOME_CODE})`,
+    `and(expense.gt.0,expense_code.is.null)`,
+    `and(expense.gt.0,expense_code.eq.${DEFAULT_EXPENSE_CODE})`,
+  ].join(",");
+
   const { data, error } = await supabase
     .from("transactions")
     .select("id, txn_date, description, counterparty, income, expense")
-    .is("income_code", null)
-    .is("expense_code", null)
+    .or(orFilter)
     .order("txn_date", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

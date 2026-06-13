@@ -97,8 +97,9 @@ export function CategorizeClient({ initial }: { initial: UncatTxn[] }) {
               AI гүйлгээ ангилал
             </h2>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Ангилагдаагүй {count} гүйлгээг Claude AI-аар ангиллын кодод
-              хуваарилна. Дараа нь шалгаж батална.
+              Шалгах шаардлагатай {count} гүйлгээг (ангилагдаагүй эсвэл дүрмээр
+              default кодод унасан) Claude AI-аар ангиллын кодод хуваарилна.
+              Дараа нь шалгаж батална.
             </p>
           </div>
           <button
