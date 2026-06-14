@@ -115,12 +115,20 @@ export default async function AssetsPage({
           </p>
         </div>
         {tab === "assets" && (
-          <Link
-            href="/assets/new"
-            className="no-print rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-          >
-            + Хөрөнгө нэмэх
-          </Link>
+          <div className="no-print flex items-center gap-2">
+            <Link
+              href="/assets/register"
+              className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              🖨 Дэлгэрэнгүй бүртгэл
+            </Link>
+            <Link
+              href="/assets/new"
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+            >
+              + Хөрөнгө нэмэх
+            </Link>
+          </div>
         )}
       </div>
 
