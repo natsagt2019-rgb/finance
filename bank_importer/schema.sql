@@ -553,3 +553,41 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   HAVING ABS(COALESCE(SUM(CASE WHEN debit_code='120101' THEN amount WHEN credit_code='120101' THEN -amount ELSE 0 END),0))>1
       OR ABS(COALESCE(SUM(CASE WHEN credit_code='310101' THEN amount WHEN debit_code='310101' THEN -amount ELSE 0 END),0))>1;
 $$;
+
+
+-- ── 24. НӨАТ-ын тооцоо харилцагчаар (output 310601 / input 120201) ──────
+CREATE OR REPLACE FUNCTION vat_by_partner(d_from DATE, d_to DATE)
+RETURNS TABLE(partner TEXT, output_vat NUMERIC, input_vat NUMERIC, txn_count INT)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT partner_name,
+    COALESCE(SUM(CASE WHEN credit_code='310601' THEN amount WHEN debit_code='310601' THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN debit_code='120201' THEN amount WHEN credit_code='120201' THEN -amount ELSE 0 END),0)::numeric,
+    COUNT(*)::int
+  FROM journal_entries
+  WHERE partner_name IS NOT NULL AND partner_name<>'' AND txn_date>=d_from AND txn_date<=d_to
+    AND (debit_code IN ('310601','120201') OR credit_code IN ('310601','120201'))
+  GROUP BY partner_name
+  HAVING ABS(COALESCE(SUM(CASE WHEN credit_code='310601' THEN amount WHEN debit_code='310601' THEN -amount ELSE 0 END),0))>1
+      OR ABS(COALESCE(SUM(CASE WHEN debit_code='120201' THEN amount WHEN credit_code='120201' THEN -amount ELSE 0 END),0))>1;
+$$;
+
+
+-- ── 25. Худалдан авалт (purchase → НӨАТ суутгал → өглөг) ────────────────
+-- createPurchase: Дт expense_code (цэвэр) + Дт 120201 НӨАТ / Кт 310101 өглөг.
+CREATE TABLE IF NOT EXISTS purchases (
+    id           BIGSERIAL PRIMARY KEY,
+    pur_date     DATE NOT NULL,
+    doc_no       TEXT,
+    partner_id   BIGINT,
+    partner_name TEXT,
+    description  TEXT,
+    expense_code TEXT,                       -- Дт данс (зардал/бараа/ҮХ)
+    net_amount   NUMERIC(18, 2) DEFAULT 0,   -- НӨАТ-гүй
+    vat_amount   NUMERIC(18, 2) DEFAULT 0,   -- input НӨАТ (120201)
+    total_amount NUMERIC(18, 2) DEFAULT 0,
+    status       TEXT DEFAULT 'posted',
+    company      TEXT,
+    is_active    BOOLEAN DEFAULT TRUE,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases (pur_date);
