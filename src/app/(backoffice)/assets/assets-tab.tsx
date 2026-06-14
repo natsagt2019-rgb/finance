@@ -63,6 +63,7 @@ export function AssetsTab({
                   <th className="px-4 py-2">Нэр / код</th>
                   <th className="px-4 py-2">Ангилал</th>
                   <th className="px-4 py-2">Компани</th>
+                  <th className="px-4 py-2">Эд хариуцагч</th>
                   <th className="px-4 py-2">Орсон огноо</th>
                   <th className="px-4 py-2 text-right">Анхны өртөг</th>
                   <th className="px-4 py-2 text-right">Ашиглах хугацаа</th>
@@ -91,6 +92,9 @@ export function AssetsTab({
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                         {a.company || "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
+                        {a.responsible || "—"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                         {a.acquired_date || "—"}
