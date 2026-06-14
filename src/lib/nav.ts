@@ -25,6 +25,7 @@ export const navItems: NavItem[] = [
   { href: "/partners", label: "Харилцагчид", icon: "👥" },
   { href: "/invoices", label: "Нэхэмжлэх", icon: "📑" },
   { href: "/receivables", label: "Авлагын насжилт", icon: "📥" },
+  { href: "/payables", label: "Өглөгийн насжилт", icon: "📤" },
   { href: "/reports/partner-balances", label: "Харилцагчийн тооцоо", icon: "🤝" },
   { href: "/reports/by-manager", label: "Менежерийн тайлан", icon: "🧑‍💼" },
   { href: "/salary", label: "Цалин", icon: "💰" },

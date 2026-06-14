@@ -60,6 +60,17 @@ export function isReceivableAccount(
   return true;
 }
 
+// Өглөгийн данс мөн эсэх (өр төлбөр + нэр/fs_line-д "өглөг").
+export function isPayableAccount(
+  name: string | null | undefined,
+  type: string | null | undefined,
+  fsLine?: string | null | undefined,
+): boolean {
+  if (type !== "liability") return false;
+  const hay = `${name ?? ""} ${fsLine ?? ""}`.toLowerCase();
+  return hay.includes("өглөг");
+}
+
 // Харилцагчийн нэрийг нэгтгэх түлхүүр (том үсэг, илүү зай арилгах).
 export function normalizePartner(name: string | null | undefined): string {
   return (name ?? "").trim().replace(/\s+/g, " ").toUpperCase();
