@@ -534,3 +534,22 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   GROUP BY l.code, l.m
   HAVING SUM(l.net)<>0;
 $$;
+
+
+-- ── 23. Харилцагчийн тооцооны товчоо (авлага/өглөг) ─────────────────────
+-- Харилцагч тус бүрийн авлага (120101) ба өглөг (310101) үлдэгдэл, as-of.
+-- /reports/partner-balances хэрэглэнэ.
+CREATE OR REPLACE FUNCTION partner_balances(d_to DATE)
+RETURNS TABLE(partner TEXT, receivable NUMERIC, payable NUMERIC, txn_count INT)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT partner_name,
+    COALESCE(SUM(CASE WHEN debit_code='120101' THEN amount WHEN credit_code='120101' THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN credit_code='310101' THEN amount WHEN debit_code='310101' THEN -amount ELSE 0 END),0)::numeric,
+    COUNT(*)::int
+  FROM journal_entries
+  WHERE partner_name IS NOT NULL AND partner_name<>'' AND txn_date<=d_to
+    AND (debit_code IN ('120101','310101') OR credit_code IN ('120101','310101'))
+  GROUP BY partner_name
+  HAVING ABS(COALESCE(SUM(CASE WHEN debit_code='120101' THEN amount WHEN credit_code='120101' THEN -amount ELSE 0 END),0))>1
+      OR ABS(COALESCE(SUM(CASE WHEN credit_code='310101' THEN amount WHEN debit_code='310101' THEN -amount ELSE 0 END),0))>1;
+$$;
