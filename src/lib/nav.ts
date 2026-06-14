@@ -1,8 +1,10 @@
 // Бакоффисын хажуугийн цэс. Шинэ модуль нэмэхдээ энд нэг мөр нэмнэ.
+// children байвал тухайн цэс дор догол мөрөөр (дэд цэс) харагдана.
 export type NavItem = {
   href: string;
   label: string;
   icon: string; // emoji эсвэл богино тэмдэг
+  children?: NavItem[];
 };
 
 export const navItems: NavItem[] = [
@@ -27,8 +29,12 @@ export const navItems: NavItem[] = [
   { href: "/cash/bank-transactions", label: "Харилцахын гүйлгээний тайлан", icon: "🧾" },
   { href: "/partners", label: "Харилцагчид", icon: "👥" },
   { href: "/purchases", label: "Худалдан авалт", icon: "🛒" },
-  { href: "/sales", label: "Борлуулалт", icon: "🏷" },
-  { href: "/invoices", label: "Нэхэмжлэх", icon: "📑" },
+  {
+    href: "/sales",
+    label: "Борлуулалт",
+    icon: "🏷",
+    children: [{ href: "/invoices", label: "Нэхэмжлэх", icon: "📑" }],
+  },
   { href: "/receivables", label: "Авлагын насжилт", icon: "📥" },
   { href: "/payables", label: "Өглөгийн насжилт", icon: "📤" },
   { href: "/reports/partner-balances", label: "Харилцагчийн тооцоо", icon: "🤝" },

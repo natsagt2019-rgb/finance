@@ -4,41 +4,61 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { navItems } from "@/lib/nav";
+import { navItems, type NavItem } from "@/lib/nav";
 import { LogoutButton } from "@/components/logout-button";
+
+// Бүх замыг (дэд цэс оруулаад) хавтгайруулна — идэвхтэй цэсийг
+// "хамгийн урт тохирол" дүрмээр тодорхойлоход ашиглана.
+const allHrefs: string[] = navItems.flatMap((i) => [
+  i.href,
+  ...(i.children?.map((c) => c.href) ?? []),
+]);
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+
+  const isActive = (href: string) => {
+    const matches = pathname === href || pathname.startsWith(href + "/");
+    if (!matches) return false;
+    // Илүү тодорхой (урт) тохирол байвал эх замыг идэвхгүй болгоно
+    // (жишээ нь /cash/bank-summary дээр /cash-ийг тодруулахгүй).
+    return !allHrefs.some(
+      (o) =>
+        o.length > href.length &&
+        (pathname === o || pathname.startsWith(o + "/")),
+    );
+  };
+
+  const renderLink = (item: NavItem, child = false) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      onClick={onNavigate}
+      className={`flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        child ? "ml-4 border-l border-zinc-200 pl-4" : ""
+      } ${
+        isActive(item.href)
+          ? "bg-zinc-900 text-white"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+      }`}
+    >
+      <span className="w-4 text-center">{item.icon}</span>
+      {item.label}
+    </Link>
+  );
+
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-      {navItems.map((item) => {
-        const matches =
-          pathname === item.href || pathname.startsWith(item.href + "/");
-        // Илүү тодорхой (урт) тохирол байвал эх замыг идэвхгүй болгоно
-        // (жишээ нь /cash/bank-summary дээр /cash-ийг тодруулахгүй).
-        const active =
-          matches &&
-          !navItems.some(
-            (o) =>
-              o.href.length > item.href.length &&
-              (pathname === o.href || pathname.startsWith(o.href + "/")),
-          );
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            className={`flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              active
-                ? "bg-zinc-900 text-white"
-                : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-            }`}
-          >
-            <span className="w-4 text-center">{item.icon}</span>
-            {item.label}
-          </Link>
-        );
-      })}
+      {navItems.map((item) =>
+        item.children?.length ? (
+          <div key={item.href} className="space-y-1">
+            {renderLink(item)}
+            {item.children.map((c) => renderLink(c, true))}
+          </div>
+        ) : (
+          renderLink(item)
+        ),
+      )}
     </nav>
   );
 }

@@ -27,7 +27,7 @@ export default async function CashVoucherPage({
   const { data: e } = await supabase
     .from("cash_entries")
     .select(
-      "id, date, type, amount, amount_mnt, doc_no, description, company, partner_id, register_id",
+      "id, date, type, amount, amount_mnt, doc_no, description, company, partner_id, partner_name, payer, register_id",
     )
     .eq("id", Number(id))
     .maybeSingle();
@@ -53,7 +53,12 @@ export default async function CashVoucherPage({
   const mm = d.getUTCMonth() + 1;
   const dd = d.getUTCDate();
   const amount = Number(e.amount_mnt) || Number(e.amount) || 0;
-  const partnerName = (partner as { name: string } | null)?.name ?? "";
+  // Мөнгө тушаагч/хүлээн авагч: тушаагчийн нэр → харилцагчийн снапшот → partner_id-аар.
+  const partnerName =
+    e.payer ||
+    e.partner_name ||
+    (partner as { name: string } | null)?.name ||
+    "";
   const orgName =
     e.company === "ТҮМЭН РЕСУРС" ? "Түмэн Ресурс ХХК" : "Түмэн Тээх ХХК";
 
@@ -106,7 +111,7 @@ export default async function CashVoucherPage({
         </div>
         <div className="mt-1">
           <span className="text-zinc-500">/үсгээр/</span>{" "}
-          <Dots w="360px" v={moneyToWordsMn(amount) + " төгрөг"} />
+          <Dots w="360px" v={moneyToWordsMn(amount)} />
         </div>
 
         <div className="mt-3 text-zinc-500">
