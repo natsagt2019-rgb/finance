@@ -591,3 +591,24 @@ CREATE TABLE IF NOT EXISTS purchases (
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases (pur_date);
+
+
+-- ── 26. Борлуулалт (sale → output НӨАТ → авлага) ───────────────────────
+-- createSale: Дт 120101 авлага (нийт) / Кт revenue_code (цэвэр) + Кт 310601 НӨАТ.
+CREATE TABLE IF NOT EXISTS sales (
+    id           BIGSERIAL PRIMARY KEY,
+    sale_date    DATE NOT NULL,
+    doc_no       TEXT,
+    partner_id   BIGINT,
+    partner_name TEXT,
+    description  TEXT,
+    revenue_code TEXT,                       -- Кт орлогын данс
+    net_amount   NUMERIC(18, 2) DEFAULT 0,
+    vat_amount   NUMERIC(18, 2) DEFAULT 0,
+    total_amount NUMERIC(18, 2) DEFAULT 0,
+    status       TEXT DEFAULT 'posted',
+    company      TEXT,
+    is_active    BOOLEAN DEFAULT TRUE,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sales_date ON sales (sale_date);
