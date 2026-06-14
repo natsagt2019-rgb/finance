@@ -35,9 +35,15 @@ export type EntryRow = {
   rate: number;
   amount_mnt: number;
   partner_id: number | null;
+  partner_name: string | null;
+  partner_register: string | null;
   counter_account_id: number | null;
   doc_no: string | null;
   description: string | null;
+  description_en: string | null;
+  payer: string | null;
+  contract: string | null;
+  project: string | null;
   company: string | null;
   journal_id: number | null;
   month: number | null;
@@ -46,7 +52,8 @@ export type EntryRow = {
 
 export const ENTRY_SELECT =
   "id, date, type, register_id, amount, rate, amount_mnt, partner_id, " +
-  "counter_account_id, doc_no, description, company, journal_id, month, year";
+  "partner_name, partner_register, counter_account_id, doc_no, description, " +
+  "description_en, payer, contract, project, company, journal_id, month, year";
 
 // ── Тохиргоо ─────────────────────────────────────────────────────────────────
 export type CashSettings = {
@@ -61,4 +68,4 @@ export const SETTINGS_SELECT =
 
 // ── Туслах (dropdown-д) ──────────────────────────────────────────────────────
 export type AccountOption = { id: number; code: string; name: string };
-export type PartnerOption = { id: number; name: string };
+export type PartnerOption = { id: number; name: string; register?: string | null };

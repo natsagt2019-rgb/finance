@@ -120,6 +120,18 @@ function toJournalSettings(s: CashSettings | null): CashJournalSettings {
   };
 }
 
+// Дараагийн баримтын дугаар: КО100001 / КЗ100001 (төрөл тус бүрд дараалсан).
+export async function nextDocNo(
+  supabase: Supa,
+  type: CashType,
+): Promise<string> {
+  const { count } = await supabase
+    .from("cash_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("type", type);
+  return `${CASH_DOC[type]}${100001 + (count ?? 0)}`;
+}
+
 // ── Баримт үүсгэх (орлого/зарлага) ──────────────────────────────────────────
 export type EntryInput = {
   date: string;
@@ -128,9 +140,15 @@ export type EntryInput = {
   amount: number;
   rate: number;
   partner_id: number | null;
+  partner_name: string | null;
+  partner_register: string | null;
   counter_account_id: number | null;
   doc_no: string | null;
   description: string | null;
+  description_en: string | null;
+  payer: string | null;
+  contract: string | null;
+  project: string | null;
   company: string | null;
 };
 
@@ -152,6 +170,9 @@ export async function createEntry(input: EntryInput): Promise<ActionResult> {
     .single();
   if (regErr || !reg) return { ok: false, error: "Касс олдсонгүй." };
 
+  // Баримтын дугаар: гараар оруулсныг хүндэтгэх, үгүй бол авто дараалал.
+  const docNo = input.doc_no?.trim() || (await nextDocNo(supabase, input.type));
+
   // 1) Баримтын мөр (эхлээд журналгүй).
   const { data: ent, error: entErr } = await supabase
     .from("cash_entries")
@@ -163,9 +184,15 @@ export async function createEntry(input: EntryInput): Promise<ActionResult> {
       rate,
       amount_mnt: amountMnt,
       partner_id: input.partner_id,
+      partner_name: input.partner_name,
+      partner_register: input.partner_register,
       counter_account_id: input.counter_account_id,
-      doc_no: input.doc_no || CASH_DOC[input.type],
+      doc_no: docNo,
       description: input.description,
+      description_en: input.description_en,
+      payer: input.payer,
+      contract: input.contract,
+      project: input.project,
       company: input.company,
     })
     .select("id")
@@ -194,7 +221,7 @@ export async function createEntry(input: EntryInput): Promise<ActionResult> {
     const posted = await postJournal(supabase, {
       date: input.date,
       description: desc,
-      reference: input.doc_no || CASH_DOC[input.type],
+      reference: docNo,
       partner_id: input.partner_id,
       source: "cash",
       lines: built.lines,
