@@ -176,14 +176,14 @@ export function BankTxnTable({
           <button
             disabled={sel.size === 0}
             onClick={() => setShowExp(true)}
-            className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-40"
+            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40"
           >
             🏷 Зардалд бичих
           </button>
         </div>
       )}
       <table className="w-full text-sm">
-        <thead className={`text-left text-xs font-medium text-zinc-500 ${isExpense ? "bg-zinc-100" : "bg-blue-50"}`}>
+        <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
           <tr>
             {isExpense && <th className="w-8 px-2 py-2"></th>}
             <th className="px-3 py-2">Огноо</th>
@@ -257,7 +257,7 @@ export function BankTxnTable({
           )}
         </tbody>
         {rows.length > 0 && (
-          <tfoot className={`border-t border-zinc-200 font-semibold ${isExpense ? "bg-zinc-100" : "bg-blue-50"}`}>
+          <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
             <tr>
               <td colSpan={isExpense ? 4 : 3} className="px-3 py-2 text-right text-zinc-500">
                 Нийт {isExpense ? "зарлага" : "орлого"}:
@@ -360,7 +360,7 @@ export function BankTxnTable({
               <button
                 onClick={submitExp}
                 disabled={pending || !dt}
-                className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
               >
                 {pending ? "…" : "Зардалд бичих"}
               </button>
@@ -479,13 +479,13 @@ export function VatPurchasePanel({
         <button
           onClick={() => setShowPay(true)}
           disabled={rows.length === 0}
-          className="rounded-lg bg-orange-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-40"
+          className="rounded-lg border border-orange-300 bg-white px-2.5 py-1 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
         >
           📄 Өглөг үүсгэх
         </button>
         <button
           onClick={openLink}
-          className="rounded-lg bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+          className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
         >
           🔍 И баримт холбох
         </button>
@@ -612,7 +612,7 @@ export function VatPurchasePanel({
               <button
                 onClick={submitPay}
                 disabled={pending || !dt || paySel.size === 0}
-                className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
               >
                 {pending ? "…" : "Өглөг үүсгэх"}
               </button>
@@ -684,7 +684,7 @@ export function VatPurchasePanel({
               <button
                 onClick={submitLink}
                 disabled={pending || linkSel.size === 0}
-                className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
               >
                 {pending ? "…" : "Энэ харилцагчтай холбох"}
               </button>

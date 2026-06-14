@@ -184,8 +184,6 @@ export default async function PartnerDetailPage({
   const diff = totalBankIncome - totalVatOut;
   const balanced = Math.abs(diff) < 1;
 
-  const cardBase = "rounded-2xl p-4 text-white";
-
   return (
     <div>
       <Link href="/partners" className="text-sm text-zinc-500 hover:text-zinc-800">
@@ -284,40 +282,48 @@ export default async function PartnerDetailPage({
 
       {/* Stat cards */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <div className={`${cardBase} bg-blue-600`}>
-          <div className="text-xs opacity-80">Банкны орлого</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(totalBankIncome)}₮</div>
-          <div className="text-xs opacity-70">{bankIncome.length} гүйлгээ</div>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-blue-600">Банкны орлого</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-blue-900">{fmt(totalBankIncome)}₮</div>
+          <div className="text-xs text-blue-500">{bankIncome.length} гүйлгээ</div>
         </div>
-        <div className={`${cardBase} bg-orange-500`}>
-          <div className="text-xs opacity-80">Банкны зарлага</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(totalBankExpense)}₮</div>
-          <div className="text-xs opacity-70">{bankExpense.length} гүйлгээ</div>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-600">Банкны зарлага</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-amber-900">{fmt(totalBankExpense)}₮</div>
+          <div className="text-xs text-amber-500">{bankExpense.length} гүйлгээ</div>
         </div>
-        <div className={`${cardBase} bg-green-700`}>
-          <div className="text-xs opacity-80">eBarimt борлуулалт</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(totalVatOut)}₮</div>
-          <div className="text-xs opacity-70">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-emerald-600">eBarimt борлуулалт</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-emerald-900">{fmt(totalVatOut)}₮</div>
+          <div className="text-xs text-emerald-500">
             {vatOut.length} баримт
             {vatOutClosing.length > 0 ? ` · ${vatOutClosing.length} хаалт` : ""}
           </div>
         </div>
-        <div className={`${cardBase} bg-purple-600`}>
-          <div className="text-xs opacity-80">eBarimt худ.авалт</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(totalVatIn)}₮</div>
-          <div className="text-xs opacity-70">{vatIn.length} баримт</div>
+        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-violet-600">eBarimt худ.авалт</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{fmt(totalVatIn)}₮</div>
+          <div className="text-xs text-violet-500">{vatIn.length} баримт</div>
         </div>
-        <div className={`${cardBase} ${balanced ? "bg-green-600" : "bg-rose-600"}`}>
-          <div className="text-xs opacity-80">Орлого тулгалт</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(Math.abs(diff))}₮</div>
-          <div className="text-xs opacity-70">
+        <div
+          className={`rounded-2xl border p-4 ${
+            balanced ? "border-emerald-100 bg-emerald-50" : "border-rose-100 bg-rose-50"
+          }`}
+        >
+          <div className={`text-xs font-medium uppercase tracking-wide ${balanced ? "text-emerald-600" : "text-rose-600"}`}>
+            Орлого тулгалт
+          </div>
+          <div className={`mt-1 text-lg font-bold tabular-nums ${balanced ? "text-emerald-900" : "text-rose-900"}`}>
+            {fmt(Math.abs(diff))}₮
+          </div>
+          <div className={`text-xs ${balanced ? "text-emerald-500" : "text-rose-500"}`}>
             {balanced ? "Тэнцэж байна ✓" : diff > 0 ? "Банк илүү" : "Баримт илүү"}
           </div>
         </div>
-        <div className={`${cardBase} bg-sky-700`}>
-          <div className="text-xs opacity-80">Нэхэмжлэл</div>
-          <div className="mt-1 text-lg font-bold tabular-nums">{fmt(totalInv)}₮</div>
-          <div className="text-xs opacity-70">
+        <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-sky-600">Нэхэмжлэл</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-sky-900">{fmt(totalInv)}₮</div>
+          <div className="text-xs text-sky-500">
             {invoices.length} ш · цугл. {fmt(totalInvPaid)}₮
           </div>
         </div>
@@ -456,11 +462,11 @@ export default async function PartnerDetailPage({
 // ── Туслах компонентууд ────────────────────────────────────────────────────
 
 const TONE: Record<string, string> = {
-  green: "bg-green-700",
-  blue: "bg-blue-700",
-  orange: "bg-orange-600",
-  zinc: "bg-zinc-600",
-  sky: "bg-sky-700",
+  green: "bg-emerald-50 text-emerald-800 border-emerald-100",
+  blue: "bg-blue-50 text-blue-800 border-blue-100",
+  orange: "bg-amber-50 text-amber-800 border-amber-100",
+  zinc: "bg-zinc-50 text-zinc-700 border-zinc-200",
+  sky: "bg-sky-50 text-sky-800 border-sky-100",
 };
 
 function Panel({
@@ -478,12 +484,14 @@ function Panel({
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-      <div className={`flex items-center justify-between px-4 py-2 text-white ${TONE[tone]}`}>
+      <div className={`flex items-center justify-between border-b px-4 py-2.5 ${TONE[tone]}`}>
         <span className="text-sm font-semibold">
           {title}
-          {subtitle && <span className="ml-1 text-xs font-normal opacity-75">{subtitle}</span>}
+          {subtitle && <span className="ml-1 text-xs font-normal opacity-70">{subtitle}</span>}
         </span>
-        <span className="rounded bg-white/20 px-2 py-0.5 text-xs">{count}</span>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium text-zinc-500">
+          {count}
+        </span>
       </div>
       <div className="max-h-[420px] overflow-auto">{children}</div>
     </div>
