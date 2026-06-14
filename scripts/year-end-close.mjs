@@ -41,11 +41,25 @@ try {
   await c.connect();
   const from = `${YEAR}-01-01`, to = `${YEAR}-12-31`, date = `${YEAR}-12-31`;
 
-  // P&L дансны жилийн эргэлт (91/92 хаалтын дансыг хасна).
+  // Idempotent: хаалт давтан ажиллахад P&L turnover буруу болохгүйн тулд
+  // өмнөх хаалтын бичилтийг ЭХЛЭЭД устгана (APPLY үед), дараа эргэлт тооцно.
+  if (APPLY) {
+    await c.query(`DELETE FROM journal_entries WHERE description LIKE $1`, [`CLOSE:${YEAR}%`]);
+    await c.query(
+      `DELETE FROM journal_entries
+         WHERE EXTRACT(YEAR FROM txn_date) = $1 AND description NOT LIKE 'CLOSE:%'
+           AND ((debit_code='920101' AND credit_code='430101')
+             OR (debit_code='430101' AND credit_code='920101'))`,
+      [YEAR],
+    );
+  }
+
+  // P&L дансны жилийн эргэлт. 91xxxx (орлогын татвар) ч хаагдана —
+  // зөвхөн 92xxxx (нэгдсэн хаалтын данс өөрөө) хасагдана.
   const { rows } = await c.query(
     `SELECT r.code, a.name, a.type, (r.closing - r.opening) AS turn
        FROM trial_balance_range($1,$2) r JOIN accounts a ON a.code = r.code
-      WHERE a.type IN ('income','expense') AND left(r.code,2) NOT IN ('91','92')
+      WHERE a.type IN ('income','expense') AND left(r.code,2) <> '92'
         AND abs(r.closing - r.opening) > 0.005`,
     [from, to],
   );
@@ -83,8 +97,7 @@ try {
     process.exit(0);
   }
 
-  // Idempotent: тухайн жилийн өмнөх хаалтыг устгана.
-  await c.query(`DELETE FROM journal_entries WHERE description LIKE $1`, [`CLOSE:${YEAR}%`]);
+  // (Өмнөх хаалт + дутуу транфер аль хэдийн дээр устсан — turnover-ийн өмнө.)
   const ph = entries.map((_, i) => { const b = i * 5; return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},FALSE,'close')`; }).join(",");
   await c.query(
     `INSERT INTO journal_entries (txn_date, description, amount, debit_code, credit_code, is_opening, source) VALUES ${ph}`,

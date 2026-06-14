@@ -422,6 +422,24 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 
+-- ── 18b. Орлого/зардлын мужийн эргэлт — ХААЛТЫГ ХАСНА ───────────────────
+-- Орлогын тайланд: жилийн хаалтын бичилт (source='close') P&L-г тэглэдэг тул
+-- бохир эргэлтийг харуулахын тулд хаалтыг хасна. Баланс нь trial_balance_range
+-- (хаалт орсон) ашиглана — 430101 хуримтлагдсан ашиг зөв гарна.
+CREATE OR REPLACE FUNCTION pnl_range(d_from DATE, d_to DATE)
+RETURNS TABLE(code TEXT, turnover NUMERIC)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  WITH lines AS (
+    SELECT debit_code AS code, amount AS net FROM journal_entries
+      WHERE debit_code IS NOT NULL AND txn_date >= d_from AND txn_date <= d_to AND COALESCE(source,'') <> 'close'
+    UNION ALL
+    SELECT credit_code AS code, -amount FROM journal_entries
+      WHERE credit_code IS NOT NULL AND txn_date >= d_from AND txn_date <= d_to AND COALESCE(source,'') <> 'close'
+  )
+  SELECT l.code, ROUND(SUM(l.net), 2) FROM lines l GROUP BY l.code HAVING ABS(SUM(l.net)) > 0.005;
+$$;
+
+
 -- ── 19. Харицсан менежер (cost center) ──────────────────────────────────
 -- Гүйлгээний утгын эхэн K1–K10 = хариуцсан хүн. Нэхэмжлэх.responsible-тэй
 -- нэрээр, банкны зарлага K-кодоор холбогдоно.

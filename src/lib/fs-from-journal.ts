@@ -55,6 +55,7 @@ export async function fsBalancesFromJournal(
   from: string,
   to: string,
 ): Promise<{ bs: FsBalanceMap; is: FsBalanceMap; rowCount: number }> {
+  // bs (баланс): хуримтлагдсан үлдэгдэл — ХААЛТ ОРНО (430101 хуримтлагдсан ашиг).
   const { data: rpcRows } = await supabase.rpc("trial_balance_range", {
     d_from: from,
     d_to: to,
@@ -63,6 +64,13 @@ export async function fsBalancesFromJournal(
     (rpcRows as
       | { code: string; opening: number | null; closing: number | null }[]
       | null) ?? [];
+
+  // is (орлогын тайлан): мужийн эргэлт — ХААЛТЫГ ХАСНА (жилийн хаалтын
+  // бичилт P&L-г тэглэдэг тул орлого/зардлыг бохир дүнгээр харуулна).
+  const { data: pnlRows } = await supabase.rpc("pnl_range", {
+    d_from: from,
+    d_to: to,
+  });
 
   const { data: meta } = await supabase
     .from("accounts")
@@ -79,17 +87,16 @@ export async function fsBalancesFromJournal(
   for (const r of rows) {
     const fs = fsByCode.get(r.code);
     if (!fs) continue;
-    const opening = Number(r.opening) || 0;
-    const closing = Number(r.closing) || 0;
-    const turn = closing - opening; // мужийн гүйлгээ
-
     const b = bs.get(fs) ?? { opening: 0, closing: 0 };
-    b.opening += opening;
-    b.closing += closing;
+    b.opening += Number(r.opening) || 0;
+    b.closing += Number(r.closing) || 0;
     bs.set(fs, b);
-
+  }
+  for (const p of (pnlRows as { code: string; turnover: number | null }[] | null) ?? []) {
+    const fs = fsByCode.get(p.code);
+    if (!fs) continue;
     const i = is.get(fs) ?? { opening: 0, closing: 0 };
-    i.closing += turn;
+    i.closing += Number(p.turnover) || 0; // debit-positive эргэлт
     is.set(fs, i);
   }
 

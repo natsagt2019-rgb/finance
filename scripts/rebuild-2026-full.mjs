@@ -64,7 +64,12 @@ try {
     if (net <= 0) continue;
     if (isTR(co)) { tr.rev += net + vat; continue; }   // Ресурс — тусад нь
     if (!isTT(co)) continue;
-    const date = day(r[3]);
+    // Огноо нь Year баганатай зөрвөл (эх өгөгдлийн алдаа) Year/Month-г баримтална.
+    let date = day(r[3]);
+    if (!date.startsWith(String(r[24]))) {
+      const mo = Number(r[25]) || 1;
+      date = `${r[24]}-${String(mo).padStart(2, "0")}-01`;
+    }
     const desc = "INV26: " + (r[1] ? `№${r[1]} ` : "") + String(r[11] || "").slice(0, 120);
     add(date, desc, r[11], net, RECEIVABLE, REVENUE, "inv2026");
     if (vat > 0) add(date, desc, r[11], vat, RECEIVABLE, VAT_OUT, "inv2026");

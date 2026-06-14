@@ -215,6 +215,7 @@ export function ImportClient() {
                   <th className="px-3 py-2">Харилцагч</th>
                   <th className="px-3 py-2 text-right">Орлого</th>
                   <th className="px-3 py-2 text-right">Зарлага</th>
+                  <th className="px-3 py-2 text-right">Ханш</th>
                   <th className="px-3 py-2">Ангилал</th>
                 </tr>
               </thead>
@@ -268,6 +269,27 @@ export function ImportClient() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums text-red-700">
                         {fmtMoney(row.expense)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums">
+                        {row.currency && row.currency !== "MNT" ? (
+                          <div>
+                            <div className="text-zinc-700">
+                              {row.exchange_rate.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </div>
+                            <div className="text-[10px] text-zinc-400">
+                              {row.currency} ·{" "}
+                              {fmtMoney(
+                                (row.income ?? row.expense ?? 0) * row.exchange_rate,
+                              )}
+                              ₮
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-zinc-300">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 align-top">
                         <select

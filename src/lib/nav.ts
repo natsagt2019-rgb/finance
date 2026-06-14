@@ -12,6 +12,7 @@ export const navItems: NavItem[] = [
   { href: "/categorize", label: "AI ангилал", icon: "✨" },
   { href: "/statements", label: "Дансны хуулга", icon: "₮" },
   { href: "/reports/cashflow", label: "Мөнгөн урсгал", icon: "≈" },
+  { href: "/opening-balances", label: "Эхний үлдэгдэл", icon: "◔" },
   { href: "/reports/trial-balance", label: "Гүйлгээ баланс (импорт)", icon: "↥" },
   { href: "/reports/balance-sheet", label: "Санхүүгийн байдлын тайлан", icon: "⚖" },
   { href: "/reports/income-statement", label: "Орлогын дэлгэрэнгүй тайлан", icon: "📈" },
