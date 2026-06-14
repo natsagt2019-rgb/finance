@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS assets (
     location            TEXT,                              -- байршил
     responsible         TEXT,                              -- хариуцагч
 
+    -- Эхний үлдэгдэл (систем рүү шилжүүлэх): тухайн огноо дахь хуримтлагдсан
+    -- элэгдэл. Өгвөл элэгдлийг энэ огнооноос үргэлжлүүлж бодно (asset-calc.ts).
+    opening_date        DATE,                              -- эхний үлдэгдлийн огноо
+    opening_accum_depreciation NUMERIC(18, 2) NOT NULL DEFAULT 0,
+
     status              TEXT NOT NULL DEFAULT 'active'
                           CHECK (status IN ('active', 'disposed')),
     disposed_date       DATE,                              -- актласан / хассан огноо
@@ -47,6 +52,10 @@ CREATE TABLE IF NOT EXISTS assets (
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,     -- зөөлөн устгал
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Аль хэдийн үүссэн хүснэгтэд багана нэмэх (идемпотент).
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS opening_date DATE;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS opening_accum_depreciation NUMERIC(18, 2) NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS assets_category_idx ON assets (category_id);
 CREATE INDEX IF NOT EXISTS assets_company_idx  ON assets (company);

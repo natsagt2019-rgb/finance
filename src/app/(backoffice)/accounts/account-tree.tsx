@@ -203,6 +203,15 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
                                   >
                                     {badge.label}
                                   </span>
+                                  <span
+                                    className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                      (a.currency ?? "MNT") === "MNT"
+                                        ? "bg-zinc-100 text-zinc-500"
+                                        : "bg-emerald-100 text-emerald-700"
+                                    }`}
+                                  >
+                                    {a.currency ?? "MNT"}
+                                  </span>
                                 </td>
                                 <td className="whitespace-nowrap px-3 py-1.5 text-right">
                                   <Link

@@ -161,6 +161,34 @@ export function AssetForm({ mode, asset, categories }: Props) {
         </div>
 
         <div>
+          <label className={labelCls}>Эхний хуримт. элэгдэл (₮)</label>
+          <input
+            type="number"
+            name="opening_accum_depreciation"
+            step="0.01"
+            min="0"
+            defaultValue={asset ? String(asset.opening_accum_depreciation) : "0"}
+            className={`${inputCls} text-right tabular-nums`}
+          />
+          <p className="mt-1 text-xs text-zinc-400">
+            Систем рүү шилжүүлэх үеийн хуримтлагдсан элэгдэл (мэдэгдэж байгаа бол).
+          </p>
+        </div>
+
+        <div>
+          <label className={labelCls}>Эхний үлдэгдлийн огноо</label>
+          <input
+            type="date"
+            name="opening_date"
+            defaultValue={asset?.opening_date ?? ""}
+            className={inputCls}
+          />
+          <p className="mt-1 text-xs text-zinc-400">
+            Хоосон бол элэгдлийг авсан огнооноос бодно.
+          </p>
+        </div>
+
+        <div>
           <label className={labelCls}>Байршил</label>
           <input
             type="text"

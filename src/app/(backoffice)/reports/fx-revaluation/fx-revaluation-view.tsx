@@ -30,11 +30,9 @@ const cellInput =
 
 export function FxRevaluationView({
   accounts,
-  allAccounts,
   fxAccountsReady,
 }: {
   accounts: FxAccount[];
-  allAccounts: { id: number; code: string; name: string }[];
   fxAccountsReady: boolean;
 }) {
   const router = useRouter();
@@ -113,7 +111,7 @@ export function FxRevaluationView({
   function addRow() {
     const id = Number(addId);
     if (!id || rows.some((r) => r.account_id === id)) return;
-    const a = allAccounts.find((x) => x.id === id);
+    const a = accounts.find((x) => x.id === id);
     if (!a) return;
     setRows((prev) => [
       ...prev,
@@ -121,10 +119,10 @@ export function FxRevaluationView({
         account_id: a.id,
         account_code: a.code,
         account_name: a.name,
-        currency: "USD",
-        nature: null,
-        type: null,
-        book_balance: 0,
+        currency: a.currency || "USD",
+        nature: a.nature,
+        type: a.type,
+        book_balance: a.bookBalance,
         fx_balance: 0,
         rate: 0,
       },
@@ -177,7 +175,7 @@ export function FxRevaluationView({
     });
   }
 
-  const available = allAccounts.filter(
+  const available = accounts.filter(
     (a) => !rows.some((r) => r.account_id === a.id),
   );
 
@@ -244,7 +242,8 @@ export function FxRevaluationView({
             {computed.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-zinc-400">
-                  Валютын данс алга. Доорхоос данс нэмнэ үү.
+                  Валютын данс алга. «Дансны жагсаалт»-аас холбогдох дансны
+                  валютыг USD/EUR болгож тэмдэглэвэл энд автоматаар орж ирнэ.
                 </td>
               </tr>
             )}
@@ -352,7 +351,7 @@ export function FxRevaluationView({
           onChange={(e) => setAddId(e.target.value)}
           className="min-w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
         >
-          <option value="">+ Данс сонгож нэмэх…</option>
+          <option value="">+ Валютын данс нэмэх…</option>
           {available.map((a) => (
             <option key={a.id} value={a.id}>
               {a.code} — {a.name}

@@ -27,6 +27,8 @@ export type AssetRow = {
   useful_life_years: number | null;
   location: string | null;
   responsible: string | null;
+  opening_date: string | null; // эхний үлдэгдлийн огноо
+  opening_accum_depreciation: number; // тэр огноо дахь хуримтлагдсан элэгдэл
   status: AssetStatus;
   disposed_date: string | null;
   disposal_note: string | null;
@@ -35,7 +37,8 @@ export type AssetRow = {
 
 export const ASSET_SELECT =
   "id, name, code, category_id, company, acquired_date, cost, salvage_value, " +
-  "useful_life_years, location, responsible, status, disposed_date, " +
+  "useful_life_years, location, responsible, opening_date, " +
+  "opening_accum_depreciation, status, disposed_date, " +
   "disposal_note, is_active";
 
 // ── Элэгдлийн снапшот ────────────────────────────────────────────────────────

@@ -509,3 +509,28 @@ CREATE TABLE IF NOT EXISTS payables (
     created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_payables_date ON payables (pay_date);
+
+
+-- ── 22. Орлого/зардал сар бүрээр (удирдлагын дотоод тайлан) ─────────────
+-- Данс бүрийн сарын эргэлт (debit-positive: зардал +, орлого −). Хаалт/эхний
+-- үлдэгдлийг хасна. /reports/income-monthly хэрэглэнэ.
+CREATE OR REPLACE FUNCTION pnl_monthly(y INT)
+RETURNS TABLE(code TEXT, mon INT, turnover NUMERIC)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  WITH lines AS (
+    SELECT EXTRACT(MONTH FROM txn_date)::int m, debit_code code, amount net
+      FROM journal_entries
+      WHERE debit_code IS NOT NULL AND EXTRACT(YEAR FROM txn_date)=y
+        AND is_opening=false AND COALESCE(source,'')<>'close'
+    UNION ALL
+    SELECT EXTRACT(MONTH FROM txn_date)::int, credit_code, -amount
+      FROM journal_entries
+      WHERE credit_code IS NOT NULL AND EXTRACT(YEAR FROM txn_date)=y
+        AND is_opening=false AND COALESCE(source,'')<>'close'
+  )
+  SELECT l.code, l.m, SUM(l.net)::numeric
+  FROM lines l JOIN accounts a ON a.code=l.code
+  WHERE a.type IN ('income','expense') AND left(l.code,2)<>'92'
+  GROUP BY l.code, l.m
+  HAVING SUM(l.net)<>0;
+$$;

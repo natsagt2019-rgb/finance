@@ -47,6 +47,8 @@ export function DepreciationTab({
           salvageValue: Number(a.salvage_value) || 0,
           usefulLifeYears: life,
           acquiredDate: a.acquired_date,
+          openingDate: a.opening_date,
+          openingAccumDepreciation: Number(a.opening_accum_depreciation) || 0,
         },
         year,
         month,
@@ -76,6 +78,8 @@ export function DepreciationTab({
       salvage_value: Number(asset.salvage_value) || 0,
       useful_life_years: life,
       acquired_date: asset.acquired_date,
+      opening_date: asset.opening_date,
+      opening_accum_depreciation: Number(asset.opening_accum_depreciation) || 0,
     }));
     startTransition(async () => {
       const res = await saveDepreciation(year, month, payload);

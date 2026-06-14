@@ -101,15 +101,7 @@ export default async function FxRevaluationPage() {
       </p>
 
       <div className="mt-6">
-        <FxRevaluationView
-          accounts={accounts}
-          allAccounts={allAcc.map((a) => ({
-            id: a.id,
-            code: a.code,
-            name: a.name,
-          }))}
-          fxAccountsReady={fxAccountsReady}
-        />
+        <FxRevaluationView accounts={accounts} fxAccountsReady={fxAccountsReady} />
       </div>
 
       {/* Түүх */}

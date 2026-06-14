@@ -33,6 +33,10 @@ export type AssetCalcInput = {
   salvageValue?: number; // үлдэгдэл (хаягдлын) өртөг
   usefulLifeYears: number; // ашиглалтын хугацаа (жил)
   acquiredDate: string | null; // орсон огноо "YYYY-MM-DD"
+  // Эхний үлдэгдэл (систем рүү шилжүүлэх үед): тэр огноогийн хуримтлагдсан
+  // элэгдлийг өгвөл өмнөх түүхийг дахин тооцохгүй, тэндээс үргэлжлүүлнэ.
+  openingDate?: string | null; // эхний үлдэгдлийн огноо "YYYY-MM-DD"
+  openingAccumDepreciation?: number; // тэр огноо дахь хуримтлагдсан элэгдэл
 };
 
 export type AssetCalcResult = {
@@ -97,13 +101,35 @@ export function computeAsset(
     input.salvageValue ?? 0,
     input.usefulLifeYears,
   );
-  const elapsed = monthsElapsed(input.acquiredDate, year, month);
+  const cost = Number(input.cost) || 0;
 
+  // Эхний хуримтлагдсан элэгдэл өгсөн бол: тэр огнооноос хойш үргэлжлүүлж бодно.
+  const opening = ymOf(input.openingDate ?? null);
+  if (opening) {
+    const openAccum = Number(input.openingAccumDepreciation) || 0;
+    // Эхний огнооны сар нь openAccum-д аль хэдийн орсон тул түүнээс ХОЙШ
+    // өнгөрсөн саруудаар нэмж бодно (тухайн сар = after сар).
+    const after = monthIndex(year, month) - monthIndex(opening.year, opening.month);
+    const accFrom = (n: number) =>
+      Math.min(openAccum + Math.max(n, 0) * monthly, base);
+    const accumNow = accFrom(after);
+    const accumPrev = accFrom(after - 1);
+    const periodDep = round(accumNow - accumPrev);
+    return {
+      depreciableBase: base,
+      monthlyDepreciation: periodDep,
+      accumulatedDepreciation: round(accumNow),
+      netBookValue: round(cost - accumNow),
+      monthsElapsed: after,
+      fullyDepreciated: accumNow >= base && base > 0,
+    };
+  }
+
+  // Эс бөгөөс: орсон огнооноос (acquired_date) шулуун шугамаар бодно.
+  const elapsed = monthsElapsed(input.acquiredDate, year, month);
   const accumNow = accumulatedAfter(base, monthly, elapsed);
   const accumPrev = accumulatedAfter(base, monthly, elapsed - 1);
   const periodDep = round(accumNow - accumPrev);
-
-  const cost = Number(input.cost) || 0;
   return {
     depreciableBase: base,
     monthlyDepreciation: periodDep,

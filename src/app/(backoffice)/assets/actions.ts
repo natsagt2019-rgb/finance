@@ -41,6 +41,8 @@ function readAsset(formData: FormData) {
     useful_life_years: life > 0 ? life : null,
     location: get("location") || null,
     responsible: get("responsible") || null,
+    opening_date: get("opening_date") || null,
+    opening_accum_depreciation: num(formData.get("opening_accum_depreciation")),
     status: statusRaw === "disposed" ? "disposed" : "active",
     disposed_date: get("disposed_date") || null,
     disposal_note: get("disposal_note") || null,
@@ -108,6 +110,8 @@ export type DepreciationInputRow = {
   salvage_value: number;
   useful_life_years: number;
   acquired_date: string | null;
+  opening_date: string | null;
+  opening_accum_depreciation: number;
 };
 
 export async function saveDepreciation(
@@ -125,6 +129,8 @@ export async function saveDepreciation(
         salvageValue: r.salvage_value,
         usefulLifeYears: r.useful_life_years,
         acquiredDate: r.acquired_date,
+        openingDate: r.opening_date,
+        openingAccumDepreciation: r.opening_accum_depreciation,
       },
       year,
       month,

@@ -46,6 +46,8 @@ export function SummaryTab({
         salvageValue: Number(a.salvage_value) || 0,
         usefulLifeYears: life,
         acquiredDate: a.acquired_date,
+        openingDate: a.opening_date,
+        openingAccumDepreciation: Number(a.opening_accum_depreciation) || 0,
       },
       year,
       month,
