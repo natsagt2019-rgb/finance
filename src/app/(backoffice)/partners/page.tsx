@@ -189,7 +189,12 @@ export default async function PartnersPage({
                         {p.code || "—"}
                       </td>
                       <td className="px-4 py-2 font-medium text-zinc-800">
-                        {p.name}
+                        <Link
+                          href={`/partners/${p.id}`}
+                          className="hover:text-zinc-900 hover:underline"
+                        >
+                          {p.name}
+                        </Link>
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                         {p.register || "—"}
