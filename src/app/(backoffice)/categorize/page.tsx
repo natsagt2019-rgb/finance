@@ -1,5 +1,7 @@
 import { loadUncategorized } from "./actions";
 import { CategorizeClient } from "./categorize-client";
+import { PostJournalButton } from "./post-journal-button";
+import { LearnApplyButton } from "./learn-apply-button";
 
 export default async function CategorizePage() {
   let initial: Awaited<ReturnType<typeof loadUncategorized>> = [];
@@ -17,6 +19,14 @@ export default async function CategorizePage() {
         Банкны гүйлгээг Claude AI-аар автоматаар ангиллын кодод хуваарилна.
         Санал болгосон ангиллыг шалгаж, засаж, батална.
       </p>
+
+      <div className="mt-6">
+        <LearnApplyButton />
+      </div>
+
+      <div className="mt-6">
+        <PostJournalButton />
+      </div>
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">

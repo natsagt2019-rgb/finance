@@ -9,7 +9,7 @@ import { parseFile } from "./parsers";
 import type { AccountId, NormalizedTxn } from "./types";
 
 export type { AccountId, NormalizedTxn } from "./types";
-export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY } from "./config";
+export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY, BANK_GL } from "./config";
 
 // Файлын нэрэн дэх дансны дугаараар account_id тодорхойлно.
 // Жнь: 'ST_411096635_9697.XLS' → 'TT'

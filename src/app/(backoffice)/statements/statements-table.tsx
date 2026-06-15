@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { updateTxnAccounts } from "./actions";
+import { updateTxnAccounts, bulkSetDebitCode } from "./actions";
 
 export type TxnRow = {
   id: number;
@@ -40,6 +40,10 @@ export function StatementsTable({
   const [editKt, setEditKt] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  // Bulk: харилцагчгүй зардлыг олноор зардалд бичих.
+  const [onlyNoCp, setOnlyNoCp] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [expCode, setExpCode] = useState("");
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -53,6 +57,7 @@ export function StatementsTable({
       !q || (v ?? "").toLowerCase().includes(q.toLowerCase());
     return data.filter(
       (r) =>
+        (!onlyNoCp || !(r.counterparty ?? "").trim()) &&
         has(r.txn_date?.slice(0, 10), f.date) &&
         has(r.bank, f.bank) &&
         has(r.description, f.desc) &&
@@ -60,7 +65,54 @@ export function StatementsTable({
         has(r.debit_code, f.dt) &&
         has(r.credit_code, f.kt),
     );
-  }, [data, filters]);
+  }, [data, filters, onlyNoCp]);
+
+  // Сонгох боломжтой (зардал) мөрүүд — харагдаж буй.
+  const selectableIds = useMemo(
+    () => filtered.filter((r) => Number(r.expense) > 0).map((r) => r.id),
+    [filtered],
+  );
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+
+  function toggle(id: number) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  function toggleAll() {
+    setSelected((s) => {
+      if (selectableIds.every((id) => s.has(id))) return new Set();
+      return new Set(selectableIds);
+    });
+  }
+
+  function applyExpense() {
+    const ids = [...selected].filter((id) => {
+      const r = data.find((x) => x.id === id);
+      return r && Number(r.expense) > 0;
+    });
+    const code = expCode.trim();
+    if (!ids.length || !code) {
+      setMsg("Гүйлгээ сонгож, зардлын данс оруулна уу.");
+      return;
+    }
+    setMsg(null);
+    start(async () => {
+      const res = await bulkSetDebitCode(ids, code);
+      if (res.ok) {
+        setData((d) =>
+          d.map((r) => (ids.includes(r.id) ? { ...r, debit_code: code } : r)),
+        );
+        setSelected(new Set());
+      } else {
+        setMsg(res.error);
+      }
+    });
+  }
 
   function startEdit(r: TxnRow) {
     setEditId(r.id);
@@ -109,9 +161,51 @@ export function StatementsTable({
           {msg}
         </div>
       )}
+
+      {/* Bulk: харилцагчгүй зардлыг олноор зардалд бичих */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 bg-zinc-50/60 px-3 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+          <input
+            type="checkbox"
+            checked={onlyNoCp}
+            onChange={(e) => setOnlyNoCp(e.target.checked)}
+            className="h-4 w-4 rounded border-zinc-300"
+          />
+          Зөвхөн харилцагчгүй
+        </label>
+        <span className="text-xs text-zinc-400">|</span>
+        <input
+          list="acc-list"
+          value={expCode}
+          onChange={(e) => setExpCode(e.target.value)}
+          placeholder="зардлын данс (Дт), ж: 702701"
+          className="w-56 rounded border border-zinc-300 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={pending || selected.size === 0 || !expCode.trim()}
+          onClick={applyExpense}
+          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        >
+          Зардалд бичих ({selected.size})
+        </button>
+        <span className="text-xs text-zinc-400">
+          Сонгосон гүйлгээний Дт-д зардлын данс ононо (Кт=банк авто).
+        </span>
+      </div>
+
       <table className="w-full text-sm">
         <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
           <tr>
+            <th className="px-2 py-2">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                title="Бүгдийг сонгох (зардал)"
+                className="h-4 w-4 rounded border-zinc-300"
+              />
+            </th>
             <th className="px-3 py-2">Огноо</th>
             <th className="px-3 py-2">Банк</th>
             <th className="px-3 py-2">Гүйлгээний утга</th>
@@ -123,6 +217,7 @@ export function StatementsTable({
             <th className="px-3 py-2"></th>
           </tr>
           <tr className="bg-white">
+            <th className="px-2 py-1"></th>
             <th className="px-2 py-1"><input value={filters.date} onChange={set("date")} placeholder="огноо…" className={fInput} /></th>
             <th className="px-2 py-1"><input value={filters.bank} onChange={set("bank")} placeholder="банк…" className={fInput} /></th>
             <th className="px-2 py-1"><input value={filters.desc} onChange={set("desc")} placeholder="тайлбар…" className={fInput} /></th>
@@ -145,8 +240,19 @@ export function StatementsTable({
         <tbody className="divide-y divide-zinc-100">
           {filtered.map((r) => {
             const editing = editId === r.id;
+            const canSelect = Number(r.expense) > 0;
             return (
-              <tr key={r.id} className={editing ? "bg-blue-50/40" : ""}>
+              <tr key={r.id} className={editing ? "bg-blue-50/40" : selected.has(r.id) ? "bg-amber-50/40" : ""}>
+                <td className="px-2 py-2">
+                  {canSelect && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggle(r.id)}
+                      className="h-4 w-4 rounded border-zinc-300"
+                    />
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{r.txn_date.slice(0, 10)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-zinc-500">{r.bank}</td>
                 <td className="max-w-xs px-3 py-2 text-zinc-700"><span title={r.description ?? ""}>{r.description}</span></td>

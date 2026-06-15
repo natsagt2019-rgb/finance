@@ -35,3 +35,26 @@ export async function updateTxnAccounts(
   revalidatePath("/statements");
   return { ok: true };
 }
+
+// Сонгосон гүйлгээнүүдийн Дт (зардлын данс)-ыг олноор оноох.
+// Харилцагчгүй банкны шимтгэл зэргийг хурдан зардалд бичихэд.
+export async function bulkSetDebitCode(
+  ids: number[],
+  code: string,
+): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  const c = (code ?? "").trim();
+  if (!c) return { ok: false, error: "Зардлын данс сонгоно уу." };
+  if (ids.length === 0) return { ok: false, error: "Гүйлгээ сонгоогүй байна." };
+
+  const CHUNK = 500;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ debit_code: c })
+      .in("id", ids.slice(i, i + CHUNK));
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/statements");
+  return { ok: true };
+}

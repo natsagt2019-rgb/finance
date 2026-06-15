@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   detectAccountId,
   normalizeFile,
+  BANK_GL,
   type AccountId,
   type NormalizedTxn,
 } from "@/lib/bank-importer";
@@ -217,23 +218,29 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
     return { added: 0, skipped: rows.length };
   }
 
-  const dbRows = newRows.map((r) => ({
-    account_id: r.account_id,
-    company: r.company,
-    bank: r.bank,
-    txn_date: r.txn_date,
-    description: r.description,
-    counterparty: r.counterparty,
-    account_no: r.account_no,
-    exchange_rate: r.exchange_rate,
-    currency: r.currency,
-    income: r.income,
-    expense: r.expense,
-    income_code: r.income_code,
-    expense_code: r.expense_code,
-    master_code: r.master_code,
-    master_name: r.master_name,
-  }));
+  const dbRows = newRows.map((r) => {
+    // Банкны тал (харилцах дансны өөрийн код) авто: орлого→Дт, зарлага→Кт.
+    const bankCode = BANK_GL[r.account_id] ?? null;
+    return {
+      account_id: r.account_id,
+      company: r.company,
+      bank: r.bank,
+      txn_date: r.txn_date,
+      description: r.description,
+      counterparty: r.counterparty,
+      account_no: r.account_no,
+      exchange_rate: r.exchange_rate,
+      currency: r.currency,
+      income: r.income,
+      expense: r.expense,
+      income_code: r.income_code,
+      expense_code: r.expense_code,
+      debit_code: r.income != null ? bankCode : null,
+      credit_code: r.expense != null ? bankCode : null,
+      master_code: r.master_code,
+      master_name: r.master_name,
+    };
+  });
 
   const { data, error } = await supabase.from("transactions").insert(dbRows).select();
   if (error) throw new Error(`Хадгалахад алдаа: ${error.message}`);

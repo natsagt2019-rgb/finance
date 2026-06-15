@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { aiClassify, type TxnToClassify, type Suggestion } from "@/lib/ai-categorize";
+import {
+  buildBankJournalRows,
+  postingPrefix,
+  type PostingTxn,
+} from "@/lib/bank-journal-posting";
 
 export type UncatTxn = {
   id: number;
@@ -55,6 +60,125 @@ export async function loadUncategorized(limit = 100): Promise<UncatTxn[]> {
   return (data as UncatTxn[] | null) ?? [];
 }
 
+// ── Сурдаг авто-ангилал: өмнө батлагдсанаас сурч давтагдсаныг бөглөх ───────
+// Логик: тодорхой кодтой (default биш) гүйлгээнээс харилцагч→код сурна.
+// Дараа нь кодгүй/default кодтой давтагдсан харилцагчийн гүйлгээнд авто ононо.
+export type LearnResult = { updated: number; rules: number };
+
+export async function autoApplyLearnedCodes(): Promise<LearnResult> {
+  const supabase = await requireAuth();
+
+  type Row = {
+    id: number;
+    counterparty: string | null;
+    income: number | null;
+    expense: number | null;
+    income_code: string | null;
+    expense_code: string | null;
+  };
+
+  // Бүх гүйлгээ татах (PostgREST 1000 хязгаар тул хуудаслана).
+  const PAGE = 1000;
+  const all: Row[] = [];
+  for (let offset = 0; offset < 500000; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, counterparty, income, expense, income_code, expense_code")
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data as Row[] | null) ?? [];
+    all.push(...page);
+    if (page.length < PAGE) break;
+  }
+
+  const norm = (s: string | null) => (s ?? "").trim().toLowerCase();
+
+  // Харилцагч → код тус бүрийн давтамж (тодорхой кодоос л сурна).
+  const inc = new Map<string, Map<string, number>>();
+  const exp = new Map<string, Map<string, number>>();
+  const bump = (m: Map<string, Map<string, number>>, k: string, code: string) => {
+    let g = m.get(k);
+    if (!g) {
+      g = new Map();
+      m.set(k, g);
+    }
+    g.set(code, (g.get(code) ?? 0) + 1);
+  };
+  for (const r of all) {
+    const cp = norm(r.counterparty);
+    if (!cp) continue;
+    if (Number(r.income) > 0 && r.income_code && r.income_code !== DEFAULT_INCOME_CODE)
+      bump(inc, cp, r.income_code);
+    if (Number(r.expense) > 0 && r.expense_code && r.expense_code !== DEFAULT_EXPENSE_CODE)
+      bump(exp, cp, r.expense_code);
+  }
+  const majority = (g: Map<string, number>): string | null => {
+    let best: string | null = null;
+    let bn = 0;
+    for (const [code, n] of g)
+      if (n > bn) {
+        bn = n;
+        best = code;
+      }
+    return best;
+  };
+  const incCode = new Map<string, string>();
+  for (const [k, g] of inc) {
+    const m = majority(g);
+    if (m) incCode.set(k, m);
+  }
+  const expCode = new Map<string, string>();
+  for (const [k, g] of exp) {
+    const m = majority(g);
+    if (m) expCode.set(k, m);
+  }
+
+  // Кодгүй/default гүйлгээнд сурсан кодыг оноох (кодоор бүлэглэж багц шинэчилнэ).
+  const incIds = new Map<string, number[]>();
+  const expIds = new Map<string, number[]>();
+  for (const r of all) {
+    const cp = norm(r.counterparty);
+    if (!cp) continue;
+    if (Number(r.income) > 0 && (!r.income_code || r.income_code === DEFAULT_INCOME_CODE)) {
+      const code = incCode.get(cp);
+      if (code) (incIds.get(code) ?? incIds.set(code, []).get(code)!).push(r.id);
+    } else if (
+      Number(r.expense) > 0 &&
+      (!r.expense_code || r.expense_code === DEFAULT_EXPENSE_CODE)
+    ) {
+      const code = expCode.get(cp);
+      if (code) (expIds.get(code) ?? expIds.set(code, []).get(code)!).push(r.id);
+    }
+  }
+
+  let updated = 0;
+  const CHUNK = 500;
+  for (const [code, ids] of incIds) {
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ income_code: code })
+        .in("id", ids.slice(i, i + CHUNK));
+      if (error) throw new Error(error.message);
+    }
+    updated += ids.length;
+  }
+  for (const [code, ids] of expIds) {
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ expense_code: code })
+        .in("id", ids.slice(i, i + CHUNK));
+      if (error) throw new Error(error.message);
+    }
+    updated += ids.length;
+  }
+
+  revalidatePath("/categorize");
+  return { updated, rules: incCode.size + expCode.size };
+}
+
 // ── AI-аар ангилал санал болгох ──────────────────────────────────────────
 export async function suggestCategories(
   txns: UncatTxn[],
@@ -100,4 +224,66 @@ export async function applyCategories(
   revalidatePath("/categorize");
   revalidatePath("/reports/cashflow");
   return { updated };
+}
+
+// ── Банкны гүйлгээг журналд (journal_entries) бичих ──────────────────────────
+// Ангилсан кодоор double-entry журнал үүсгэнэ (идемпотент: CASH{yy}: устгаад дахин).
+export type PostJournalResult = {
+  made: number;
+  skipped: number;
+  skippedNoBank: number;
+  missing: { code: string; count: number }[];
+};
+
+export async function postBankJournal(year: number): Promise<PostJournalResult> {
+  const supabase = await requireAuth();
+
+  // Тухайн оны бүх гүйлгээ (PostgREST 1000 хязгаар тул хуудаслана).
+  const PAGE = 1000;
+  const all: PostingTxn[] = [];
+  for (let offset = 0; offset < 500000; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(
+        "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id",
+      )
+      .eq("year", year)
+      .order("txn_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data as PostingTxn[] | null) ?? [];
+    all.push(...page);
+    if (page.length < PAGE) break;
+  }
+
+  const { rows, made, skipped, missingCodes, skippedNoBank } = buildBankJournalRows(
+    all,
+    year,
+  );
+
+  // Idempotent: тухайн оны өмнө үүсгэсэн банкны журналыг устгаад дахин бичнэ.
+  const prefix = postingPrefix(year);
+  const { error: delErr } = await supabase
+    .from("journal_entries")
+    .delete()
+    .like("description", `${prefix}%`);
+  if (delErr) throw new Error(delErr.message);
+
+  const CHUNK = 500;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { error } = await supabase
+      .from("journal_entries")
+      .insert(rows.slice(i, i + CHUNK));
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/reports/trial-balance-by-type");
+  revalidatePath("/reports/balance-sheet");
+  revalidatePath("/reports/income-statement");
+
+  const missing = Object.entries(missingCodes)
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count);
+  return { made, skipped, skippedNoBank, missing };
 }
