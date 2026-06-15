@@ -440,6 +440,48 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 
+-- ── 18c. Ерөнхий данс /харьцсан дансаар/ ───────────────────────────────
+-- Сонгосон дансны [d_from, d_to] мужийн хөдөлгөөнийг ХАРЬЦСАН (эсрэг) дансаар
+-- бүлэглэж буцаана. journal_entries нэг мөрөнд Дт(debit_code)+Кт(credit_code)
+-- хоёуланг агуулдаг тул харьцсан данс = нөгөө код.
+--   debit  = сонгосон данс Дт талд гарсан дүн (харьцсан данс Кт байсан)
+--   credit = сонгосон данс Кт талд гарсан дүн (харьцсан данс Дт байсан)
+-- is_opening=TRUE мөр нь d_from-ээс ӨМНӨХ нийлбэр (эхний үлдэгдэл тооцоход).
+CREATE OR REPLACE FUNCTION general_ledger_by_contra(p_code TEXT, d_from DATE, d_to DATE)
+RETURNS TABLE(
+  contra_code TEXT,
+  contra_name TEXT,
+  debit       NUMERIC,
+  credit      NUMERIC,
+  is_opening  BOOLEAN
+)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  -- Эхний үлдэгдэл (d_from-ээс өмнө) — нэг мөр
+  SELECT NULL::text, NULL::text,
+         COALESCE(SUM(amount) FILTER (WHERE debit_code  = p_code), 0),
+         COALESCE(SUM(amount) FILTER (WHERE credit_code = p_code), 0),
+         TRUE
+  FROM journal_entries
+  WHERE txn_date < d_from AND (debit_code = p_code OR credit_code = p_code)
+  UNION ALL
+  -- Мужийн гүйлгээ, харьцсан дансаар бүлэглэсэн
+  SELECT m.contra, ac.name, ROUND(SUM(m.deb), 2), ROUND(SUM(m.cred), 2), FALSE
+  FROM (
+    SELECT credit_code AS contra, amount AS deb, 0::numeric AS cred
+      FROM journal_entries
+      WHERE txn_date >= d_from AND txn_date <= d_to
+        AND debit_code = p_code AND credit_code IS DISTINCT FROM p_code
+    UNION ALL
+    SELECT debit_code AS contra, 0::numeric AS deb, amount AS cred
+      FROM journal_entries
+      WHERE txn_date >= d_from AND txn_date <= d_to
+        AND credit_code = p_code AND debit_code IS DISTINCT FROM p_code
+  ) m
+  LEFT JOIN accounts ac ON ac.code = m.contra
+  GROUP BY m.contra, ac.name;
+$$;
+
+
 -- ── 19. Харицсан менежер (cost center) ──────────────────────────────────
 -- Гүйлгээний утгын эхэн K1–K10 = хариуцсан хүн. Нэхэмжлэх.responsible-тэй
 -- нэрээр, банкны зарлага K-кодоор холбогдоно.
