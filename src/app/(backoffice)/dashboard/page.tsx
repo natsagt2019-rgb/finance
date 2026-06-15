@@ -29,23 +29,46 @@ function Panel({
   );
 }
 
-// ── Орлогын баганан график (сараар) ─────────────────────────────────────────
-function IncomeChart({ monthly }: { monthly: number[] }) {
-  const max = Math.max(1, ...monthly);
+// ── Орлого/Өртөг баганан график (сараар, зэрэгцүүлсэн) ───────────────────────
+function IncomeChart({
+  income,
+  cost,
+}: {
+  income: number[];
+  cost: number[];
+}) {
+  const max = Math.max(1, ...income, ...cost);
   return (
     <div className="p-4">
-      <div className="flex h-48 items-end gap-1 sm:gap-2">
-        {monthly.map((v, i) => {
-          const h = max > 0 ? Math.max(2, (v / max) * 100) : 2;
+      {/* Легенд */}
+      <div className="mb-3 flex items-center gap-4 text-xs text-zinc-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-blue-500/80" /> Орлого
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-rose-500/80" /> Өртөг
+        </span>
+      </div>
+
+      <div className="flex h-48 items-stretch gap-1 border-b border-zinc-200 sm:gap-2">
+        {MONTH_LABELS.map((_, i) => {
+          const hi = income[i] > 0 ? Math.max(1, (income[i] / max) * 100) : 0;
+          const hc = cost[i] > 0 ? Math.max(1, (cost[i] / max) * 100) : 0;
           return (
             <div
               key={i}
-              className="flex flex-1 flex-col items-center justify-end"
-              title={`${MONTH_LABELS[i]}-р сар: ${fmt(v)}₮`}
+              className="flex flex-1 items-end justify-center gap-0.5"
+              title={`${MONTH_LABELS[i]}-р сар — Орлого: ${fmt(
+                income[i],
+              )}₮ · Өртөг: ${fmt(cost[i])}₮`}
             >
               <div
-                className="w-full rounded-t bg-blue-500/80 transition-all hover:bg-blue-600"
-                style={{ height: `${h}%` }}
+                className="w-1/2 rounded-t bg-blue-500/80 transition-all hover:bg-blue-600"
+                style={{ height: `${hi}%` }}
+              />
+              <div
+                className="w-1/2 rounded-t bg-rose-500/80 transition-all hover:bg-rose-600"
+                style={{ height: `${hc}%` }}
               />
             </div>
           );
@@ -229,9 +252,13 @@ export default async function DashboardPage({
               />
             </Panel>
 
-            {/* 2. Орлого */}
-            <Panel title={`Орлого (${data.year} он) — ${fmt(data.incomeTotal)}₮`}>
-              <IncomeChart monthly={data.incomeMonthly} />
+            {/* 2. Орлого / Өртөг */}
+            <Panel
+              title={`Орлого ${fmt(data.incomeTotal)}₮ · Өртөг ${fmt(
+                data.costTotal,
+              )}₮ (${data.year} он)`}
+            >
+              <IncomeChart income={data.incomeMonthly} cost={data.costMonthly} />
             </Panel>
 
             {/* 3. Харилцагчийн авлагын үлдэгдэл */}

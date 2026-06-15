@@ -45,6 +45,14 @@ export function RowActions({
   return (
     <div className="flex items-center justify-end gap-1">
       <Link
+        href={`/invoices/${id}/print`}
+        target="_blank"
+        title="Нэхэмжлэх хэвлэх"
+        className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-[#1a3c5e] hover:bg-zinc-50"
+      >
+        🖨
+      </Link>
+      <Link
         href={`/invoices/${id}/edit`}
         className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
       >

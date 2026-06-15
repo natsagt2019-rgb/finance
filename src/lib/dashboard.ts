@@ -37,6 +37,9 @@ export type DashboardData = {
   // Орлого сараар (12 утга), нийт
   incomeMonthly: number[];
   incomeTotal: number;
+  // Өртөг (зардал) сараар (12 утга), нийт
+  costMonthly: number[];
+  costTotal: number;
   // Авлага
   receivables: PartnerBalance[];
   receivableTotal: number;
@@ -144,16 +147,23 @@ export async function loadDashboard(asof: string): Promise<DashboardData> {
     .filter((a) => Math.abs(a.balance) > 0.5)
     .sort((a, b) => a.code.localeCompare(b.code));
 
-  // ── Орлого сараар ────────────────────────────────────────────────────────
+  // ── Орлого ба Өртөг (зардал) сараар ──────────────────────────────────────
+  // Орлого данс (type='income') кредитээр нэмэгдэх тул -turnover = эерэг орлого.
+  // Зардал данс (type='expense') дебетээр нэмэгдэх тул turnover = эерэг өртөг.
   const incomeMonthly = Array<number>(12).fill(0);
+  const costMonthly = Array<number>(12).fill(0);
   for (const r of (pnlRes.data as
     | { code: string; mon: number; turnover: number }[]
     | null) ?? []) {
-    if (typeByCode.get(r.code) !== "income") continue;
+    const t = typeByCode.get(r.code);
     const m = Number(r.mon);
-    if (m >= 1 && m <= 12) incomeMonthly[m - 1] += -(Number(r.turnover) || 0);
+    if (m < 1 || m > 12) continue;
+    const v = Number(r.turnover) || 0;
+    if (t === "income") incomeMonthly[m - 1] += -v;
+    else if (t === "expense") costMonthly[m - 1] += v;
   }
   const incomeTotal = incomeMonthly.reduce((a, b) => a + b, 0);
+  const costTotal = costMonthly.reduce((a, b) => a + b, 0);
 
   // ── Авлага (Дт нээнэ, Кт хаана) + нээлттэй нэхэмжлэх ──────────────────────
   let receivables: PartnerBalance[] = [];
@@ -257,6 +267,8 @@ export async function loadDashboard(asof: string): Promise<DashboardData> {
     accounts,
     incomeMonthly,
     incomeTotal,
+    costMonthly,
+    costTotal,
     receivables,
     receivableTotal,
     receivableAging,
