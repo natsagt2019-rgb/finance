@@ -236,15 +236,34 @@ function PartnerBlock({ g }: { g: PartnerGroup }) {
           {g.name}
         </td>
       </tr>
-      {g.accounts.map((a) => (
-        <tr key={a.code} className="hover:bg-zinc-50">
-          <td className="px-4 py-1.5 font-mono text-xs text-zinc-500">{a.code}</td>
-          <td className="px-4 py-1.5 text-zinc-700">{a.name}</td>
-          <td className="px-4 py-1.5 text-center text-xs text-zinc-400">{a.currency}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums text-amber-700">{fmt(a.payable)}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums text-blue-700">{fmt(a.receivable)}</td>
-        </tr>
-      ))}
+      {g.accounts.map((a) => {
+        const href = `/reports/partner-statement?partner=${encodeURIComponent(g.name)}&account=${a.code}`;
+        return (
+          <tr key={a.code} className="hover:bg-zinc-50">
+            <td className="px-4 py-1.5 font-mono text-xs text-zinc-500">{a.code}</td>
+            <td className="px-4 py-1.5 text-zinc-700">{a.name}</td>
+            <td className="px-4 py-1.5 text-center text-xs text-zinc-400">{a.currency}</td>
+            <td className="px-4 py-1.5 text-right tabular-nums text-amber-700">
+              {Math.abs(a.payable) > 0.5 ? (
+                <a href={href} className="hover:underline" title="Дансны хуулга харах">
+                  {fmt(a.payable)}
+                </a>
+              ) : (
+                fmt(a.payable)
+              )}
+            </td>
+            <td className="px-4 py-1.5 text-right tabular-nums text-blue-700">
+              {Math.abs(a.receivable) > 0.5 ? (
+                <a href={href} className="hover:underline" title="Дансны хуулга харах">
+                  {fmt(a.receivable)}
+                </a>
+              ) : (
+                fmt(a.receivable)
+              )}
+            </td>
+          </tr>
+        );
+      })}
       <tr className="border-t border-zinc-200 bg-white font-semibold">
         <td colSpan={3} className="px-4 py-1.5 text-right text-zinc-500">
           Харилцагчийн дүн:

@@ -40,11 +40,12 @@ type AcctSection = {
 export default async function PartnerStatementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ partner?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ partner?: string; from?: string; to?: string; account?: string }>;
 }) {
   const sp = await searchParams;
   const supabase = await createClient();
   const partnerInput = (sp.partner ?? "").trim();
+  const acctFilter = (sp.account ?? "").trim();
   const from = sp.from && ISO.test(sp.from) ? sp.from : "2026-01-01";
   const to = sp.to && ISO.test(sp.to) ? sp.to : "2026-12-31";
 
@@ -116,6 +117,7 @@ export default async function PartnerStatementPage({
     }
 
     for (const [code, list] of byAcct) {
+      if (acctFilter && code !== acctFilter) continue;
       const isRecv = recvSet.has(code);
       // delta нь дансны нормал чиглэлд (авлага: Дт−Кт, өглөг: Кт−Дт).
       const norm = (e: Entry) => {
@@ -190,6 +192,10 @@ export default async function PartnerStatementPage({
                   <option key={n} value={n} />
                 ))}
               </datalist>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-zinc-500">
+              Данс
+              <input type="text" name="account" defaultValue={acctFilter} placeholder="бүгд" className="w-20 rounded-lg border border-zinc-300 px-2 py-2 text-sm" />
             </label>
             <label className="flex flex-col gap-1 text-xs text-zinc-500">
               Эхлэх

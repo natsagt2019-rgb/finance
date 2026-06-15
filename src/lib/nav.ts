@@ -50,6 +50,8 @@ export const navItems: NavItem[] = [
   { href: "/reports/partner-balances", label: "Харилцагчийн тооцоо", icon: "🤝" },
   { href: "/reports/partner-balance-detail", label: "Харилцагчийн үлдэгдлийн тайлан", icon: "📋" },
   { href: "/reports/partner-statement", label: "Тооцооны үлдэгдлийн тайлан", icon: "📃" },
+  { href: "/reports/balance-turnover?kind=recv", label: "Авлагын товчоо тайлан", icon: "📈" },
+  { href: "/reports/balance-turnover?kind=pay", label: "Өглөгийн товчоо тайлан", icon: "📉" },
   { href: "/reports/by-manager", label: "Менежерийн тайлан", icon: "🧑‍💼" },
   { href: "/salary", label: "Цалин", icon: "💰" },
   { href: "/assets", label: "Үндсэн хөрөнгө", icon: "🏗" },
