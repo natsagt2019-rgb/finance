@@ -10,10 +10,12 @@ export function RowActions({
   id,
   label,
   isPaid,
+  partnerId,
 }: {
   id: number;
   label: string;
   isPaid: boolean;
+  partnerId: number | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -44,6 +46,15 @@ export function RowActions({
 
   return (
     <div className="flex items-center justify-end gap-1">
+      {partnerId != null && (
+        <Link
+          href={`/partners/${partnerId}`}
+          title="Холбогдох гүйлгээ (банкны орлого, тулгалт)"
+          className="rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+        >
+          ₮ Гүйлгээ
+        </Link>
+      )}
       <Link
         href={`/invoices/${id}/print`}
         target="_blank"

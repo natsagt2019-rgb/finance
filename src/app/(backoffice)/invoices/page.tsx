@@ -386,6 +386,7 @@ export default async function InvoicesPage({
                           id={r.id}
                           label={r.invoice_no || `#${r.id}`}
                           isPaid={r.status === "paid"}
+                          partnerId={r.partner_id}
                         />
                       </td>
                     </tr>

@@ -6,7 +6,11 @@ type SearchParams = {
   year?: string;
   month?: string;
   dir?: string;
+  coded?: string; // "" бүгд | "no" холболт хийгээгүй | "yes" хийсэн
 };
+
+// Холболт хийгээгүй (Дт эсвэл Кт код дутуу) гүйлгээний PostgREST нөхцөл.
+const UNCODED_OR = "debit_code.is.null,debit_code.eq.,credit_code.is.null,credit_code.eq.";
 
 type Txn = {
   id: number;
@@ -55,10 +59,29 @@ export default async function StatementsPage({
   if (sp.month) rowsQuery = rowsQuery.eq("month", Number(sp.month));
   if (sp.dir === "income") rowsQuery = rowsQuery.not("income", "is", null);
   if (sp.dir === "expense") rowsQuery = rowsQuery.not("expense", "is", null);
+  if (sp.coded === "no") {
+    rowsQuery = rowsQuery.or(UNCODED_OR);
+  } else if (sp.coded === "yes") {
+    rowsQuery = rowsQuery
+      .not("debit_code", "is", null)
+      .neq("debit_code", "")
+      .not("credit_code", "is", null)
+      .neq("credit_code", "");
+  }
 
   const { data: rows, error } = await rowsQuery
     .order("txn_date", { ascending: false })
     .limit(ROW_LIMIT);
+
+  // Холболт хийгээгүй гүйлгээний нийт тоо (одоогийн данс/он/сар шүүлтэд).
+  let cntQuery = supabase
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .or(UNCODED_OR);
+  if (sp.account) cntQuery = cntQuery.eq("account_id", sp.account);
+  if (sp.year) cntQuery = cntQuery.eq("year", Number(sp.year));
+  if (sp.month) cntQuery = cntQuery.eq("month", Number(sp.month));
+  const { count: uncodedCount } = await cntQuery;
 
   // Нэгтгэл — monthly_cashflow view ашиглана (DB дотор GROUP BY хийдэг тул
   // 1000 мөрийн хязгаарт өртөхгүй, бүх гүйлгээг бүрэн хамруулна).
@@ -75,12 +98,21 @@ export default async function StatementsPage({
   const sumIncome = mcRows.reduce((s, r) => s + (Number(r.total_income) || 0), 0);
   const sumExpense = mcRows.reduce((s, r) => s + (Number(r.total_expense) || 0), 0);
 
-  // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).
-  const totalIncome = sp.dir === "expense" ? 0 : sumIncome;
-  const totalExpense = sp.dir === "income" ? 0 : sumExpense;
-  const net = totalIncome - totalExpense;
-
   const txns = (rows as Txn[] | null) ?? [];
+
+  // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).
+  // Холболтын шүүлт идэвхтэй үед monthly_cashflow тооцох боломжгүй тул
+  // нэгтгэлийг шүүсэн мөрүүдээс гаргана.
+  let totalIncome: number;
+  let totalExpense: number;
+  if (sp.coded === "no" || sp.coded === "yes") {
+    totalIncome = sp.dir === "expense" ? 0 : txns.reduce((s, r) => s + (Number(r.income) || 0), 0);
+    totalExpense = sp.dir === "income" ? 0 : txns.reduce((s, r) => s + (Number(r.expense) || 0), 0);
+  } else {
+    totalIncome = sp.dir === "expense" ? 0 : sumIncome;
+    totalExpense = sp.dir === "income" ? 0 : sumExpense;
+  }
+  const net = totalIncome - totalExpense;
 
   // Дансны сонголтын жагсаалт (Дт/Кт засахад).
   const { data: accRows } = await supabase
@@ -207,12 +239,39 @@ export default async function StatementsPage({
           </select>
         </label>
 
+        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+          Холболт
+          <select
+            name="coded"
+            defaultValue={sel("coded")}
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
+          >
+            <option value="">Бүгд</option>
+            <option value="no">Хийгээгүй (дутуу)</option>
+            <option value="yes">Хийсэн</option>
+          </select>
+        </label>
+
         <button
           type="submit"
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
         >
           Шүүх
         </button>
+
+        {(uncodedCount ?? 0) > 0 && sp.coded !== "no" && (
+          <a
+            href={`/statements?${new URLSearchParams({
+              ...(sp.account ? { account: sp.account } : {}),
+              ...(sp.year ? { year: sp.year } : {}),
+              ...(sp.month ? { month: sp.month } : {}),
+              coded: "no",
+            }).toString()}`}
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100"
+          >
+            ⚠ {uncodedCount} холболт хийгээгүй →
+          </a>
+        )}
       </form>
 
       {/* Нэгтгэл */}
