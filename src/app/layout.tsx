@@ -27,7 +27,11 @@ export default function RootLayout({
       lang="mn"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      {/* suppressHydrationWarning: хөтчийн extension (bis_register гэх мэт)
+          <body>-д attribute нэмдэг тул hydration анхааруулга гарахаас сэргийлнэ. */}
+      <body className="min-h-full" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }
