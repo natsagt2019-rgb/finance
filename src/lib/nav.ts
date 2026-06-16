@@ -52,6 +52,7 @@ export const navItems: NavItem[] = [
   { href: "/reports/partner-statement", label: "Тооцооны үлдэгдлийн тайлан", icon: "📃" },
   { href: "/reports/balance-turnover?kind=recv", label: "Авлагын товчоо тайлан", icon: "📈" },
   { href: "/reports/balance-turnover?kind=pay", label: "Өглөгийн товчоо тайлан", icon: "📉" },
+  { href: "/reports/worksheet", label: "Ажлын хүснэгт", icon: "🧮" },
   { href: "/reports/by-manager", label: "Менежерийн тайлан", icon: "🧑‍💼" },
   { href: "/salary", label: "Цалин", icon: "💰" },
   { href: "/assets", label: "Үндсэн хөрөнгө", icon: "🏗" },
