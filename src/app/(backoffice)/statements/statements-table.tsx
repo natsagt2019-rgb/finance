@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { updateTxnAccounts, bulkSetDebitCode } from "./actions";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts } from "./actions";
 
 export type TxnRow = {
   id: number;
@@ -11,6 +12,7 @@ export type TxnRow = {
   counterparty: string | null;
   income: number | null;
   expense: number | null;
+  exchange_rate: number | null;
   income_code: string | null;
   expense_code: string | null;
   debit_code: string | null;
@@ -22,6 +24,12 @@ export type AccountOpt = { code: string; name: string };
 function fmt(n: number | null): string {
   if (n == null) return "";
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Валютын дүнг ханшаар MNT болгоно (rate=1 бол төгрөг хэвээр).
+function mnt(v: number | null, rate: number | null): number | null {
+  if (v == null) return null;
+  return Number(v) * (Number(rate) || 1);
 }
 
 const EMPTY = { date: "", bank: "", desc: "", partner: "", dt: "", kt: "" };
@@ -44,6 +52,23 @@ export function StatementsTable({
   const [onlyNoCp, setOnlyNoCp] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [expCode, setExpCode] = useState("");
+  const router = useRouter();
+
+  // Сервер дахин ачаалахад (автомат холболтын дараа) өгөгдлийг шинэчилнэ.
+  useEffect(() => setData(rows), [rows]);
+
+  function autoLink() {
+    setMsg(null);
+    start(async () => {
+      try {
+        const res = await autoLinkAccounts();
+        setMsg(`✓ Автомат холболт: ${res.linked} гүйлгээ холбогдлоо.`);
+        router.refresh();
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : "Алдаа гарлаа.");
+      }
+    });
+  }
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -157,13 +182,29 @@ export function StatementsTable({
   return (
     <div className="overflow-x-auto">
       {msg && (
-        <div className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div
+          className={`border-b px-3 py-2 text-xs ${
+            msg.startsWith("✓")
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
           {msg}
         </div>
       )}
 
-      {/* Bulk: харилцагчгүй зардлыг олноор зардалд бичих */}
+      {/* Автомат холболт + bulk зардал */}
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 bg-zinc-50/60 px-3 py-2">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={autoLink}
+          title="Ангиллын кодоор нөгөө тал GL дансыг автоматаар оноох"
+          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {pending ? "Холбож байна…" : "⚡ Автомат холболт"}
+        </button>
+        <span className="text-xs text-zinc-400">|</span>
         <label className="flex items-center gap-1.5 text-xs text-zinc-600">
           <input
             type="checkbox"
@@ -178,7 +219,7 @@ export function StatementsTable({
           list="acc-list"
           value={expCode}
           onChange={(e) => setExpCode(e.target.value)}
-          placeholder="зардлын данс (Дт), ж: 702701"
+          placeholder="Дт данс, ж: 310101, 702701"
           className="w-56 rounded border border-zinc-300 px-2 py-1 text-xs"
         />
         <button
@@ -187,10 +228,11 @@ export function StatementsTable({
           onClick={applyExpense}
           className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
         >
-          Зардалд бичих ({selected.size})
+          Дт-д бичих ({selected.size})
         </button>
         <span className="text-xs text-zinc-400">
-          Сонгосон гүйлгээний Дт-д зардлын данс ононо (Кт=банк авто).
+          Сонгосон гүйлгээний Дт дансыг олноор ононо (Кт=банк авто). Жнь түрээс
+          урьдчилгаа → 310101.
         </span>
       </div>
 
@@ -257,8 +299,8 @@ export function StatementsTable({
                 <td className="whitespace-nowrap px-3 py-2 text-zinc-500">{r.bank}</td>
                 <td className="max-w-xs px-3 py-2 text-zinc-700"><span title={r.description ?? ""}>{r.description}</span></td>
                 <td className="px-3 py-2 text-zinc-700">{r.counterparty}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-green-700">{fmt(r.income)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-red-700">{fmt(r.expense)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-green-700">{fmt(mnt(r.income, r.exchange_rate))}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-red-700">{fmt(mnt(r.expense, r.exchange_rate))}</td>
                 {editing ? (
                   <>
                     <td className="px-2 py-1">

@@ -22,6 +22,7 @@ type Txn = {
   counterparty: string | null;
   income: number | null;
   expense: number | null;
+  exchange_rate: number | null;
   income_code: string | null;
   expense_code: string | null;
   debit_code: string | null;
@@ -52,7 +53,7 @@ export default async function StatementsPage({
   let rowsQuery = supabase
     .from("transactions")
     .select(
-      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,income_code,expense_code,debit_code,credit_code",
+      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,exchange_rate,income_code,expense_code,debit_code,credit_code",
     );
   if (sp.account) rowsQuery = rowsQuery.eq("account_id", sp.account);
   if (sp.year) rowsQuery = rowsQuery.eq("year", Number(sp.year));
@@ -106,8 +107,13 @@ export default async function StatementsPage({
   let totalIncome: number;
   let totalExpense: number;
   if (sp.coded === "no" || sp.coded === "yes") {
-    totalIncome = sp.dir === "expense" ? 0 : txns.reduce((s, r) => s + (Number(r.income) || 0), 0);
-    totalExpense = sp.dir === "income" ? 0 : txns.reduce((s, r) => s + (Number(r.expense) || 0), 0);
+    // Валютын гүйлгээг ханшаар MNT болгож нэгтгэнэ (rate=1 бол төгрөг хэвээр).
+    const mnt = (v: number | null, rate: number | null) =>
+      (Number(v) || 0) * (Number(rate) || 1);
+    totalIncome =
+      sp.dir === "expense" ? 0 : txns.reduce((s, r) => s + mnt(r.income, r.exchange_rate), 0);
+    totalExpense =
+      sp.dir === "income" ? 0 : txns.reduce((s, r) => s + mnt(r.expense, r.exchange_rate), 0);
   } else {
     totalIncome = sp.dir === "expense" ? 0 : sumIncome;
     totalExpense = sp.dir === "income" ? 0 : sumExpense;
