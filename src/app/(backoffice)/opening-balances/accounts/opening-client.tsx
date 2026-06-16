@@ -31,12 +31,10 @@ export function OpeningClient({
   accounts,
   initial,
   year,
-  years,
 }: {
   accounts: Acct[];
   initial: Record<string, number>; // code → natural amount
   year: number;
-  years: number[];
 }) {
   const [vals, setVals] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
@@ -64,7 +62,7 @@ export function OpeningClient({
       });
   }, [accounts, vals, q, onlyFilled]);
 
-  // Нийт Дт/Кт (бүх данс дээр, шүүлтээс үл хамаарна).
+  // Энэ хуудсанд гараар оруулсан Дт/Кт (бусад дэд дэвтэр тусдаа).
   const totals = useMemo(() => {
     let dr = 0;
     let cr = 0;
@@ -77,8 +75,6 @@ export function OpeningClient({
     }
     return { dr, cr, diff: dr - cr };
   }, [accounts, vals]);
-
-  const balanced = Math.abs(totals.diff) < 0.5;
 
   function setVal(code: string, v: string) {
     setVals((m) => ({ ...m, [code]: v }));
@@ -125,22 +121,15 @@ export function OpeningClient({
     <div>
       {/* Хяналтын мөр */}
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <form method="get" className="flex items-center gap-2">
-          <label className="text-sm text-zinc-500">Тайлант он</label>
-          <select name="year" defaultValue={String(year)} className={inputCls}>
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y} ({y - 1}-12-31)
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-            Солих
-          </button>
-        </form>
+        <div className="text-sm text-zinc-500">
+          Энэ хуудасны гар оруулга:{" "}
+          <span className="font-medium text-zinc-700">
+            Дт {fmt(totals.dr)} / Кт {fmt(totals.cr)}
+          </span>
+        </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a
-            href="/opening-balances/template"
+            href="/opening-balances/accounts/template"
             className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             ↓ Excel загвар татах
@@ -153,24 +142,6 @@ export function OpeningClient({
             ↥ Excel-ээс импорт
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} className="hidden" />
-        </div>
-      </div>
-
-      {/* Тэнцлийн нэгтгэл */}
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-3">
-          <div className="text-xs text-zinc-500">Нийт Дт (хөрөнгө)</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-800">{fmt(totals.dr)}</div>
-        </div>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-3">
-          <div className="text-xs text-zinc-500">Нийт Кт (өр+өмч)</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-800">{fmt(totals.cr)}</div>
-        </div>
-        <div className={`rounded-2xl border p-3 ${balanced ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
-          <div className="text-xs text-zinc-500">Зөрүү</div>
-          <div className={`mt-1 text-lg font-semibold tabular-nums ${balanced ? "text-green-700" : "text-red-700"}`}>
-            {fmt(totals.diff)} {balanced ? "✓ тэнцэв" : "⚠"}
-          </div>
         </div>
       </div>
 
@@ -194,10 +165,9 @@ export function OpeningClient({
         </label>
         <button
           type="button"
-          disabled={pending || !balanced}
+          disabled={pending}
           onClick={save}
           className="ml-auto rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
-          title={balanced ? "" : "Эхлээд Зөрүү=0 болгоно уу"}
         >
           {pending ? "Хадгалж байна…" : "Хадгалах"}
         </button>
@@ -245,7 +215,8 @@ export function OpeningClient({
       </div>
       <p className="mt-2 text-xs text-zinc-400">
         Зөвхөн эерэг дүн бичнэ — Дт/Кт-г дансны шинжээс автомат тогтооно (хөрөнгө/зардал→Дт, өр/өмч/орлого→Кт).
-        Контр данс (ж: хуримтлагдсан элэгдэл) бол сөрөг тоо бичнэ. Зөрүү=0 болсон үед л хадгална.
+        Контр данс (ж: хуримтлагдсан элэгдэл) бол сөрөг тоо бичнэ. Харилцагч/хөрөнгө/барааны дэлгэрэнгүйг
+        тус тусын таб дээр оруулна — нийт тэнцлийг дээрх «Зөрүү» харуулна.
       </p>
     </div>
   );

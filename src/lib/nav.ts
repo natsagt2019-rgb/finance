@@ -14,7 +14,18 @@ export const navItems: NavItem[] = [
   { href: "/categorize", label: "AI ангилал", icon: "✨" },
   { href: "/statements", label: "Дансны хуулга", icon: "₮" },
   { href: "/reports/cashflow", label: "Мөнгөн урсгал", icon: "≈" },
-  { href: "/opening-balances", label: "Эхний үлдэгдэл", icon: "◔" },
+  {
+    href: "/opening-balances",
+    label: "Эхний үлдэгдэл",
+    icon: "◔",
+    children: [
+      { href: "/opening-balances/financial-statement", label: "Санхүүгийн тайлангийн", icon: "⚖" },
+      { href: "/opening-balances/accounts", label: "Дансны", icon: "🗂" },
+      { href: "/opening-balances/partners", label: "Харилцагчийн", icon: "👥" },
+      { href: "/opening-balances/assets", label: "Үндсэн хөрөнгийн", icon: "🏗" },
+      { href: "/opening-balances/inventory", label: "Барааны / хангамж", icon: "📦" },
+    ],
+  },
   { href: "/reports/trial-balance", label: "Гүйлгээ баланс (импорт)", icon: "↥" },
   { href: "/reports/trial-balance-by-type", label: "Гүйлгээ баланс (дансны төрлөөр)", icon: "Σ" },
   { href: "/reports/general-ledger", label: "Ерөнхий данс (харьцсан дансаар)", icon: "📚" },
@@ -31,6 +42,7 @@ export const navItems: NavItem[] = [
   { href: "/cash/bank-journal", label: "Мөнгөн хөрөнгийн журнал", icon: "📓" },
   { href: "/cash/cash-transactions", label: "Кассын гүйлгээний тайлан", icon: "🧾" },
   { href: "/partners", label: "Харилцагчид", icon: "👥" },
+  { href: "/partners/merge", label: "Харилцагчийн нэр нэгтгэх", icon: "🔗" },
   { href: "/purchases", label: "Худалдан авалт", icon: "🛒" },
   {
     href: "/sales",

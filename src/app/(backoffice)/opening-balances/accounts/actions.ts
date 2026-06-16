@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/server";
+import { OPENING_SOURCES, openDateFor } from "../shared";
 
 // Хөрөнгө/зардал = дебет шинж; өр/өмч/орлого = кредит шинж.
 const DEBIT_TYPES = new Set(["asset", "expense"]);
@@ -26,16 +27,16 @@ export type SaveResult =
   | { ok: true; count: number; date: string }
   | { ok: false; error: string };
 
-// Эхний үлдэгдлийг is_opening журнал болгож хадгална.
-// Тайлант он Y → эхний үлдэгдлийн огноо = (Y-1)-12-31.
+// Дансны эхний үлдэгдлийг is_opening журнал (source='opening') болгож хадгална.
 // Тэмдэг (Дт/Кт)-г дансны type-ээс автомат тогтооно. Дүн сөрөг бол эсрэг тал
-// (контр данс, ж: хуримтлагдсан элэгдэл).
+// (контр данс, ж: хуримтлагдсан элэгдэл). Нийт тэнцлийг (бүх дэд дэвтэртэй
+// хамт) UI шалгадаг тул энд дангаар нь тэнцэхийг шаардахгүй.
 export async function saveOpeningBalances(
   year: number,
   rows: OpenRow[],
 ): Promise<SaveResult> {
   const supabase = await requireAuth();
-  const date = `${year - 1}-12-31`;
+  const date = openDateFor(year);
 
   const { data: accs } = await supabase.from("accounts").select("code, type");
   const typeOf = new Map<string, string>();
@@ -66,31 +67,26 @@ export async function saveOpeningBalances(
       debit_code: dp > 0 ? r.code : null,
       credit_code: dp < 0 ? r.code : null,
       is_opening: true,
-      source: "opening",
+      source: OPENING_SOURCES.accounts,
     });
   }
 
-  const totDr = entries.filter((e) => e.debit_code).reduce((s, e) => s + e.amount, 0);
-  const totCr = entries.filter((e) => e.credit_code).reduce((s, e) => s + e.amount, 0);
-  if (Math.abs(totDr - totCr) > 0.5)
-    return {
-      ok: false,
-      error: `Тэнцэхгүй байна: Дт ${r2(totDr).toLocaleString()} ≠ Кт ${r2(totCr).toLocaleString()} (Зөрүү ${r2(totDr - totCr).toLocaleString()}). Эхлээд тэнцүүлнэ үү.`,
-    };
-
-  // Тухайн огнооны хуучин эхний үлдэгдлийг солино (idempotent).
+  // Тухайн огнооны хуучин ГАР оруулгыг солино (зөвхөн source='opening' —
+  // дэд дэвтрийн source-уудыг хөндөхгүй). Idempotent.
   await supabase
     .from("journal_entries")
     .delete()
     .eq("is_opening", true)
-    .eq("txn_date", date);
+    .eq("txn_date", date)
+    .eq("source", OPENING_SOURCES.accounts);
 
   if (entries.length > 0) {
     const { error } = await supabase.from("journal_entries").insert(entries);
     if (error) return { ok: false, error: error.message };
   }
 
-  revalidatePath("/opening-balances");
+  revalidatePath("/opening-balances/accounts");
+  revalidatePath("/opening-balances/financial-statement");
   return { ok: true, count: entries.length, date };
 }
 
