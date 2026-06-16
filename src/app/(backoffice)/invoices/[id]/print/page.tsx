@@ -49,10 +49,12 @@ export default async function InvoicePrintPage({
   }
   const recipientName = partner?.name || inv.partner_name || "—";
 
-  const amount = Number(inv.amount) || 0;
-  const noat = Math.round(amount * VAT_RATE);
-  const grand = amount + noat;
-  const remaining = amount - (Number(inv.paid_amount) || 0);
+  // inv.amount = НӨАТ-тай нийт дүн (форм "Нийт дүн"; төлөв нь paid_amount-ийг
+  // үүнтэй харьцуулдаг). НӨАТ-ыг нийт дүнгээс ЗАДЛАН гаргана — дээр нь нэмэхгүй.
+  const grand = Number(inv.amount) || 0;
+  const net = Math.round(grand / (1 + VAT_RATE));
+  const noat = grand - net;
+  const remaining = grand - (Number(inv.paid_amount) || 0);
 
   const isPaid = inv.status === "paid";
   const stamp = isPaid
@@ -192,10 +194,10 @@ export default async function InvoicePrintPage({
               </td>
               <td className="px-2.5 py-2.5 text-center text-zinc-700">1</td>
               <td className="px-2.5 py-2.5 text-right text-zinc-700">
-                {fmtMoney(amount)}₮
+                {fmtMoney(net)}₮
               </td>
               <td className="px-2.5 py-2.5 text-right text-zinc-700">
-                {fmtMoney(amount)}₮
+                {fmtMoney(net)}₮
               </td>
             </tr>
             {[0, 1].map((i) => (
@@ -220,9 +222,9 @@ export default async function InvoicePrintPage({
 
           <div className="min-w-[240px]">
             <div className="flex justify-between border-b border-zinc-100 py-1.5 text-[13px]">
-              <span className="text-[11px] text-zinc-400">Дүн</span>
+              <span className="text-[11px] text-zinc-400">Дүн (НӨАТ-гүй)</span>
               <span className="font-semibold text-zinc-400">
-                {fmtMoney(amount)}₮
+                {fmtMoney(net)}₮
               </span>
             </div>
             <div className="flex justify-between border-b border-zinc-100 py-1.5 text-[13px]">

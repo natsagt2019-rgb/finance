@@ -17,7 +17,7 @@ type Group = {
   code: string;
   name: string;
   count: number;
-  net: number;
+  gross: number; // invoices.amount = НӨАТ-тай нийт дүн
 };
 
 export default async function SalesByCustomerPage({
@@ -68,9 +68,9 @@ export default async function SalesByCustomerPage({
     const code = p?.code || "";
     const key = r.partner_id != null ? `id:${r.partner_id}` : `nm:${name}`;
     const g =
-      groups.get(key) ?? { key, code, name, count: 0, net: 0 };
+      groups.get(key) ?? { key, code, name, count: 0, gross: 0 };
     g.count += 1;
-    g.net += Number(r.amount) || 0;
+    g.gross += Number(r.amount) || 0;
     groups.set(key, g);
   }
 
@@ -83,10 +83,11 @@ export default async function SalesByCustomerPage({
         g.code.toLowerCase().includes(term),
     );
   }
-  list.sort((a, b) => b.net - a.net);
+  list.sort((a, b) => b.gross - a.gross);
 
-  const totalNet = list.reduce((s, g) => s + g.net, 0);
-  const totalVat = totalNet * VAT_RATE;
+  const totalGross = list.reduce((s, g) => s + g.gross, 0);
+  const totalNet = Math.round(totalGross / (1 + VAT_RATE));
+  const totalVat = totalGross - totalNet;
   const totalCount = list.reduce((s, g) => s + g.count, 0);
 
   const inputCls =
@@ -160,9 +161,10 @@ export default async function SalesByCustomerPage({
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {list.map((g, i) => {
-                const vat = g.net * VAT_RATE;
-                const total = g.net + vat;
-                const pct = totalNet ? (g.net / totalNet) * 100 : 0;
+                const total = g.gross;
+                const net = Math.round(g.gross / (1 + VAT_RATE));
+                const vat = g.gross - net;
+                const pct = totalGross ? (g.gross / totalGross) * 100 : 0;
                 return (
                   <tr key={g.key}>
                     <td className="px-3 py-1.5 text-right tabular-nums text-zinc-400">
@@ -176,7 +178,7 @@ export default async function SalesByCustomerPage({
                       {g.count}
                     </td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-zinc-700">
-                      {fmt(g.net)}
+                      {fmt(net)}
                     </td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-zinc-500">
                       {fmt(vat)}
@@ -202,7 +204,7 @@ export default async function SalesByCustomerPage({
                 <td className="px-4 py-2 text-right tabular-nums">{fmt(totalNet)}</td>
                 <td className="px-4 py-2 text-right tabular-nums">{fmt(totalVat)}</td>
                 <td className="px-4 py-2 text-right tabular-nums">
-                  {fmt(totalNet + totalVat)}
+                  {fmt(totalGross)}
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums">100.0%</td>
               </tr>

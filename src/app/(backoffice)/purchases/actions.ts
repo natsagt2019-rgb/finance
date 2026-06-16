@@ -63,6 +63,7 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
   const id = pur.id as number;
 
   // 2) Журнал (journal_entries — тайлангийн эх сурвалж).
+  // source_id = худалдан авалтын id — устгахад нарийн холбоно.
   const rows: Record<string, unknown>[] = [
     {
       txn_date: date,
@@ -73,6 +74,7 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
       credit_code: AP,
       is_opening: false,
       source: "purchase",
+      source_id: id,
     },
   ];
   if (vat > 0) {
@@ -85,9 +87,15 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
       credit_code: AP,
       is_opening: false,
       source: "purchase",
+      source_id: id,
     });
   }
-  const { error: e2 } = await supabase.from("journal_entries").insert(rows);
+  let { error: e2 } = await supabase.from("journal_entries").insert(rows);
+  // source_id багана хараахан нэмэгдээгүй бол холбоосгүйгээр бичнэ.
+  if (e2 && /source_id/i.test(e2.message)) {
+    const bare = rows.map(({ source_id: _omit, ...r }) => r);
+    ({ error: e2 } = await supabase.from("journal_entries").insert(bare));
+  }
   if (e2) {
     await supabase.from("purchases").delete().eq("id", id);
     return { ok: false, error: `Журналд бичихэд алдаа: ${e2.message}` };
@@ -99,20 +107,31 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
 
 export async function deletePurchase(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
-  // Холбоотой журналыг утгаар нь устгана (огноо+партнёр+source).
-  const { data: p } = await supabase
-    .from("purchases")
-    .select("pur_date, partner_name")
-    .eq("id", id)
-    .maybeSingle();
-  if (p) {
-    await supabase
-      .from("journal_entries")
-      .delete()
-      .eq("source", "purchase")
-      .eq("txn_date", (p as { pur_date: string }).pur_date)
-      .eq("partner_name", (p as { partner_name: string | null }).partner_name ?? "");
+
+  // Нарийн устгал: зөвхөн энэ худалдан авалтын журнал (source_id-аар).
+  const { error: delErr } = await supabase
+    .from("journal_entries")
+    .delete()
+    .eq("source", "purchase")
+    .eq("source_id", id);
+
+  // source_id багана байхгүй (migration хийгээгүй) бол хуучин аргаар уналга.
+  if (delErr && /source_id/i.test(delErr.message)) {
+    const { data: p } = await supabase
+      .from("purchases")
+      .select("pur_date, partner_name")
+      .eq("id", id)
+      .maybeSingle();
+    if (p) {
+      await supabase
+        .from("journal_entries")
+        .delete()
+        .eq("source", "purchase")
+        .eq("txn_date", (p as { pur_date: string }).pur_date)
+        .eq("partner_name", (p as { partner_name: string | null }).partner_name ?? "");
+    }
   }
+
   const { error } = await supabase.from("purchases").update({ is_active: false }).eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/purchases");

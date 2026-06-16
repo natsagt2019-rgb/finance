@@ -54,12 +54,14 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
   if (e1) return { ok: false, error: e1.message };
   const id = sale.id as number;
 
+  // source_id = борлуулалтын id — устгахад нарийн холбоно.
   const rows: Record<string, unknown>[] = [
     {
       txn_date: date,
       description: `Борлуулалт: ${description ?? partnerName ?? ""}`.slice(0, 180),
       partner_name: partnerName, amount: net,
-      debit_code: AR, credit_code: revenueCode, is_opening: false, source: "sale",
+      debit_code: AR, credit_code: revenueCode, is_opening: false,
+      source: "sale", source_id: id,
     },
   ];
   if (vat > 0) {
@@ -67,10 +69,17 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
       txn_date: date,
       description: `Борлуулалтын НӨАТ: ${partnerName ?? ""}`.slice(0, 180),
       partner_name: partnerName, amount: vat,
-      debit_code: AR, credit_code: OUTPUT_VAT, is_opening: false, source: "sale",
+      debit_code: AR, credit_code: OUTPUT_VAT, is_opening: false,
+      source: "sale", source_id: id,
     });
   }
-  const { error: e2 } = await supabase.from("journal_entries").insert(rows);
+  let { error: e2 } = await supabase.from("journal_entries").insert(rows);
+  // source_id багана хараахан нэмэгдээгүй бол (journal-entries-source-id.sql)
+  // холбоосгүйгээр бичнэ — апп эвдрэхгүй, migration дараа нарийн болно.
+  if (e2 && /source_id/i.test(e2.message)) {
+    const bare = rows.map(({ source_id: _omit, ...r }) => r);
+    ({ error: e2 } = await supabase.from("journal_entries").insert(bare));
+  }
   if (e2) {
     await supabase.from("sales").delete().eq("id", id);
     return { ok: false, error: `Журналд бичихэд алдаа: ${e2.message}` };
@@ -82,19 +91,31 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
 
 export async function deleteSale(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
-  const { data: s } = await supabase
-    .from("sales")
-    .select("sale_date, partner_name")
-    .eq("id", id)
-    .maybeSingle();
-  if (s) {
-    await supabase
-      .from("journal_entries")
-      .delete()
-      .eq("source", "sale")
-      .eq("txn_date", (s as { sale_date: string }).sale_date)
-      .eq("partner_name", (s as { partner_name: string | null }).partner_name ?? "");
+
+  // Нарийн устгал: зөвхөн энэ борлуулалтын журнал (source_id-аар).
+  const { error: delErr } = await supabase
+    .from("journal_entries")
+    .delete()
+    .eq("source", "sale")
+    .eq("source_id", id);
+
+  // source_id багана байхгүй (migration хийгээгүй) бол хуучин аргаар уналга.
+  if (delErr && /source_id/i.test(delErr.message)) {
+    const { data: s } = await supabase
+      .from("sales")
+      .select("sale_date, partner_name")
+      .eq("id", id)
+      .maybeSingle();
+    if (s) {
+      await supabase
+        .from("journal_entries")
+        .delete()
+        .eq("source", "sale")
+        .eq("txn_date", (s as { sale_date: string }).sale_date)
+        .eq("partner_name", (s as { partner_name: string | null }).partner_name ?? "");
+    }
   }
+
   const { error } = await supabase.from("sales").update({ is_active: false }).eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/sales");
