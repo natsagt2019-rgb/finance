@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
 import { isPayableAccount, isReceivableAccount, normalizePartner } from "@/lib/receivables-calc";
+import { EntryEditButton } from "./entry-edit";
 
 // Тооцооны үлдэгдлийн тайлан — нэг харилцагчийн авлага/өглөгийн данс бүрээр
 // гүйлгээ тус бүрийн гүйлгээт үлдэгдэл (эхний/дебет/кредит/эцсийн).
@@ -24,7 +25,7 @@ type Entry = {
   credit_code: string | null;
 };
 
-type Line = { date: string; desc: string; debit: number; credit: number; balance: number };
+type Line = { id: number; date: string; desc: string; debit: number; credit: number; balance: number };
 type AcctSection = {
   code: string;
   name: string;
@@ -142,7 +143,7 @@ export default async function PartnerStatementPage({
         bal += delta;
         tDr += dr;
         tCt += ct;
-        lines.push({ date: (e.txn_date || "").slice(0, 10), desc: e.description || "", debit: dr, credit: ct, balance: bal });
+        lines.push({ id: e.id, date: (e.txn_date || "").slice(0, 10), desc: e.description || "", debit: dr, credit: ct, balance: bal });
       }
       const info = accInfo.get(code);
       // Хоосон (бүх нь 0) дансыг алгасна.
@@ -165,6 +166,64 @@ export default async function PartnerStatementPage({
   const recvBal = sections.filter((s) => s.isRecv).reduce((s, x) => s + x.closing, 0);
   const payBal = sections.filter((s) => !s.isRecv).reduce((s, x) => s + x.closing, 0);
   const partnerBal = recvBal - payBal;
+
+  // ── eBarimt (НӨАТ) баримт — тухайн харилцагчийнх (мэдээллийн, ледгерээс тусдаа) ──
+  // vat_active = толгой/хаалтын давхардал хассан. Харилцагчийг partner_id эсвэл
+  // partner_register-ээр тулгана. Огнооны мужид.
+  type VatLine = { id: number; date: string; ddtd: string | null; net: number; vat: number; total: number };
+  const ebarimtSales: VatLine[] = [];
+  const ebarimtPurch: VatLine[] = [];
+  if (partnerInput) {
+    const { data: pRow } = await supabase
+      .from("partners")
+      .select("id, register")
+      .ilike("name", partnerInput)
+      .limit(1)
+      .maybeSingle();
+    const pid = (pRow as { id: number; register: string | null } | null)?.id ?? null;
+    const preg = (pRow as { id: number; register: string | null } | null)?.register ?? null;
+    // eBarimt-ийн partner_id/register нь ихэвчлэн тулгагдаагүй (нэр зөрүүтэй) тул
+    // нэрний цөмөөр (компанийн төрлийн дагаврыг хасаж) бас тулгана.
+    // NB: JS-ийн \b кирилл үсэгт ажилладаггүй тул үгээр салгаж шүүнэ.
+    const SUFFIX = new Set(["ХХК", "ХК", "ТӨХК", "ХЗХ", "ББСБ", "ТББ", "ХОРШОО", "CO", "LTD", "LLC"]);
+    const nameCore = partnerInput
+      .replace(/["'(),.]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w && !SUFFIX.has(w.toUpperCase()))
+      .join(" ")
+      .trim();
+    const ors: string[] = [];
+    if (pid != null) ors.push(`partner_id.eq.${pid}`);
+    if (preg) ors.push(`partner_register.eq.${preg}`);
+    if (nameCore.length >= 3) ors.push(`partner_name.ilike.*${nameCore}*`);
+    if (ors.length > 0) {
+      const { data: vat } = await supabase
+        .from("vat_active")
+        .select("id, date, type, ddtd, amount, vat_amount, total_amount")
+        .or(ors.join(","))
+        .gte("date", from)
+        .lte("date", to)
+        .order("date", { ascending: true })
+        .limit(ENTRY_LIMIT);
+      for (const v of (vat as {
+        id: number; date: string; type: string; ddtd: string | null;
+        amount: number; vat_amount: number; total_amount: number;
+      }[] | null) ?? []) {
+        const line: VatLine = {
+          id: v.id,
+          date: (v.date || "").slice(0, 10),
+          ddtd: v.ddtd,
+          net: Number(v.amount) || 0,
+          vat: Number(v.vat_amount) || 0,
+          total: Number(v.total_amount) || 0,
+        };
+        if (v.type === "out") ebarimtSales.push(line);
+        else ebarimtPurch.push(line);
+      }
+    }
+  }
+  const salesTotal = ebarimtSales.reduce((s, l) => s + l.total, 0);
+  const purchTotal = ebarimtPurch.reduce((s, l) => s + l.total, 0);
 
   return (
     <div>
@@ -243,7 +302,12 @@ export default async function PartnerStatementPage({
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {sections.map((s) => (
-                  <AccountSection key={s.code} s={s} />
+                  <AccountSection
+                    key={s.code}
+                    s={s}
+                    partner={partnerInput}
+                    partnerNames={partnerNames}
+                  />
                 ))}
               </tbody>
               <tfoot className="text-sm">
@@ -267,6 +331,31 @@ export default async function PartnerStatementPage({
             </table>
           </div>
 
+          {(ebarimtSales.length > 0 || ebarimtPurch.length > 0) && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-zinc-700">
+                eBarimt баримт{" "}
+                <span className="font-normal text-zinc-400">
+                  (мэдээллийн — дээрх ледгерийн үлдэгдэлд ороогүй)
+                </span>
+              </h3>
+              <div className="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <EbarimtPanel
+                  title="Борлуулалт (out)"
+                  badgeCls="bg-blue-100 text-blue-700"
+                  lines={ebarimtSales}
+                  total={salesTotal}
+                />
+                <EbarimtPanel
+                  title="Худалдан авалт (in)"
+                  badgeCls="bg-amber-100 text-amber-700"
+                  lines={ebarimtPurch}
+                  total={purchTotal}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="mt-8 flex flex-wrap justify-between gap-6 text-sm text-zinc-700 print:mt-12">
             <div>Тайлан гаргасан: __________________</div>
             <div>Ерөнхий нягтлан: __________________</div>
@@ -278,7 +367,15 @@ export default async function PartnerStatementPage({
   );
 }
 
-function AccountSection({ s }: { s: AcctSection }) {
+function AccountSection({
+  s,
+  partner,
+  partnerNames,
+}: {
+  s: AcctSection;
+  partner: string;
+  partnerNames: string[];
+}) {
   const f = (n: number) => (Math.abs(n) < 0.005 ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   return (
     <>
@@ -297,7 +394,12 @@ function AccountSection({ s }: { s: AcctSection }) {
         <tr key={i} className="hover:bg-zinc-50">
           <td className="px-3 py-1 text-zinc-400">{i + 1}</td>
           <td className="whitespace-nowrap px-3 py-1 text-zinc-500">{l.date}</td>
-          <td className="max-w-[28rem] truncate px-3 py-1 text-zinc-700" title={l.desc}>{l.desc || "—"}</td>
+          <td className="max-w-[28rem] px-3 py-1 text-zinc-700">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate" title={l.desc}>{l.desc || "—"}</span>
+              <EntryEditButton id={l.id} partnerName={partner} amount={l.debit || l.credit} partnerNames={partnerNames} />
+            </div>
+          </td>
           <td className="px-3 py-1" />
           <td className="px-3 py-1 text-right tabular-nums text-zinc-700">{f(l.debit)}</td>
           <td className="px-3 py-1 text-right tabular-nums text-zinc-700">{f(l.credit)}</td>
@@ -312,5 +414,64 @@ function AccountSection({ s }: { s: AcctSection }) {
         <td className="px-3 py-1.5 text-right tabular-nums">{f(s.closing)}</td>
       </tr>
     </>
+  );
+}
+
+// eBarimt баримтын панел (борлуулалт / худалдан авалт).
+function EbarimtPanel({
+  title,
+  badgeCls,
+  lines,
+  total,
+}: {
+  title: string;
+  badgeCls: string;
+  lines: { id: number; date: string; ddtd: string | null; net: number; vat: number; total: number }[];
+  total: number;
+}) {
+  const f = (n: number) => (Math.abs(n) < 0.005 ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 0 }));
+  return (
+    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+      <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 py-2">
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeCls}`}>{title}</span>
+        <span className="text-xs text-zinc-500">{lines.length} баримт</span>
+      </div>
+      {lines.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-zinc-400">Баримт алга.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs font-medium text-zinc-500">
+              <tr>
+                <th className="px-3 py-1.5 text-left">Огноо</th>
+                <th className="px-3 py-1.5 text-left">ДДТД</th>
+                <th className="px-3 py-1.5 text-right">НӨАТ-гүй</th>
+                <th className="px-3 py-1.5 text-right">НӨАТ</th>
+                <th className="px-3 py-1.5 text-right">Нийт</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {lines.map((l) => (
+                <tr key={l.id} className="hover:bg-zinc-50">
+                  <td className="whitespace-nowrap px-3 py-1 text-zinc-500">{l.date}</td>
+                  <td className="max-w-[10rem] truncate px-3 py-1 font-mono text-xs text-zinc-400" title={l.ddtd ?? ""}>
+                    {l.ddtd ?? "—"}
+                  </td>
+                  <td className="px-3 py-1 text-right tabular-nums text-zinc-600">{f(l.net)}</td>
+                  <td className="px-3 py-1 text-right tabular-nums text-blue-600">{f(l.vat)}</td>
+                  <td className="px-3 py-1 text-right tabular-nums font-medium text-zinc-700">{f(l.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
+              <tr>
+                <td colSpan={4} className="px-3 py-1.5 text-right text-zinc-500">Нийт:</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{f(total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

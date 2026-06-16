@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { BANK_DISPLAY } from "@/lib/bank-importer";
 import { PrintButton } from "@/components/print-button";
+import { BankJournalTable } from "./bank-journal-table";
 
 type SearchParams = { acc?: string; from?: string; to?: string };
 
@@ -116,6 +117,15 @@ export default async function BankJournalPage({
     ((accRows as { code: string; name: string }[] | null) ?? []).map((a) => [a.code, a.name]),
   );
 
+  // Бүх идэвхтэй данс (харьцсан данс засах datalist-д).
+  const { data: allAccData } = await supabase
+    .from("accounts")
+    .select("code, name")
+    .eq("is_active", true)
+    .order("code")
+    .limit(5000);
+  const allAccounts = (allAccData as { code: string; name: string }[] | null) ?? [];
+
   // Харьцсан дансаар бүлэглэх.
   const groupMap = new Map<string, Group>();
   let totalIn = 0;
@@ -204,68 +214,17 @@ export default async function BankJournalPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead className="bg-zinc-100 text-xs font-medium text-zinc-600">
-                <tr>
-                  <th className="border border-zinc-200 px-3 py-2 text-right" style={{ width: 48 }}>№</th>
-                  <th className="border border-zinc-200 px-3 py-2 text-left">Огноо</th>
-                  <th className="border border-zinc-200 px-3 py-2 text-left">Гүйлгээний утга</th>
-                  <th className="border border-zinc-200 px-3 py-2 text-left">Харилцагч</th>
-                  <th className="border border-zinc-200 px-3 py-2 text-right">Орлого</th>
-                  <th className="border border-zinc-200 px-3 py-2 text-right">Зарлага</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groups.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border border-zinc-200 px-3 py-10 text-center text-sm text-zinc-500">
-                      Энэ хугацаанд гүйлгээ алга.
-                    </td>
-                  </tr>
-                ) : (
-                  groups.map((g) => (
-                    <GroupBlock key={g.code} g={g} ccy={ccy} />
-                  ))
-                )}
-                <tr className="border-t-2 border-zinc-300 bg-zinc-100 font-bold text-zinc-900">
-                  <td colSpan={4} className="border border-zinc-200 px-3 py-2">Нийт</td>
-                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-green-700">{fmt(totalIn, ccy)}</td>
-                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-red-600">{fmt(totalOut, ccy)}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="px-2 py-2">
+            <BankJournalTable
+              groups={groups}
+              ccy={ccy}
+              totalIn={totalIn}
+              totalOut={totalOut}
+              accounts={allAccounts}
+            />
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-function GroupBlock({ g, ccy }: { g: Group; ccy: string }) {
-  return (
-    <>
-      <tr className="bg-zinc-50 font-semibold text-zinc-700">
-        <td colSpan={6} className="border border-zinc-200 px-3 py-1.5">
-          Харьцсан данс: <span className="font-mono">{g.code}</span>
-          {g.name ? ` — ${g.name}` : ""}
-        </td>
-      </tr>
-      {g.rows.map(({ t, inc, exp }, i) => (
-        <tr key={t.id} className="hover:bg-zinc-50">
-          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-zinc-400">{i + 1}</td>
-          <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-600">{ubDate(t.txn_date)}</td>
-          <td className="border border-zinc-200 px-3 py-1.5 text-zinc-700">{t.description || "—"}</td>
-          <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-500">{t.counterparty || "—"}</td>
-          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">{inc ? fmt(inc, ccy) : "—"}</td>
-          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">{exp ? fmt(exp, ccy) : "—"}</td>
-        </tr>
-      ))}
-      <tr className="bg-amber-50/60 font-medium text-zinc-800">
-        <td colSpan={4} className="border border-zinc-200 px-3 py-1.5 text-right">Харьцсан дансны дүн</td>
-        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">{fmt(g.totalIn, ccy)}</td>
-        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">{fmt(g.totalOut, ccy)}</td>
-      </tr>
-    </>
   );
 }
