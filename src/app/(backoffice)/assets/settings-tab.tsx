@@ -78,8 +78,9 @@ export function SettingsTab({ categories }: { categories: CategoryRow[] }) {
                   <th className="px-4 py-2">Код</th>
                   <th className="px-4 py-2">Нэр</th>
                   <th className="px-4 py-2 text-right">Хугацаа (жил)</th>
-                  <th className="px-4 py-2">Данс</th>
-                  <th className="px-4 py-2">Элэгдлийн данс</th>
+                  <th className="px-4 py-2">Хөрөнгийн данс</th>
+                  <th className="px-4 py-2">Хуримтлагдсан элэгдэл</th>
+                  <th className="px-4 py-2">Элэгдлийн зардал</th>
                   <th className="no-print px-4 py-2 text-right">Үйлдэл</th>
                 </tr>
               </thead>
@@ -87,7 +88,7 @@ export function SettingsTab({ categories }: { categories: CategoryRow[] }) {
                 {categories.map((c) =>
                   editing === c.id ? (
                     <tr key={c.id} className="bg-amber-50/40">
-                      <td colSpan={6} className="px-4 py-3">
+                      <td colSpan={7} className="px-4 py-3">
                         <form
                           onSubmit={(e) => handleUpdate(e, c.id)}
                           className="flex flex-wrap items-end gap-3"
@@ -112,12 +113,16 @@ export function SettingsTab({ categories }: { categories: CategoryRow[] }) {
                             />
                           </div>
                           <div className="w-28">
-                            <label className={labelCls}>Данс</label>
+                            <label className={labelCls}>Хөрөнгийн данс</label>
                             <input name="account_code" defaultValue={c.account_code ?? ""} className={inputCls} />
                           </div>
                           <div className="w-32">
-                            <label className={labelCls}>Элэгдлийн данс</label>
+                            <label className={labelCls}>Хуримтлагдсан элэгдэл</label>
                             <input name="accum_account_code" defaultValue={c.accum_account_code ?? ""} className={inputCls} />
+                          </div>
+                          <div className="w-32">
+                            <label className={labelCls}>Элэгдлийн зардал</label>
+                            <input name="expense_account_code" defaultValue={c.expense_account_code ?? ""} className={inputCls} />
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -147,6 +152,7 @@ export function SettingsTab({ categories }: { categories: CategoryRow[] }) {
                       </td>
                       <td className="px-4 py-2 text-zinc-500">{c.account_code || "—"}</td>
                       <td className="px-4 py-2 text-zinc-500">{c.accum_account_code || "—"}</td>
+                      <td className="px-4 py-2 text-zinc-500">{c.expense_account_code || "—"}</td>
                       <td className="no-print whitespace-nowrap px-4 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -204,12 +210,16 @@ export function SettingsTab({ categories }: { categories: CategoryRow[] }) {
             />
           </div>
           <div className="w-28">
-            <label className={labelCls}>Данс</label>
+            <label className={labelCls}>Хөрөнгийн данс</label>
             <input name="account_code" placeholder="2170" className={inputCls} />
           </div>
           <div className="w-32">
-            <label className={labelCls}>Элэгдлийн данс</label>
+            <label className={labelCls}>Хуримтлагдсан элэгдэл</label>
             <input name="accum_account_code" placeholder="2197" className={inputCls} />
+          </div>
+          <div className="w-32">
+            <label className={labelCls}>Элэгдлийн зардал</label>
+            <input name="expense_account_code" placeholder="9120" className={inputCls} />
           </div>
           <button
             type="submit"

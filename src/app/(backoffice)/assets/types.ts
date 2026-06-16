@@ -4,13 +4,15 @@ export type CategoryRow = {
   code: string | null;
   name: string;
   useful_life_years: number;
-  account_code: string | null;
-  accum_account_code: string | null;
+  account_code: string | null; // хөрөнгийн данс
+  accum_account_code: string | null; // хуримтлагдсан элэгдэл (Кт)
+  expense_account_code: string | null; // элэгдлийн зардал (Дт)
   is_active: boolean;
 };
 
 export const CATEGORY_SELECT =
-  "id, code, name, useful_life_years, account_code, accum_account_code, is_active";
+  "id, code, name, useful_life_years, account_code, accum_account_code, " +
+  "expense_account_code, is_active";
 
 // ── Хөрөнгийн карт ───────────────────────────────────────────────────────────
 export type AssetStatus = "active" | "disposed";

@@ -4,6 +4,122 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { computeAsset } from "@/lib/asset-calc";
+import { postJournal } from "@/lib/post-journal";
+
+type Supa = Awaited<ReturnType<typeof createClient>>;
+
+// Сарын сүүлийн өдөр (элэгдлийн журналын огноо).
+function monthEndDate(year: number, month: number): string {
+  const last = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+}
+
+// ── Элэгдлийг GL журналд бичих: Дт элэгдлийн зардал / Кт хуримтлагдсан элэгдэл ──
+// Идемпотент: тухайн сарын өмнөх asset_depr журналыг устгаад дахин бичнэ.
+// Ангилалд expense_account_code эсвэл accum_account_code тохируулаагүй хөрөнгийг
+// алгасна (журналд орохгүй ч снапшот хадгалагдсан хэвээр).
+async function postDepreciationJournal(
+  supabase: Supa,
+  year: number,
+  month: number,
+  assetIds: number[],
+  amountByAsset: Map<number, number>,
+): Promise<{ posted: boolean; error?: string }> {
+  if (assetIds.length === 0) return { posted: false };
+
+  // Хөрөнгө → ангилал → данс.
+  const { data: assets } = await supabase
+    .from("assets")
+    .select("id, category_id")
+    .in("id", assetIds);
+  const catIdByAsset = new Map<number, number | null>();
+  for (const a of (assets as { id: number; category_id: number | null }[] | null) ?? [])
+    catIdByAsset.set(a.id, a.category_id);
+
+  const catIds = [
+    ...new Set([...catIdByAsset.values()].filter((x): x is number => x != null)),
+  ];
+  if (catIds.length === 0) return { posted: false };
+
+  const { data: cats } = await supabase
+    .from("asset_categories")
+    .select("id, expense_account_code, accum_account_code")
+    .in("id", catIds);
+  const catById = new Map<
+    number,
+    { exp: string | null; acc: string | null }
+  >();
+  for (const c of (cats as
+    | { id: number; expense_account_code: string | null; accum_account_code: string | null }[]
+    | null) ?? [])
+    catById.set(c.id, { exp: c.expense_account_code, acc: c.accum_account_code });
+
+  // (Дт зардал, Кт хуримтлагдсан) хосоор дүнг нэгтгэх.
+  const pairs = new Map<string, { exp: string; acc: string; amt: number }>();
+  for (const assetId of assetIds) {
+    const amt = Math.round((amountByAsset.get(assetId) ?? 0) * 100) / 100;
+    if (amt <= 0) continue;
+    const catId = catIdByAsset.get(assetId);
+    const cat = catId != null ? catById.get(catId) : null;
+    if (!cat?.exp || !cat?.acc) continue; // данс тохируулаагүй → алгасна
+    const key = `${cat.exp}|${cat.acc}`;
+    const p = pairs.get(key) ?? { exp: cat.exp, acc: cat.acc, amt: 0 };
+    p.amt += amt;
+    pairs.set(key, p);
+  }
+  if (pairs.size === 0) return { posted: false };
+
+  // Дансны код → id.
+  const codes = [
+    ...new Set([...pairs.values()].flatMap((p) => [p.exp, p.acc])),
+  ];
+  const { data: accs } = await supabase
+    .from("accounts")
+    .select("id, code")
+    .in("code", codes);
+  const idByCode = new Map<string, number>();
+  for (const a of (accs as { id: number; code: string }[] | null) ?? [])
+    idByCode.set(a.code, a.id);
+
+  const lines: { account_id: number; debit: number; credit: number; description: string }[] = [];
+  for (const p of pairs.values()) {
+    const expId = idByCode.get(p.exp);
+    const accId = idByCode.get(p.acc);
+    if (expId == null || accId == null) {
+      return {
+        posted: false,
+        error: `Дансны код олдсонгүй: ${expId == null ? p.exp : p.acc}. accounts хүснэгтэд нэмнэ үү.`,
+      };
+    }
+    lines.push({ account_id: expId, debit: p.amt, credit: 0, description: "Сарын элэгдэл" });
+    lines.push({ account_id: accId, debit: 0, credit: p.amt, description: "Сарын элэгдэл" });
+  }
+
+  // Идемпотент: тухайн сарын өмнөх элэгдлийн журналыг устгана.
+  const date = monthEndDate(year, month);
+  const { data: oldJ } = await supabase
+    .from("journals")
+    .select("id")
+    .eq("source", "asset_depr")
+    .eq("date", date);
+  const oldIds = (oldJ as { id: number }[] | null)?.map((j) => j.id) ?? [];
+  if (oldIds.length > 0) {
+    await supabase.from("journal_entries").delete().in("journal_id", oldIds);
+    await supabase.from("journal_lines").delete().in("journal_id", oldIds);
+    await supabase.from("journals").delete().in("id", oldIds);
+  }
+
+  const res = await postJournal(supabase, {
+    date,
+    description: `Сарын элэгдэл ${year}-${String(month).padStart(2, "0")}`,
+    reference: null,
+    partner_id: null,
+    source: "asset_depr",
+    lines,
+  });
+  if (!res.ok) return { posted: false, error: res.error };
+  return { posted: true };
+}
 
 export type ActionResult =
   | { ok: true; id: number }
@@ -157,7 +273,22 @@ export async function saveDepreciation(
     .upsert(records, { onConflict: "asset_id,year,month" });
 
   if (error) return { ok: false, error: error.message };
+
+  // ── GL журнал: Дт элэгдлийн зардал / Кт хуримтлагдсан элэгдэл ──
+  const amountByAsset = new Map<number, number>();
+  for (const r of records)
+    amountByAsset.set(r.asset_id, r.monthly_depreciation);
+  const jr = await postDepreciationJournal(
+    supabase,
+    year,
+    month,
+    rows.map((r) => r.asset_id),
+    amountByAsset,
+  );
+  if (jr.error) return { ok: false, error: `Журнал: ${jr.error}` };
+
   revalidatePath("/assets");
+  revalidatePath("/reports/trial-balance");
   return { ok: true, id: records.length };
 }
 
@@ -171,6 +302,7 @@ function readCategory(formData: FormData) {
     useful_life_years: life > 0 ? life : 10,
     account_code: get("account_code") || null,
     accum_account_code: get("accum_account_code") || null,
+    expense_account_code: get("expense_account_code") || null,
   };
 }
 
