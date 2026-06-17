@@ -71,9 +71,12 @@ function toPreviewRow(t: NormalizedTxn): PreviewRow {
 }
 
 // Гүйлгээний давтагдашгүй гарын үсэг — давхардал шалгахад ашиглана.
-// ХАРИЛЦАГЧТАЙ гүйлгээ: огноо (цаг үл хамаарна) + харилцагч + тайлбар + дүн.
-//   → re-export-ийн timestamp зөрүү (UTC/UB 8 цаг)-ийг тойрно. Нэрлэсэн
-//     харилцагч нэг өдөр яг ижил гүйлгээг давтахгүй тул аюулгүй.
+// ХАРИЛЦАГЧТАЙ гүйлгээ: огноо (цаг үл хамаарна) + тайлбар + дүн.
+//   → re-export-ийн timestamp зөрүү (UTC/UB 8 цаг)-ийг тойрно. Тайлбарт
+//     баримтын дугаар зэрэг өвөрмөц мэдээлэл агуулагддаг тул найдвартай.
+//   → Харилцагчийн НЭР-ийг гарын үсэгт ОРУУЛАХГҮЙ: парсер хувилбар бүр нэрийг
+//     тайлбараас өөрөөр сугалдаг (ж: "ЦЭЦЭНС МАЙНИНГ" vs "ЦЭЦЭНС МАЙНИНГ ЭНД
+//     ЭНЕРЖИ") тул нэрээр шалгавал ижил гүйлгээ давхардахгүй мултарна.
 // ХАРИЛЦАГЧГҮЙ (банкны жижиг шимтгэл): бүтэн timestamp ашиглана — нэг өдөр
 //   олон ижил шимтгэл (зөвхөн цагаар ялгардаг) хуурамчаар нэгдэхгүй.
 function fingerprint(
@@ -90,7 +93,7 @@ function fingerprint(
   const cp = (counterparty ?? "").trim();
   if (cp) {
     const dateOnly = new Date(txnDate).toISOString().slice(0, 10);
-    return [accountId, dateOnly, cp.toLowerCase(), desc, inc, exp].join("|");
+    return [accountId, dateOnly, desc, inc, exp].join("|");
   }
   const d = new Date(txnDate).toISOString();
   return [accountId, d, desc, inc, exp].join("|");
