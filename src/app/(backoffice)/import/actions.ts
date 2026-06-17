@@ -115,26 +115,35 @@ async function existingFingerprints(
   const minIso = new Date(new Date(isos[0]).getTime() - DAY).toISOString();
   const maxIso = new Date(new Date(isos[isos.length - 1]).getTime() + DAY).toISOString();
 
-  const { data } = await supabase
-    .from("transactions")
-    .select("account_id,txn_date,description,income,expense,counterparty")
-    .in("account_id", accounts)
-    .gte("txn_date", minIso)
-    .lte("txn_date", maxIso);
-
-  for (const r of (data as
-    | {
-        account_id: string;
-        txn_date: string;
-        description: string | null;
-        income: number | null;
-        expense: number | null;
-        counterparty: string | null;
-      }[]
-    | null) ?? []) {
-    set.add(
-      fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty),
-    );
+  // PostgREST нэг хүсэлтэд дээд тал нь 1000 мөр буцаадаг тул бүх мөрийг
+  // хуудаслаж татна. Эс бөгөөс муж 1000-аас олон мөртэй үед DB-д БАЙГАА
+  // гүйлгээ dbSet-д ороогүй үлдэж, давхардлыг алдаж дахин импортолно.
+  const PAGE = 1000;
+  type Row = {
+    account_id: string;
+    txn_date: string;
+    description: string | null;
+    income: number | null;
+    expense: number | null;
+    counterparty: string | null;
+  };
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("account_id,txn_date,description,income,expense,counterparty")
+      .in("account_id", accounts)
+      .gte("txn_date", minIso)
+      .lte("txn_date", maxIso)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const batch = (data as Row[] | null) ?? [];
+    for (const r of batch) {
+      set.add(
+        fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty),
+      );
+    }
+    if (batch.length < PAGE) break;
   }
   return set;
 }
