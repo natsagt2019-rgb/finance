@@ -71,30 +71,30 @@ function toPreviewRow(t: NormalizedTxn): PreviewRow {
 }
 
 // Гүйлгээний давтагдашгүй гарын үсэг — давхардал шалгахад ашиглана.
-// ХАРИЛЦАГЧТАЙ гүйлгээ: огноо (цаг үл хамаарна) + тайлбар + дүн.
-//   → re-export-ийн timestamp зөрүү (UTC/UB 8 цаг)-ийг тойрно. Тайлбарт
-//     баримтын дугаар зэрэг өвөрмөц мэдээлэл агуулагддаг тул найдвартай.
-//   → Харилцагчийн НЭР-ийг гарын үсэгт ОРУУЛАХГҮЙ: парсер хувилбар бүр нэрийг
-//     тайлбараас өөрөөр сугалдаг (ж: "ЦЭЦЭНС МАЙНИНГ" vs "ЦЭЦЭНС МАЙНИНГ ЭНД
-//     ЭНЕРЖИ") тул нэрээр шалгавал ижил гүйлгээ давхардахгүй мултарна.
-// ХАРИЛЦАГЧГҮЙ (банкны жижиг шимтгэл): бүтэн timestamp ашиглана — нэг өдөр
-//   олон ижил шимтгэл (зөвхөн цагаар ялгардаг) хуурамчаар нэгдэхгүй.
+// Түлхүүр: данс + БҮТЭН timestamp + нормчилсон тайлбар + орлого + зарлага.
+//
+// Яагаад БҮТЭН timestamp (огноо-only биш):
+//   Цаг л жинхэнэ ялгагч. Ижил гүйлгээг дахин импортлоход банк ижил timestamp
+//   өгдөг тул барина. Харин ижил дүн/тайлбартай ч ӨӨР хүнд хийсэн бодит гүйлгээ
+//   (ж: 2 ажилтны "урьдчилгаа цалин" 1,120,000) өөр timestamp-тай тул нэгдэхгүй.
+//   Огноо-only бол эдгээрийг хуурамчаар нэгтгэж, бодит гүйлгээг устгана.
+// Яагаад ХАРИЛЦАГЧГҮЙ:
+//   Парсер хувилбар бүр харилцагчийн нэрийг тайлбараас өөрөөр сугалдаг
+//   (ж: "ЦЭЦЭНС МАЙНИНГ" vs "ЦЭЦЭНС МАЙНИНГ ЭНД ЭНЕРЖИ") тул найдваргүй.
+// Яагаад тайлбарын зайг нормчилдог:
+//   Парсер tab/олон зайг өөр өөрөөр тавьдаг ("K3⇥..." vs "K3␣␣␣...") тул
+//   нормчлохгүй бол ижил гүйлгээ давхардаж байв.
 function fingerprint(
   accountId: string,
   txnDate: string,
   description: string | null,
   income: number | null | string,
   expense: number | null | string,
-  counterparty: string | null = null,
+  _counterparty: string | null = null,
 ): string {
   const inc = income === null || income === undefined ? "" : String(Number(income));
   const exp = expense === null || expense === undefined ? "" : String(Number(expense));
-  const desc = (description ?? "").trim();
-  const cp = (counterparty ?? "").trim();
-  if (cp) {
-    const dateOnly = new Date(txnDate).toISOString().slice(0, 10);
-    return [accountId, dateOnly, desc, inc, exp].join("|");
-  }
+  const desc = (description ?? "").trim().replace(/\s+/g, " ");
   const d = new Date(txnDate).toISOString();
   return [accountId, d, desc, inc, exp].join("|");
 }
