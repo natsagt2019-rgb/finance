@@ -71,18 +71,29 @@ function toPreviewRow(t: NormalizedTxn): PreviewRow {
 }
 
 // Гүйлгээний давтагдашгүй гарын үсэг — давхардал шалгахад ашиглана.
-// (transactions хүснэгтийн unique constraint-тэй ижил талбарууд.)
+// ХАРИЛЦАГЧТАЙ гүйлгээ: огноо (цаг үл хамаарна) + харилцагч + тайлбар + дүн.
+//   → re-export-ийн timestamp зөрүү (UTC/UB 8 цаг)-ийг тойрно. Нэрлэсэн
+//     харилцагч нэг өдөр яг ижил гүйлгээг давтахгүй тул аюулгүй.
+// ХАРИЛЦАГЧГҮЙ (банкны жижиг шимтгэл): бүтэн timestamp ашиглана — нэг өдөр
+//   олон ижил шимтгэл (зөвхөн цагаар ялгардаг) хуурамчаар нэгдэхгүй.
 function fingerprint(
   accountId: string,
   txnDate: string,
   description: string | null,
   income: number | null | string,
   expense: number | null | string,
+  counterparty: string | null = null,
 ): string {
-  const d = new Date(txnDate).toISOString();
   const inc = income === null || income === undefined ? "" : String(Number(income));
   const exp = expense === null || expense === undefined ? "" : String(Number(expense));
-  return [accountId, d, (description ?? "").trim(), inc, exp].join("|");
+  const desc = (description ?? "").trim();
+  const cp = (counterparty ?? "").trim();
+  if (cp) {
+    const dateOnly = new Date(txnDate).toISOString().slice(0, 10);
+    return [accountId, dateOnly, cp.toLowerCase(), desc, inc, exp].join("|");
+  }
+  const d = new Date(txnDate).toISOString();
+  return [accountId, d, desc, inc, exp].join("|");
 }
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -98,12 +109,15 @@ async function existingFingerprints(
 
   const accounts = [...new Set(rows.map((r) => r.account_id))];
   const isos = rows.map((r) => r.txn_date).sort();
-  const minIso = isos[0];
-  const maxIso = isos[isos.length - 1];
+  // Мужийг ±1 өдөр өргөтгөнө — timestamp-ийн timezone зөрүү (8 цаг) бүхий
+  // давхардсан мөрүүд мужаас гарч мултрахаас сэргийлнэ.
+  const DAY = 86400000;
+  const minIso = new Date(new Date(isos[0]).getTime() - DAY).toISOString();
+  const maxIso = new Date(new Date(isos[isos.length - 1]).getTime() + DAY).toISOString();
 
   const { data } = await supabase
     .from("transactions")
-    .select("account_id,txn_date,description,income,expense")
+    .select("account_id,txn_date,description,income,expense,counterparty")
     .in("account_id", accounts)
     .gte("txn_date", minIso)
     .lte("txn_date", maxIso);
@@ -115,9 +129,12 @@ async function existingFingerprints(
         description: string | null;
         income: number | null;
         expense: number | null;
+        counterparty: string | null;
       }[]
     | null) ?? []) {
-    set.add(fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense));
+    set.add(
+      fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty),
+    );
   }
   return set;
 }
@@ -183,7 +200,9 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
   const dbSet = await existingFingerprints(supabase, rows);
   const seen = new Set<string>();
   for (const r of rows) {
-    const fp = fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense);
+    const fp = fingerprint(
+      r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty,
+    );
     r.isDuplicate = dbSet.has(fp) || seen.has(fp);
     seen.add(fp);
   }
@@ -216,7 +235,9 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   const dbSet = await existingFingerprints(supabase, rows);
   const seen = new Set<string>();
   const newRows = rows.filter((r) => {
-    const fp = fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense);
+    const fp = fingerprint(
+      r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty,
+    );
     if (dbSet.has(fp) || seen.has(fp)) return false; // DB эсвэл багц доторх давхардал
     seen.add(fp);
     return true;
