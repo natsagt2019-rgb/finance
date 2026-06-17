@@ -49,6 +49,9 @@ export type PostingTxn = {
   income_code: string | null;
   expense_code: string | null;
   account_id: string;
+  // Залруулсан GL кодууд (autoLink/гар) — журналд эдгээрийг шууд хэрэглэнэ.
+  debit_code: string | null;
+  credit_code: string | null;
 };
 
 // journal_entries-д орох мөр.
@@ -68,10 +71,8 @@ export type BuildResult = {
   rows: JournalEntryRow[];
   made: number;
   skipped: number;
-  // Журналд орохгүй (CAT-д байхгүй) ангиллын кодууд → тоо.
-  missingCodes: Record<string, number>;
-  // Банкны кодгүй (TTU/TTE/TR г.м.) гүйлгээний тоо.
-  skippedNoBank: number;
+  // Дт эсвэл Кт код дутуу (холболт хийгээгүй) тул журналд ороогүй гүйлгээний тоо.
+  skippedUncoded: number;
 };
 
 // description-ийн idempotent угтвар (он бүрд).
@@ -84,30 +85,31 @@ function isoDate(d: string): string {
 }
 
 // transactions → journal_entries мөрүүд (цэвэр функц).
+// Гүйлгээний ЗАЛРУУЛСАН debit_code/credit_code-ийг шууд журналд бичнэ
+// (банкны тал авто + нөгөө тал autoLink/гараар засагдсан). Хоёр тал бүрэн
+// биш бол алгасна. cf_code-ийг ангиллын кодоор тогтооно.
 export function buildBankJournalRows(
   txns: PostingTxn[],
   year: number,
 ): BuildResult {
   const prefix = postingPrefix(year);
   const rows: JournalEntryRow[] = [];
-  const missingCodes: Record<string, number> = {};
   let skipped = 0;
-  let skippedNoBank = 0;
+  let skippedUncoded = 0;
 
   for (const t of txns) {
-    const bank = BANK_CODE[t.account_id];
     const isIncome = Number(t.income) > 0;
     const code = isIncome ? t.income_code : t.expense_code;
-    const cat = code ? CAT_ACCOUNT[code] : undefined;
     const amount = Number(t.income) || Number(t.expense) || 0;
+    const dt = (t.debit_code ?? "").trim();
+    const kt = (t.credit_code ?? "").trim();
 
-    if (!bank) {
-      skippedNoBank++;
+    if (amount <= 0) {
       skipped++;
       continue;
     }
-    if (!cat || amount <= 0) {
-      if (code && !cat) missingCodes[code] = (missingCodes[code] ?? 0) + 1;
+    if (!dt || !kt) {
+      skippedUncoded++;
       skipped++;
       continue;
     }
@@ -118,12 +120,12 @@ export function buildBankJournalRows(
       partner_code: t.master_code,
       partner_name: t.master_name,
       amount,
-      debit_code: isIncome ? bank : cat,
-      credit_code: isIncome ? cat : bank,
+      debit_code: dt,
+      credit_code: kt,
       cf_code: (code && CAT_CF[code]) || null,
       is_opening: false,
     });
   }
 
-  return { rows, made: rows.length, skipped, missingCodes, skippedNoBank };
+  return { rows, made: rows.length, skipped, skippedUncoded };
 }

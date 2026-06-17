@@ -231,8 +231,7 @@ export async function applyCategories(
 export type PostJournalResult = {
   made: number;
   skipped: number;
-  skippedNoBank: number;
-  missing: { code: string; count: number }[];
+  skippedUncoded: number;
 };
 
 export async function postBankJournal(year: number): Promise<PostJournalResult> {
@@ -245,7 +244,7 @@ export async function postBankJournal(year: number): Promise<PostJournalResult> 
     const { data, error } = await supabase
       .from("transactions")
       .select(
-        "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id",
+        "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id, debit_code, credit_code",
       )
       .eq("year", year)
       .order("txn_date", { ascending: true })
@@ -257,10 +256,7 @@ export async function postBankJournal(year: number): Promise<PostJournalResult> 
     if (page.length < PAGE) break;
   }
 
-  const { rows, made, skipped, missingCodes, skippedNoBank } = buildBankJournalRows(
-    all,
-    year,
-  );
+  const { rows, made, skipped, skippedUncoded } = buildBankJournalRows(all, year);
 
   // Idempotent: тухайн оны өмнө үүсгэсэн банкны журналыг устгаад дахин бичнэ.
   const prefix = postingPrefix(year);
@@ -282,8 +278,5 @@ export async function postBankJournal(year: number): Promise<PostJournalResult> 
   revalidatePath("/reports/balance-sheet");
   revalidatePath("/reports/income-statement");
 
-  const missing = Object.entries(missingCodes)
-    .map(([code, count]) => ({ code, count }))
-    .sort((a, b) => b.count - a.count);
-  return { made, skipped, skippedNoBank, missing };
+  return { made, skipped, skippedUncoded };
 }

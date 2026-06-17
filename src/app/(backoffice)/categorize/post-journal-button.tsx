@@ -76,16 +76,11 @@ export function PostJournalButton() {
       {res && (
         <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           ✓ Журналд бичигдсэн: <span className="font-semibold">{res.made}</span> мөр
-          {res.skipped > 0 && (
-            <>
-              {" "}· алгассан: {res.skipped}
-              {res.skippedNoBank > 0 && ` (банкны кодгүй: ${res.skippedNoBank})`}
-            </>
-          )}
-          {res.missing.length > 0 && (
+          {res.skipped > 0 && <> · алгассан: {res.skipped}</>}
+          {res.skippedUncoded > 0 && (
             <div className="mt-2 text-amber-700">
-              ⚠ Дансны холболтгүй ангиллын код (алгассан):{" "}
-              {res.missing.map((m) => `${m.code}(${m.count})`).join(", ")}
+              ⚠ Дт/Кт холболтгүй тул {res.skippedUncoded} гүйлгээ журналд ороогүй —
+              «Автомат холболт» хийгээд дахин бичнэ үү.
             </div>
           )}
           <div className="mt-1 text-xs text-green-700">
