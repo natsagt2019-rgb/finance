@@ -178,11 +178,14 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
     }
   }
 
-  // Давхардал тэмдэглэх — DB-д аль хэдийн орсон гүйлгээнүүдтэй тулгана.
+  // Давхардал тэмдэглэх — DB-д орсонтой БА нэг багц доторх давхардал (ижил мөр
+  // дахин). Багцад анх тохиолдсон нь хэвээр, давтагдсан нь давхардал болно.
   const dbSet = await existingFingerprints(supabase, rows);
+  const seen = new Set<string>();
   for (const r of rows) {
     const fp = fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense);
-    r.isDuplicate = dbSet.has(fp);
+    r.isDuplicate = dbSet.has(fp) || seen.has(fp);
+    seen.add(fp);
   }
 
   // Файл бүрийн давхардлын тоог тоолно.
@@ -208,11 +211,16 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
 
   if (rows.length === 0) return { added: 0, skipped: 0 };
 
-  // Батлахаас өмнө дахин DB-тэй тулгана (UI-аас хамааралгүй, найдвартай).
+  // Батлахаас өмнө дахин шалгана: DB-тэй тулгах БА нэг багц доторх давхардлыг
+  // (ижил мөр 2 удаа) алгасах. UI-аас хамааралгүй, найдвартай.
   const dbSet = await existingFingerprints(supabase, rows);
-  const newRows = rows.filter(
-    (r) => !dbSet.has(fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense)),
-  );
+  const seen = new Set<string>();
+  const newRows = rows.filter((r) => {
+    const fp = fingerprint(r.account_id, r.txn_date, r.description, r.income, r.expense);
+    if (dbSet.has(fp) || seen.has(fp)) return false; // DB эсвэл багц доторх давхардал
+    seen.add(fp);
+    return true;
+  });
 
   if (newRows.length === 0) {
     return { added: 0, skipped: rows.length };
