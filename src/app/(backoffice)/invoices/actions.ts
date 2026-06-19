@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { VAT_RATE } from "@/lib/company";
+import { VAT_RATE, loadCompany } from "@/lib/company";
 import { deriveStatus, type InvoiceLine } from "./types";
 
 function r2(n: number): number {
@@ -70,10 +70,13 @@ async function readForm(formData: FormData) {
   }
 
   const lines = parseLines(formData);
-  // Мөр байвал нийт дүн (gross) = Σ(мөрийн НӨАТ-гүй дүн) × (1 + НӨАТ).
+  // Мөр байвал нийт дүн (gross) = Σ(мөрийн НӨАТ-гүй дүн) × (1 + НӨАТ хувь).
+  // НӨАТ хувь нь байгууллага НӨАТ төлөгч эсэхээс хамаарна (төлөгч биш бол 0).
   // Мөргүй бол гар оруулсан "Нийт дүн"-г ашиглана (хуучин нэхэмжлэлтэй нийцнэ).
+  const company = await loadCompany();
+  const rate = company.isVatPayer ? VAT_RATE : 0;
   const lineNet = lines.reduce((s, l) => s + l.amount, 0);
-  const amount = lines.length > 0 ? r2(lineNet * (1 + VAT_RATE)) : num(formData.get("amount"));
+  const amount = lines.length > 0 ? r2(lineNet * (1 + rate)) : num(formData.get("amount"));
   const paid = num(formData.get("paid_amount"));
 
   return {

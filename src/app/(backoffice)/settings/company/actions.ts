@@ -36,6 +36,8 @@ export async function saveCompany(formData: FormData): Promise<ActionResult> {
     bank_iban: str(formData.get("bank_iban")),
     director: str(formData.get("director")),
     accountant: str(formData.get("accountant")),
+    // Checkbox нь зөвхөн сонгогдсон үед FormData-д ирнэ.
+    is_vat_payer: formData.get("is_vat_payer") != null,
     updated_at: new Date().toISOString(),
   };
 

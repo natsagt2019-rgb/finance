@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadCompany } from "@/lib/company";
 import { InvoiceForm, type PartnerOption } from "../../invoice-form";
 import {
   INVOICE_SELECT,
@@ -42,6 +43,7 @@ export default async function EditInvoicePage({
   const invoice = data as unknown as InvoiceRow;
   const partners = (partnerRows as PartnerOption[] | null) ?? [];
   const initialLines = (lineRows as InvoiceLine[] | null) ?? [];
+  const company = await loadCompany();
 
   return (
     <div>
@@ -64,6 +66,7 @@ export default async function EditInvoicePage({
           invoice={invoice}
           partners={partners}
           initialLines={initialLines}
+          vatPayer={company.isVatPayer}
         />
       </div>
     </div>

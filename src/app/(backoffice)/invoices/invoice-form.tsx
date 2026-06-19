@@ -12,9 +12,10 @@ export type PartnerOption = { id: number; name: string };
 // НӨАТ хувь — серверийн @/lib/company VAT_RATE-тэй ижил (client тул локалаар).
 const VAT_RATE = 0.1;
 
-type Props =
+type Props = { vatPayer: boolean } & (
   | { mode: "create"; invoice?: undefined; partners: PartnerOption[]; initialLines?: undefined }
-  | { mode: "edit"; invoice: InvoiceRow; partners: PartnerOption[]; initialLines: InvoiceLine[] };
+  | { mode: "edit"; invoice: InvoiceRow; partners: PartnerOption[]; initialLines: InvoiceLine[] }
+);
 
 const inputCls =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900";
@@ -30,8 +31,9 @@ function fmt(n: number): string {
 
 type LineState = { description: string; qty: string; unit_price: string };
 
-export function InvoiceForm({ mode, invoice, partners, initialLines }: Props) {
+export function InvoiceForm({ mode, invoice, partners, initialLines, vatPayer }: Props) {
   const router = useRouter();
+  const vatRate = vatPayer ? VAT_RATE : 0; // НӨАТ төлөгч биш бол НӨАТ тооцохгүй
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const printAfterRef = useRef(false);
@@ -57,9 +59,9 @@ export function InvoiceForm({ mode, invoice, partners, initialLines }: Props) {
       (s, l) => s + parseNum(l.qty) * parseNum(l.unit_price),
       0,
     );
-    const vat = net * VAT_RATE;
+    const vat = net * vatRate;
     return { net, vat, gross: net + vat };
-  }, [lines]);
+  }, [lines, vatRate]);
 
   // Сервер рүү илгээх нийт дүн (gross).
   const grossAmount = hasLines ? Math.round(totals.gross) : parseNum(manualAmount);
@@ -176,17 +178,6 @@ export function InvoiceForm({ mode, invoice, partners, initialLines }: Props) {
         </div>
 
         <div>
-          <label className={labelCls}>Хариуцагч (KAM)</label>
-          <input
-            type="text"
-            name="responsible"
-            defaultValue={invoice?.responsible ?? ""}
-            placeholder="Баяраа"
-            className={inputCls}
-          />
-        </div>
-
-        <div>
           <label className={labelCls}>Валют</label>
           <select
             name="currency"
@@ -229,8 +220,10 @@ export function InvoiceForm({ mode, invoice, partners, initialLines }: Props) {
 
         {lines.length === 0 ? (
           <p className="px-3 py-3 text-xs text-zinc-400">
-            Мөр нэмбэл нийт дүн автоматаар бодогдоно (НӨАТ-гүй дүн × 1.1). Мөргүй
-            бол доорх «Нийт дүн»-г гараар бичнэ.
+            {vatPayer
+              ? "Мөр нэмбэл нийт дүн автоматаар бодогдоно (НӨАТ-гүй дүн × 1.1)."
+              : "Мөр нэмбэл нийт дүн мөрүүдийн нийлбэрээр бодогдоно (НӨАТ-гүй)."}{" "}
+            Мөргүй бол доорх «Нийт дүн»-г гараар бичнэ.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -292,27 +285,31 @@ export function InvoiceForm({ mode, invoice, partners, initialLines }: Props) {
                 })}
               </tbody>
               <tfoot className="border-t border-zinc-200 text-sm">
-                <tr>
-                  <td colSpan={3} className="px-3 py-1.5 text-right text-zinc-500">
-                    Дүн (НӨАТ-гүй)
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums font-medium text-zinc-700">
-                    {fmt(totals.net)}
-                  </td>
-                  <td></td>
-                </tr>
-                <tr>
-                  <td colSpan={3} className="px-3 py-1.5 text-right text-zinc-500">
-                    НӨАТ (10%)
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-zinc-600">
-                    {fmt(totals.vat)}
-                  </td>
-                  <td></td>
-                </tr>
+                {vatPayer && (
+                  <>
+                    <tr>
+                      <td colSpan={3} className="px-3 py-1.5 text-right text-zinc-500">
+                        Дүн (НӨАТ-гүй)
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums font-medium text-zinc-700">
+                        {fmt(totals.net)}
+                      </td>
+                      <td></td>
+                    </tr>
+                    <tr>
+                      <td colSpan={3} className="px-3 py-1.5 text-right text-zinc-500">
+                        НӨАТ (10%)
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-zinc-600">
+                        {fmt(totals.vat)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </>
+                )}
                 <tr className="bg-zinc-50 font-semibold text-zinc-900">
                   <td colSpan={3} className="px-3 py-2 text-right">
-                    Нийт дүн (НӨАТ-тай)
+                    {vatPayer ? "Нийт дүн (НӨАТ-тай)" : "Нийт дүн"}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.gross)}</td>
                   <td></td>

@@ -1,16 +1,20 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadCompany } from "@/lib/company";
 import { InvoiceForm, type PartnerOption } from "../invoice-form";
 
 export default async function NewInvoicePage() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("partners")
-    .select("id, name")
-    .eq("is_active", true)
-    .order("name", { ascending: true })
-    .limit(2000);
+  const [{ data }, company] = await Promise.all([
+    supabase
+      .from("partners")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .limit(2000),
+    loadCompany(),
+  ]);
 
   const partners = (data as PartnerOption[] | null) ?? [];
 
@@ -30,7 +34,7 @@ export default async function NewInvoicePage() {
       </p>
 
       <div className="mt-6">
-        <InvoiceForm mode="create" partners={partners} />
+        <InvoiceForm mode="create" partners={partners} vatPayer={company.isVatPayer} />
       </div>
     </div>
   );

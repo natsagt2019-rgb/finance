@@ -16,6 +16,7 @@ export type CompanyInfo = {
   bankIban: string;
   director: string; // захирал (гарын үсэг)
   accountant: string; // нягтлан (гарын үсэг)
+  isVatPayer: boolean; // НӨАТ төлөгч эсэх (нэхэмжлэлд 10% тооцох)
 };
 
 // Бүртгээгүй үеийн хоосон утга (нийтлэг build — тодорхой компани hardcode-логүй).
@@ -33,11 +34,12 @@ export const EMPTY_COMPANY: CompanyInfo = {
   bankIban: "",
   director: "",
   accountant: "",
+  isVatPayer: true,
 };
 
 export const COMPANY_SELECT =
   "name, name_upper, address, phone, email, web, register, tax_id, " +
-  "bank_name, bank_account, bank_iban, director, accountant";
+  "bank_name, bank_account, bank_iban, director, accountant, is_vat_payer";
 
 type Row = {
   name: string;
@@ -53,6 +55,7 @@ type Row = {
   bank_iban: string;
   director: string;
   accountant: string;
+  is_vat_payer: boolean;
 };
 
 function rowToInfo(r: Row): CompanyInfo {
@@ -70,6 +73,7 @@ function rowToInfo(r: Row): CompanyInfo {
     bankIban: r.bank_iban ?? "",
     director: r.director ?? "",
     accountant: r.accountant ?? "",
+    isVatPayer: r.is_vat_payer ?? true,
   };
 }
 

@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS company_settings (
     bank_iban     TEXT NOT NULL DEFAULT '',
     director      TEXT NOT NULL DEFAULT '',   -- захирал (гарын үсэг)
     accountant    TEXT NOT NULL DEFAULT '',   -- нягтлан (гарын үсэг)
+    is_vat_payer  BOOLEAN NOT NULL DEFAULT TRUE,  -- НӨАТ төлөгч эсэх (нэхэмжлэлд 10% тооцох)
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT company_settings_singleton CHECK (id = 1)
 );
+
+-- Хуучин хүснэгтэд багана нэмэх (idempotent).
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_vat_payer BOOLEAN NOT NULL DEFAULT TRUE;

@@ -85,6 +85,15 @@ export function CompanyForm({ company }: { company: CompanyInfo }) {
           <Field name="register" label="ТТД (улсын бүртгэл)" defaultValue={company.register} placeholder="6906192" />
           <Field name="tax_id" label="НӨАТ дугаар" defaultValue={company.taxId} placeholder="НӨАТ-н дугаар" />
         </div>
+        <label className="mt-4 flex items-center gap-2 text-sm text-zinc-700">
+          <input
+            type="checkbox"
+            name="is_vat_payer"
+            defaultChecked={company.isVatPayer}
+            className="h-4 w-4 rounded border-zinc-300"
+          />
+          НӨАТ төлөгч (нэхэмжлэлд 10% НӨАТ тооцно)
+        </label>
       </div>
 
       <div>
