@@ -9,10 +9,9 @@ import * as XLSX from "xlsx";
 
 import {
   TDB_COL, GOLOMT_COL, MBANK_COL, TDB_COMPACT_COL,
-  BANK_DISPLAY, SKIP_KEYWORDS, GENERIC_COUNTERPARTIES,
-  TDB_TT_ACCOUNT, TDB_TR_ACCOUNT, ACCOUNT_CURRENCY,
+  SKIP_KEYWORDS, GENERIC_COUNTERPARTIES,
 } from "./config";
-import type { AccountId, NormalizedTxn } from "./types";
+import type { AccountConfig, NormalizedTxn } from "./types";
 
 type Row = unknown[];
 
@@ -96,22 +95,15 @@ function cell(row: Row, idx: number): unknown {
 // ── Parser функцүүд ───────────────────────────────────────────────────────
 
 // ТДБ дансны дугаар (description цэвэрлэхэд).
-const TDB_ACCOUNT_NO: Record<string, string> = {
-  TT: TDB_TT_ACCOUNT,
-  TR: TDB_TR_ACCOUNT,
-  TTU: "411099342",
-  TTE: "411099343",
-};
-
-// ТДБ "wide" XLS формат унших (TT/TR/TTU/TTE). Гадаад валютад ханш col16-аас.
+// ТДБ "wide" XLS формат унших. Гадаад валютад ханш col16-аас.
 // cutoff-аас хойших гүйлгээг л авна.
 export function parseTdb(
   rows: Row[],
-  accountId: AccountId,
+  account: AccountConfig,
   cutoff: Date,
 ): NormalizedTxn[] {
-  const accountNo = TDB_ACCOUNT_NO[accountId] ?? "";
-  const currency = ACCOUNT_CURRENCY[accountId] ?? "MNT";
+  const accountNo = account.accountNo;
+  const currency = account.currency || "MNT";
   const col = TDB_COL;
   const result: NormalizedTxn[] = [];
 
@@ -137,9 +129,9 @@ export function parseTdb(
     const rate = currency === "MNT" ? 1 : toNum(cell(row, col.rate)) || 1;
 
     result.push({
-      account_id: accountId,
+      account_id: account.accountNo,
       txn_date: txnDate,
-      bank: BANK_DISPLAY[accountId] ?? "ТДБ",
+      bank: account.label || "ТДБ",
       description: desc,
       counterparty: ctpy,
       account_no: "",
@@ -154,7 +146,11 @@ export function parseTdb(
 }
 
 // Golomt XLSX файл унших (cutoff: TT-тэй ижил).
-export function parseGolomt(rows: Row[], cutoff: Date): NormalizedTxn[] {
+export function parseGolomt(
+  rows: Row[],
+  account: AccountConfig,
+  cutoff: Date,
+): NormalizedTxn[] {
   const col = GOLOMT_COL;
   const result: NormalizedTxn[] = [];
 
@@ -175,9 +171,9 @@ export function parseGolomt(rows: Row[], cutoff: Date): NormalizedTxn[] {
     const desc = cleanDescription(rawDesc);
 
     result.push({
-      account_id: "GM",
+      account_id: account.accountNo,
       txn_date: txnDate,
-      bank: BANK_DISPLAY.GM,
+      bank: account.label || "Голомт банк",
       description: desc,
       counterparty: ctpy,
       account_no: acct,
@@ -191,7 +187,11 @@ export function parseGolomt(rows: Row[], cutoff: Date): NormalizedTxn[] {
 }
 
 // M Bank XLS файл унших. Data мөр нь row_no тоотой.
-export function parseMbank(rows: Row[], cutoff: Date): NormalizedTxn[] {
+export function parseMbank(
+  rows: Row[],
+  account: AccountConfig,
+  cutoff: Date,
+): NormalizedTxn[] {
   const col = MBANK_COL;
   const result: NormalizedTxn[] = [];
 
@@ -217,9 +217,9 @@ export function parseMbank(rows: Row[], cutoff: Date): NormalizedTxn[] {
     const desc = cleanDescription(rawDesc);
 
     result.push({
-      account_id: "MB",
+      account_id: account.accountNo,
       txn_date: txnDate,
-      bank: BANK_DISPLAY.MB,
+      bank: account.label || "М банк",
       description: desc,
       counterparty: ctpy,
       account_no: acct,
@@ -256,14 +256,14 @@ function compactCounterparty(raw: unknown): string {
 // Орлого/зарлага тусдаа багана, ханш col4-д, валют толгойн мөр 0-оос.
 export function parseTdbCompact(
   rows: Row[],
-  accountId: AccountId,
+  account: AccountConfig,
   cutoff: Date,
 ): NormalizedTxn[] {
   const col = TDB_COMPACT_COL;
   // Валют: толгой мөр 0, col3 "Дансны дугаар: 411099342 USD" → эсвэл config-оос.
   const hdr = String(rows[0]?.[3] ?? "");
   const curMatch = hdr.match(/\b(MNT|USD|EUR|CNY|RUB|JPY|GBP|KRW)\b/);
-  const currency = curMatch ? curMatch[1] : ACCOUNT_CURRENCY[accountId] ?? "MNT";
+  const currency = curMatch ? curMatch[1] : account.currency || "MNT";
 
   const result: NormalizedTxn[] = [];
   for (let i = col.data_start_row; i < rows.length; i++) {
@@ -284,9 +284,9 @@ export function parseTdbCompact(
     const desc = cleanDescription(rawDesc);
 
     result.push({
-      account_id: accountId,
+      account_id: account.accountNo,
       txn_date: txnDate,
-      bank: BANK_DISPLAY[accountId] ?? "ТДБ",
+      bank: account.label || "ТДБ",
       description: desc,
       counterparty: ctpy,
       account_no: "",
@@ -307,25 +307,23 @@ function isTdbCompact(rows: Row[]): boolean {
 // Файлын төрлийг тодорхойлж парсер дуудна.
 export function parseFile(
   buffer: ArrayBuffer | Buffer,
-  accountId: AccountId,
+  account: AccountConfig,
   cutoff: Date,
 ): NormalizedTxn[] {
   const rows = sheetRows(buffer);
 
-  // ТДБ компакт формат — данснаас үл хамаарч агуулгаар танина (TT/TTU/TTE/TR).
-  if (isTdbCompact(rows)) {
-    return parseTdbCompact(rows, accountId, cutoff);
+  // Банкны төрлөөр parser сонгоно.
+  if (account.bankType === "tdb") {
+    // ТДБ компакт формат — агуулгаар танина, бусад нь wide формат.
+    return isTdbCompact(rows)
+      ? parseTdbCompact(rows, account, cutoff)
+      : parseTdb(rows, account, cutoff);
   }
-
-  // ТДБ wide формат — бүх ТДБ данс (MNT ба гадаад валют).
-  if (accountId === "TT" || accountId === "TR" || accountId === "TTU" || accountId === "TTE") {
-    return parseTdb(rows, accountId, cutoff);
+  if (account.bankType === "golomt") {
+    return parseGolomt(rows, account, cutoff);
   }
-  if (accountId === "GM") {
-    return parseGolomt(rows, cutoff);
+  if (account.bankType === "mbank") {
+    return parseMbank(rows, account, cutoff);
   }
-  if (accountId === "MB") {
-    return parseMbank(rows, cutoff);
-  }
-  throw new Error(`Танихгүй account_id: ${accountId}`);
+  throw new Error(`Танихгүй банкны төрөл: ${account.bankType}`);
 }

@@ -21,8 +21,20 @@ export type NormalizedTxn = {
   master_name?: string | null;
 };
 
-// MNT дансууд: TT/TR/GM/MB. Гадаад валютын ТДБ дансууд: TTU(USD), TTE(EUR) — TT компани.
-export type AccountId = "TT" | "TR" | "GM" | "MB" | "TTU" | "TTE";
+// account_id нь дансны дугаар (эсвэл бүртгэлийн код) — динамик тул string.
+export type AccountId = string;
+
+// Банкны төрөл — parser-ийг сонгоход ашиглана.
+export type BankType = "tdb" | "golomt" | "mbank";
+
+// Нэг банкны дансны тохиргоо (bank_accounts хүснэгтээс ачаалагдана).
+export type AccountConfig = {
+  accountNo: string; // дансны дугаар (файлын нэрэнд агуулагдана)
+  bankType: BankType; // tdb | golomt | mbank
+  currency: string; // MNT | USD | EUR …
+  glCode: string | null; // харилцах дансны GL код (110xxx)
+  label: string; // харагдах нэр
+};
 
 // Ангилалын чиглэл: 'M' = орлого, 'N' = зарлага, '' = тодорхойгүй
 export type Direction = "M" | "N" | "";

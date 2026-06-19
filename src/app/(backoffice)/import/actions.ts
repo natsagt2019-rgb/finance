@@ -4,12 +4,35 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import {
-  detectAccountId,
+  detectAccount,
   normalizeFile,
-  BANK_GL,
   type AccountId,
+  type AccountConfig,
+  type BankType,
   type NormalizedTxn,
 } from "@/lib/bank-importer";
+
+// bank_accounts хүснэгтээс бүртгэсэн дансуудыг ачаална.
+async function loadBankAccounts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<AccountConfig[]> {
+  const { data } = await supabase
+    .from("bank_accounts")
+    .select("account_no, bank_type, currency, gl_code, label")
+    .eq("is_active", true)
+    .limit(1000);
+  return (
+    (data as
+      | { account_no: string; bank_type: string; currency: string; gl_code: string | null; label: string }[]
+      | null) ?? []
+  ).map((a) => ({
+    accountNo: a.account_no,
+    bankType: (a.bank_type as BankType) ?? "tdb",
+    currency: a.currency || "MNT",
+    glCode: a.gl_code,
+    label: a.label || a.account_no,
+  }));
+}
 
 // Client ↔ server хооронд дамжих мөр (txn_date нь ISO string).
 export type PreviewRow = {
@@ -176,15 +199,21 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
   // Файл бүрд аль мөрүүд нь орсныг тэмдэглэхийн тулд индекс хадгална.
   const fileRanges: { result: FileResult; start: number }[] = [];
 
+  // Бүртгэсэн банкны дансууд (Тохиргоо → Банкны данс).
+  const accounts = await loadBankAccounts(supabase);
+
   for (const file of files) {
-    const accountId = detectAccountId(file.name);
-    if (!accountId) {
+    const account = detectAccount(file.name, accounts);
+    if (!account) {
       fileResults.push({
         filename: file.name,
         account_id: null,
         count: 0,
         duplicates: 0,
-        error: "Файлын нэрнээс банк/данс тодорхойлж чадсангүй",
+        error:
+          accounts.length === 0
+            ? "Банкны данс бүртгээгүй байна. Тохиргоо → Банкны данс дээр нэмнэ үү."
+            : "Файлын нэрнээс банк/данс тодорхойлж чадсангүй (данс бүртгэснээ шалгана уу)",
       });
       continue;
     }
@@ -192,12 +221,12 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
       // Бүх мөрийг уншина (огнооны cutoff шүүлтгүй) — давхардлыг мөрөөр шалгана.
-      const txns = normalizeFile(buffer, accountId, new Date(0));
+      const txns = normalizeFile(buffer, account, new Date(0));
       const start = rows.length;
       rows.push(...txns.map(toPreviewRow));
       const result: FileResult = {
         filename: file.name,
-        account_id: accountId,
+        account_id: account.accountNo,
         count: txns.length,
         duplicates: 0,
       };
@@ -206,7 +235,7 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
     } catch (e) {
       fileResults.push({
         filename: file.name,
-        account_id: accountId,
+        account_id: account.accountNo,
         count: 0,
         duplicates: 0,
         error: e instanceof Error ? e.message : "Уншихад алдаа гарлаа",
@@ -249,6 +278,11 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
 
   if (rows.length === 0) return { added: 0, skipped: 0 };
 
+  // Данс → GL код зураглал (харилцах дансны өөрийн код).
+  const glByAccount = new Map<string, string | null>();
+  for (const a of await loadBankAccounts(supabase))
+    glByAccount.set(a.accountNo, a.glCode);
+
   // Батлахаас өмнө дахин шалгана: DB-тэй тулгах БА нэг багц доторх давхардлыг
   // (ижил мөр 2 удаа) алгасах. UI-аас хамааралгүй, найдвартай.
   const dbSet = await existingFingerprints(supabase, rows);
@@ -268,7 +302,7 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
 
   const dbRows = newRows.map((r) => {
     // Банкны тал (харилцах дансны өөрийн код) авто: орлого→Дт, зарлага→Кт.
-    const bankCode = BANK_GL[r.account_id] ?? null;
+    const bankCode = glByAccount.get(r.account_id) ?? null;
     return {
       account_id: r.account_id,
       company: r.company,

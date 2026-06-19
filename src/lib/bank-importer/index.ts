@@ -3,50 +3,44 @@
 //
 // DB ажиллагаа (cutoff унших, upsert) нь Next.js server action-д байна —
 // энд зөвхөн цэвэр parse + ангилал логик.
-import { ACCOUNT_PATTERNS, COMPANY_TT, COMPANY_TR } from "./config";
 import { applyCodes } from "./coder";
 import { parseFile } from "./parsers";
-import type { AccountId, NormalizedTxn } from "./types";
+import type { AccountConfig, NormalizedTxn } from "./types";
 
-export type { AccountId, NormalizedTxn } from "./types";
-export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY, BANK_GL } from "./config";
+export type { AccountId, AccountConfig, BankType, NormalizedTxn } from "./types";
+export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY } from "./config";
 
-// Файлын нэрэн дэх дансны дугаараар account_id тодорхойлно.
-// Жнь: 'ST_411096635_9697.XLS' → 'TT'
-export function detectAccountId(filename: string): AccountId | null {
+// Файлын нэрэн дэх дансны дугаараар тохирох дансыг (bank_accounts) тодорхойлно.
+// Жнь: 'ST_411099344_9944.XLS' + [{accountNo:'411099344',…}] → тэр данс.
+export function detectAccount(
+  filename: string,
+  accounts: AccountConfig[],
+): AccountConfig | null {
   const name = filename.toUpperCase();
-  for (const [pattern, accountId] of Object.entries(ACCOUNT_PATTERNS)) {
-    if (name.includes(pattern.toUpperCase())) return accountId;
+  // Хамгийн урт тохирлыг эхэнд (дэд мөр давхцлаас сэргийлж).
+  const sorted = [...accounts].sort(
+    (a, b) => b.accountNo.length - a.accountNo.length,
+  );
+  for (const acc of sorted) {
+    if (acc.accountNo && name.includes(acc.accountNo.toUpperCase())) return acc;
   }
   return null;
 }
 
-// TT компанийн данс уу? (MNT TT + GM + MB + гадаад валют TTU/TTE)
-const TT_FAMILY: AccountId[] = ["TT", "GM", "MB", "TTU", "TTE"];
-
-// account_id → company нэр.
-export function companyOf(accountId: AccountId): string {
-  return TT_FAMILY.includes(accountId) ? COMPANY_TT : COMPANY_TR;
-}
-
-// Нэг файлыг parse + ангилал + company хийж нормчилсон мөрүүд буцаана (DB-гүй).
+// Нэг файлыг parse + ангилал хийж нормчилсон мөрүүд буцаана (DB-гүй).
 export function normalizeFile(
   buffer: ArrayBuffer | Buffer,
-  accountId: AccountId,
+  account: AccountConfig,
   cutoff: Date,
 ): NormalizedTxn[] {
-  const company = companyOf(accountId);
-  // Ангиллын дүрэм компаниар сонгоно (TT-гэр бүл → codeTt, бусад → codeTr).
-  const companyKey = TT_FAMILY.includes(accountId) ? "TT" : "TR";
+  let txns = parseFile(buffer, account, cutoff);
+  // Ангиллын дүрэм (кодлол) — одоохондоо нэг ерөнхий дүрмээр.
+  txns = txns.map((t) => applyCodes(t, "TT"));
 
-  let txns = parseFile(buffer, accountId, cutoff);
-  txns = txns.map((t) => applyCodes(t, companyKey));
-
-  // Company нэр, валют (анхдагч MNT), Master Data талбар.
   return txns.map((t) => ({
     ...t,
-    company,
-    currency: t.currency ?? "MNT",
+    company: "",
+    currency: t.currency ?? account.currency ?? "MNT",
     master_code: null,
     master_name: null,
   }));

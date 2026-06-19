@@ -29,6 +29,7 @@ const FILES = [
   "scripts/staff-receivables-schema.sql", // staff_receivables (employees + inv_moves + salary_records-аас хамаарна)
   "scripts/company-settings-schema.sql",  // үндсэн байгууллагын мэдээлэл (нэг мөр)
   "scripts/invoice-lines-schema.sql",     // нэхэмжлэлийн мөр (line items)
+  "scripts/bank-accounts-schema.sql",     // банкны данс (хуулга цэгцлэгч)
   "scripts/cash-entries-extra-cols.sql",
   "scripts/cash-entries-partner-cols.sql",
   "scripts/journal-entries-source-id.sql",
