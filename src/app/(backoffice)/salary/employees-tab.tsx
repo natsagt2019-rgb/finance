@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { RowActions } from "./row-actions";
 import { EmployeesImport } from "./employees-import";
 import type { EmployeeRow } from "./types";
@@ -6,7 +8,13 @@ function fmtMoney(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-export function EmployeesTab({ employees }: { employees: EmployeeRow[] }) {
+export function EmployeesTab({
+  employees,
+  year,
+}: {
+  employees: EmployeeRow[];
+  year: number;
+}) {
   const totalFund = employees.reduce(
     (s, e) => s + (Number(e.base_salary) || 0) + (Number(e.phone_allowance) || 0),
     0,
@@ -100,6 +108,13 @@ export function EmployeesTab({ employees }: { employees: EmployeeRow[] }) {
                       </span>
                     </td>
                     <td className="no-print whitespace-nowrap px-4 py-2 text-right">
+                      <Link
+                        href={`/salary/document/cx-4?emp=${e.id}&year=${year}`}
+                        title="Цалингийн тооцооны карт (ЦХ-4) хэвлэх"
+                        className="mr-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      >
+                        🖨 ЦХ-4
+                      </Link>
                       <RowActions id={e.id} label={e.name} />
                     </td>
                   </tr>

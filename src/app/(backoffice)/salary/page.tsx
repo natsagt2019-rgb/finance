@@ -149,6 +149,25 @@ export default async function SalaryPage({
             + Ажилтан нэмэх
           </Link>
         )}
+        {tab === "calc" && (
+          <div className="no-print flex items-center gap-2">
+            {(["cx-5b", "cx-5a"] as const).map((f) => {
+              const q = new URLSearchParams();
+              if (company) q.set("company", company);
+              q.set("year", String(year));
+              q.set("month", String(month));
+              return (
+                <Link
+                  key={f}
+                  href={`/salary/document/${f}?${q.toString()}`}
+                  className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  🖨 {f === "cx-5b" ? "ЦХ-5б" : "ЦХ-5а"}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Таб navigation */}
@@ -221,7 +240,7 @@ export default async function SalaryPage({
       )}
 
       <div className="mt-5">
-        {tab === "employees" && <EmployeesTab employees={employees} />}
+        {tab === "employees" && <EmployeesTab employees={employees} year={year} />}
         {tab === "calc" && (
           <CalcTab
             key={`${year}-${month}-${company}`}
