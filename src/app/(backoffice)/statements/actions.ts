@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { BANK_CODE } from "@/lib/bank-journal-posting";
+import { loadRegistry } from "@/lib/bank-registry";
+import { ACCOUNT_COMPANY } from "@/lib/bank-importer/config";
 
 export type ActionResult =
   | { ok: true }
@@ -37,15 +38,28 @@ export async function updateTxnAccounts(
   return { ok: true };
 }
 
+// Гүйлгээ устгах.
+export async function deleteTxn(id: number): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  const { error } = await supabase.from("transactions").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/statements");
+  return { ok: true };
+}
+
 // ── Автомат холболт: нөгөө тал GL дансыг автоматаар оноох ────────────────────
-// Mapping-ийг ОДОО БАЙГАА кодлогдсон гүйлгээнээс сурна (ангилал→данс), ингэснээр
-// тогтсон нарийвчилсан кодтой нийцнэ (жишээ нь 1.2.2→310101). Дараа нь кодгүй
-// (дутуу) гүйлгээнд хэрэглэнэ. Зөвхөн хоосон талыг бөглөнө — гараар тавьсныг дарахгүй.
+// Хоёр эх сурвалжтай зураглал ашиглана:
+//   1) СУРСАН дүрэм — одоо байгаа кодлогдсон гүйлгээнээс (ангилал→данс).
+//   2) СУУРЬ зураглал — category_gl_map хүснэгтээс (компани бүрээр), эхний
+//      өдрөөс ажиллуулна. Сурсан дүрэм давамгайлж, байхгүй үед суурьд шилжинэ.
+// Дараа нь кодгүй (дутуу) гүйлгээнд хэрэглэнэ. Зөвхөн хоосон талыг бөглөнө —
+// гараар тавьсныг дарахгүй.
 //   Орлого: Кт = ангиллын данс (Дт=банк авто).  Зарлага: Дт = ангиллын данс (Кт=банк авто).
 export async function autoLinkAccounts(): Promise<{
   linked: number;
   skipped: number;
   rules: number;
+  seeded: number;
 }> {
   const supabase = await requireAuth();
 
@@ -77,7 +91,13 @@ export async function autoLinkAccounts(): Promise<{
   }
 
   const empty = (s: string | null) => !s || !s.trim();
-  const bankCodes = new Set(Object.values(BANK_CODE));
+  // Банкны талын GL кодууд (харилцах данс) — bank_accounts бүртгэлээс. Offset
+  // (нөгөө тал) сурахдаа эдгээрийг хасна (банкны тал тогтмол, сурах зүйл биш).
+  const bankCodes = new Set(
+    (await loadRegistry(supabase))
+      .map((a) => a.glCode)
+      .filter((c): c is string => !!c),
+  );
 
   // 1) Сурах: ангиллын код → нөгөө тал данс (давамгайлсан).
   const learnExp = new Map<string, Map<string, number>>(); // expense_code → debit_code
@@ -127,21 +147,52 @@ export async function autoLinkAccounts(): Promise<{
     if (m) incMap.set(k, m);
   }
 
-  // 2) Хэрэглэх: дутуу талтай гүйлгээнд сурсан дансыг оноох.
+  // 1b) Суурь зураглал: category_gl_map (компани → ангилал → данс).
+  // Сурсан дүрэм байхгүй үед эндээс авна (шинэ импорт эхний өдрөөс кодлогдоно).
+  type MapRow = { company: string; category_code: string; gl_code: string };
+  // Хүснэгт хараахан үүсээгүй бол (category-gl-map-schema.sql ажиллуулаагүй)
+  // алдаа шидэхгүй — суурь зураглалгүйгээр (зөвхөн сурсан дүрмээр) үргэлжилнэ.
+  const { data: mapData } = await supabase
+    .from("category_gl_map")
+    .select("company, category_code, gl_code");
+  const seed = new Map<string, Map<string, string>>(); // company → (category_code → gl_code)
+  for (const m of (mapData as MapRow[] | null) ?? []) {
+    let g = seed.get(m.company);
+    if (!g) {
+      g = new Map();
+      seed.set(m.company, g);
+    }
+    g.set(m.category_code, m.gl_code);
+  }
+  // Гүйлгээний account_id-аар компани бүлгийг олж суурь дансыг авна.
+  const seedCode = (accountId: string, category: string | null): string | undefined => {
+    if (!category) return undefined;
+    const company = ACCOUNT_COMPANY[accountId];
+    return company ? seed.get(company)?.get(category) : undefined;
+  };
+
+  // 2) Хэрэглэх: дутуу талтай гүйлгээнд сурсан/суурь дансыг оноох.
   // Offset (нөгөө тал) холболт нь банкнаас үл хамаарна — гадаад валют (TTU/TTE)
-  // зэрэг бүх дансанд ажиллана. (Журналд бичих нь BANK_CODE-оор тусдаа шүүгдэнэ.)
+  // зэрэг бүх дансанд ажиллана. (Журналд бичих нь bank registry-ээр тусдаа шүүгдэнэ.)
   const creditUpd = new Map<string, number[]>();
   const debitUpd = new Map<string, number[]>();
   let skipped = 0;
+  let seeded = 0; // суурь зураглалаар (сурсан дүрэмгүйгээр) холбогдсон тоо
   for (const r of all) {
     if (Number(r.income) > 0 && empty(r.credit_code)) {
-      const code = r.income_code ? incMap.get(r.income_code) : undefined;
-      if (code) (creditUpd.get(code) ?? creditUpd.set(code, []).get(code)!).push(r.id);
-      else skipped++;
+      const learned = r.income_code ? incMap.get(r.income_code) : undefined;
+      const code = learned ?? seedCode(r.account_id, r.income_code);
+      if (code) {
+        (creditUpd.get(code) ?? creditUpd.set(code, []).get(code)!).push(r.id);
+        if (!learned) seeded++;
+      } else skipped++;
     } else if (Number(r.expense) > 0 && empty(r.debit_code)) {
-      const code = r.expense_code ? expMap.get(r.expense_code) : undefined;
-      if (code) (debitUpd.get(code) ?? debitUpd.set(code, []).get(code)!).push(r.id);
-      else skipped++;
+      const learned = r.expense_code ? expMap.get(r.expense_code) : undefined;
+      const code = learned ?? seedCode(r.account_id, r.expense_code);
+      if (code) {
+        (debitUpd.get(code) ?? debitUpd.set(code, []).get(code)!).push(r.id);
+        if (!learned) seeded++;
+      } else skipped++;
     } else skipped++;
   }
 
@@ -169,7 +220,7 @@ export async function autoLinkAccounts(): Promise<{
   }
 
   revalidatePath("/statements");
-  return { linked, skipped, rules: expMap.size + incMap.size };
+  return { linked, skipped, rules: expMap.size + incMap.size, seeded };
 }
 
 // Сонгосон гүйлгээнүүдийн Дт (зардлын данс)-ыг олноор оноох.

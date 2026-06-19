@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadRegistry } from "@/lib/bank-registry";
 import { StatementsTable, type AccountOpt } from "./statements-table";
 
 type SearchParams = {
@@ -29,7 +30,6 @@ type Txn = {
   credit_code: string | null;
 };
 
-const ACCOUNTS = ["TT", "TR", "GM", "MB"];
 const YEARS = ["2026", "2025"];
 const ROW_LIMIT = 500;
 
@@ -48,6 +48,11 @@ export default async function StatementsPage({
 }) {
   const sp = await searchParams;
   const supabase = await createClient();
+
+  // Бүртгэлтэй банкны дансууд (Тохиргоо → Банкны данс) — шүүлт ба үлдэгдэлд.
+  const registry = await loadRegistry(supabase);
+  const accountList = registry.map((a) => ({ id: a.accountNo, label: a.label }));
+  const ACCOUNTS = registry.map((a) => a.accountNo);
 
   // Жагсаалтын query — шүүлтийг order/limit-аас өмнө тавина.
   let rowsQuery = supabase
@@ -192,9 +197,9 @@ export default async function StatementsPage({
             className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
           >
             <option value="">Бүгд</option>
-            {ACCOUNTS.map((a) => (
-              <option key={a} value={a}>
-                {a}
+            {accountList.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
               </option>
             ))}
           </select>

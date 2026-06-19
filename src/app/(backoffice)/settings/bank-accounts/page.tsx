@@ -9,7 +9,7 @@ export default async function BankAccountsSettingsPage() {
   const [{ data: accs }, { data: glAccs }] = await Promise.all([
     supabase
       .from("bank_accounts")
-      .select("id, account_no, bank_type, label, gl_code, currency")
+      .select("id, account_no, bank_type, label, gl_code, currency, company")
       .order("sort", { ascending: true })
       .order("id", { ascending: true })
       .limit(1000),

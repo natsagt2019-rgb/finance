@@ -12,6 +12,7 @@ export type BankAccountRow = {
   label: string;
   gl_code: string | null;
   currency: string;
+  company: string | null;
 };
 export type GlOption = { code: string; name: string };
 
@@ -27,7 +28,7 @@ const inputCls =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900";
 const labelCls = "mb-1 block text-xs font-medium text-zinc-600";
 
-const EMPTY = { id: 0, account_no: "", bank_type: "tdb", label: "", gl_code: "", currency: "MNT" };
+const EMPTY = { id: 0, account_no: "", bank_type: "tdb", label: "", gl_code: "", currency: "MNT", company: "" };
 
 export function BankAccountsClient({
   accounts,
@@ -44,7 +45,13 @@ export function BankAccountsClient({
     label: string;
     gl_code: string;
     currency: string;
+    company: string;
   }>(EMPTY);
+
+  // Бүртгэгдсэн (давхцалгүй) компаниуд — datalist санал болгоход.
+  const companyOptions = [
+    ...new Set(accounts.map((a) => a.company).filter((c): c is string => !!c)),
+  ];
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -56,6 +63,7 @@ export function BankAccountsClient({
       label: a.label,
       gl_code: a.gl_code ?? "",
       currency: a.currency,
+      company: a.company ?? "",
     });
     setError(null);
   }
@@ -157,6 +165,22 @@ export function BankAccountsClient({
               ))}
             </select>
           </div>
+          <div>
+            <label className={labelCls}>Компани</label>
+            <input
+              name="company"
+              list="company-options"
+              value={form.company}
+              onChange={(e) => setForm({ ...form, company: e.target.value })}
+              placeholder="Түмэн Тээх"
+              className={inputCls}
+            />
+            <datalist id="company-options">
+              {companyOptions.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Харагдах нэр</label>
             <input
@@ -207,6 +231,7 @@ export function BankAccountsClient({
             <tr>
               <th className="px-4 py-2">Дансны дугаар</th>
               <th className="px-4 py-2">Банк</th>
+              <th className="px-4 py-2">Компани</th>
               <th className="px-4 py-2">Валют</th>
               <th className="px-4 py-2">GL данс</th>
               <th className="px-4 py-2">Нэр</th>
@@ -216,7 +241,7 @@ export function BankAccountsClient({
           <tbody className="divide-y divide-zinc-100">
             {accounts.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-zinc-400">
                   Данс бүртгээгүй байна. Дээрх формоор нэмнэ үү.
                 </td>
               </tr>
@@ -225,6 +250,7 @@ export function BankAccountsClient({
                 <tr key={a.id} className="hover:bg-zinc-50">
                   <td className="px-4 py-2 font-mono text-xs text-zinc-700">{a.account_no}</td>
                   <td className="px-4 py-2 text-zinc-700">{BANK_LABEL[a.bank_type] ?? a.bank_type}</td>
+                  <td className="px-4 py-2 text-zinc-600">{a.company ?? "—"}</td>
                   <td className="px-4 py-2 text-zinc-600">{a.currency}</td>
                   <td className="px-4 py-2 font-mono text-xs text-zinc-500">{a.gl_code ?? "—"}</td>
                   <td className="px-4 py-2 text-zinc-700">{a.label}</td>

@@ -38,6 +38,7 @@ export async function saveBankAccount(formData: FormData): Promise<ActionResult>
     label: str(formData.get("label")) || account_no,
     gl_code: str(formData.get("gl_code")) || null,
     currency: str(formData.get("currency")) || "MNT",
+    company: str(formData.get("company")) || null,
     is_active: true,
   };
 

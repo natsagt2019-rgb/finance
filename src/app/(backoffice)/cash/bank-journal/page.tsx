@@ -1,13 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import { BANK_DISPLAY } from "@/lib/bank-importer";
+import { loadRegistry, displayMap, currencyMap } from "@/lib/bank-registry";
 import { PrintButton } from "@/components/print-button";
 import { BankJournalTable } from "./bank-journal-table";
 
 type SearchParams = { acc?: string; from?: string; to?: string };
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const ACCOUNT_ORDER = ["TT", "GM", "MB", "TR", "TTU", "TTE"];
-const ACCOUNT_CCY: Record<string, string> = { TTU: "USD", TTE: "EUR" };
 
 function fmt(n: number, ccy = "MNT"): string {
   if (!n) return "—";
@@ -46,16 +44,19 @@ export default async function BankJournalPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const display = BANK_DISPLAY as Record<string, string>;
-  const accounts = ACCOUNT_ORDER.filter((a) => display[a]);
-  const acc = sp.acc && accounts.includes(sp.acc) ? sp.acc : accounts[0] ?? "TT";
+  // Бүртгэлтэй банкны дансууд (Тохиргоо → Банкны данс).
+  const registry = await loadRegistry(supabase);
+  const display = displayMap(registry);
+  const ccyByAcc = currencyMap(registry);
+  const accounts = registry.map((a) => a.accountNo);
+  const acc = sp.acc && accounts.includes(sp.acc) ? sp.acc : accounts[0] ?? "";
 
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ulaanbaatar" });
   const year = today.slice(0, 4);
   const from = sp.from && ISO.test(sp.from) ? sp.from : `${year}-01-01`;
   const to = sp.to && ISO.test(sp.to) ? sp.to : today;
   const fromYear = from.slice(0, 4);
-  const ccy = ACCOUNT_CCY[acc] ?? "MNT";
+  const ccy = ccyByAcc[acc] ?? "MNT";
 
   // Жилийн эхний үлдэгдэл.
   const { data: balRow } = await supabase

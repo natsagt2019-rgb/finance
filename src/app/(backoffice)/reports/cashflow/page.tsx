@@ -1,15 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadRegistry, companyList, accountsForCompany } from "@/lib/bank-registry";
 import { buildInternalCashflow, type CodeMonthly } from "@/lib/cashflow";
 import { PrintButton } from "@/components/print-button";
 
 type SearchParams = { mode?: string; year?: string; company?: string };
-
-// Компани → дансны бүлэг (config-ийн COMPANY_ACCOUNTS-той нийцнэ).
-const COMPANY_GROUPS: Record<string, { label: string; accounts: string[] }> = {
-  tt: { label: "Түмэн Тээх (ХХБ/ТДБ · Голомт · М банк)", accounts: ["TT", "GM", "MB"] },
-  tr: { label: "Түмэн Ресурс", accounts: ["TR"] },
-  all: { label: "Бүгд (нэгтгэл)", accounts: ["TT", "TR", "GM", "MB"] },
-};
 
 const MN_MONTH = ["1-р", "2-р", "3-р", "4-р", "5-р", "6-р", "7-р", "8-р", "9-р", "10-р", "11-р", "12-р"];
 
@@ -30,8 +24,20 @@ export default async function CashflowPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const companyKey = COMPANY_GROUPS[sp.company ?? ""] ? sp.company! : "tt";
-  const group = COMPANY_GROUPS[companyKey];
+  // Бүртгэлтэй банкны дансууд + компаниар бүлэглэх (Тохиргоо → Банкны данс).
+  const registry = await loadRegistry(supabase);
+  const companies = companyList(registry);
+  const selCompany =
+    sp.company !== undefined
+      ? companies.includes(sp.company)
+        ? sp.company
+        : ""
+      : companies[0] ?? "";
+  const groupAccountIds = accountsForCompany(registry, selCompany || null).map(
+    (a) => a.accountNo,
+  );
+  const groupLabel = selCompany || "Бүгд (нэгтгэл)";
+  const inIds = groupAccountIds.length ? groupAccountIds : ["__none__"];
 
   // Боломжит онууд (transactions-аас, байхгүй бол энэ он).
   const { data: yearRows } = await supabase.from("transactions").select("year");
@@ -47,14 +53,14 @@ export default async function CashflowPage({
     .from("monthly_by_category")
     .select("month,category_code,total")
     .eq("year", selYear)
-    .in("account_id", group.accounts);
+    .in("account_id", inIds);
 
   // Эхний мөнгөн үлдэгдэл (account_balances-аас).
   const { data: balData } = await supabase
     .from("account_balances")
     .select("opening_balance")
     .eq("year", selYear)
-    .in("account_id", group.accounts);
+    .in("account_id", inIds);
 
   const openingCash = ((balData as { opening_balance: number }[] | null) ?? []).reduce(
     (s, r) => s + Number(r.opening_balance),
@@ -77,7 +83,7 @@ export default async function CashflowPage({
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Мөнгөн урсгалын тайлан</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Дотоод тайлан (шууд арга) · {group.label} · {selYear} он · MNT
+            Дотоод тайлан (шууд арга) · {groupLabel} · {selYear} он · MNT
           </p>
         </div>
         <div className="no-print">
@@ -92,14 +98,15 @@ export default async function CashflowPage({
           Компани
           <select
             name="company"
-            defaultValue={companyKey}
+            defaultValue={selCompany}
             className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
           >
-            {Object.entries(COMPANY_GROUPS).map(([k, g]) => (
-              <option key={k} value={k}>
-                {g.label}
+            {companies.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
+            <option value="">Бүгд (нэгтгэл)</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-500">

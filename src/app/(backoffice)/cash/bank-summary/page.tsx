@@ -1,16 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
-import { BANK_DISPLAY } from "@/lib/bank-importer";
+import {
+  loadRegistry,
+  displayMap,
+  companyList,
+  accountsForCompany,
+} from "@/lib/bank-registry";
 import { buildBankSummary, type BankSummaryTxn, type BankBlock } from "@/lib/bank-summary";
 import { PrintButton } from "@/components/print-button";
 
 type SearchParams = { year?: string; company?: string };
-
-// Компани → дансны бүлэг. Дараалал нь эх системтэй ойролцоо (Голомт, ХХБ/ТДБ, М банк).
-const COMPANY_GROUPS: Record<string, { label: string; accounts: string[] }> = {
-  tt: { label: "Түмэн Тээх", accounts: ["GM", "TT", "MB"] },
-  tr: { label: "Түмэн Ресурс", accounts: ["TR"] },
-  all: { label: "Бүгд", accounts: ["GM", "TT", "MB", "TR"] },
-};
 
 const MN_MONTH = ["1-р", "2-р", "3-р", "4-р", "5-р", "6-р", "7-р", "8-р", "9-р", "10-р", "11-р", "12-р"];
 
@@ -35,8 +33,23 @@ export default async function BankSummaryPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const companyKey = COMPANY_GROUPS[sp.company ?? ""] ? sp.company! : "tt";
-  const group = COMPANY_GROUPS[companyKey];
+  // Бүртгэлтэй банкны дансууд + компаниар бүлэглэх (Тохиргоо → Банкны данс).
+  const registry = await loadRegistry(supabase);
+  const companies = companyList(registry);
+  // company param: компанийн нэр, эсвэл "" = Бүгд. Эхний ачаалалд анхдагчаар
+  // эхний компани (компани бүртгэгдсэн бол), эс бөгөөс бүх данс.
+  const selCompany =
+    sp.company !== undefined
+      ? companies.includes(sp.company)
+        ? sp.company
+        : ""
+      : companies[0] ?? "";
+  const groupAccounts = accountsForCompany(registry, selCompany || null);
+  const groupAccountIds = groupAccounts.map((a) => a.accountNo);
+  const groupLabel = selCompany || "Бүгд";
+  // PostgREST .in() хоосон массивт буруу ажиллах тул хамгаалалт.
+  const inIds = groupAccountIds.length ? groupAccountIds : ["__none__"];
+  const bankNames = displayMap(registry);
 
   const { data: yearRows } = await supabase.from("transactions").select("year");
   const years = [
@@ -50,7 +63,7 @@ export default async function BankSummaryPage({
     .from("monthly_cashflow")
     .select("account_id,month,total_income,total_expense")
     .eq("year", selYear)
-    .in("account_id", group.accounts);
+    .in("account_id", inIds);
 
   const summaryTxns: BankSummaryTxn[] = (
     (mcData as
@@ -67,7 +80,7 @@ export default async function BankSummaryPage({
     .from("account_balances")
     .select("account_id,opening_balance")
     .eq("year", selYear)
-    .in("account_id", group.accounts);
+    .in("account_id", inIds);
 
   const openingByAccount: Record<string, number> = {};
   for (const r of (balData as { account_id: string; opening_balance: number }[] | null) ?? []) {
@@ -77,8 +90,8 @@ export default async function BankSummaryPage({
   const summary = buildBankSummary(
     summaryTxns,
     openingByAccount,
-    group.accounts,
-    BANK_DISPLAY as Record<string, string>,
+    groupAccountIds,
+    bankNames,
   );
 
   return (
@@ -89,7 +102,7 @@ export default async function BankSummaryPage({
             Мөнгөн хөрөнгийн нэгтгэл — {selYear} он
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Банк тус бүрийн сарын мөнгөн хөдөлгөөн ба үлдэгдэл · {group.label} · MNT
+            Банк тус бүрийн сарын мөнгөн хөдөлгөөн ба үлдэгдэл · {groupLabel} · MNT
           </p>
         </div>
         <div className="no-print">
@@ -103,14 +116,15 @@ export default async function BankSummaryPage({
           Компани
           <select
             name="company"
-            defaultValue={companyKey}
+            defaultValue={selCompany}
             className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
           >
-            {Object.entries(COMPANY_GROUPS).map(([k, g]) => (
-              <option key={k} value={k}>
-                {g.label}
+            {companies.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
+            <option value="">Бүгд</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-500">

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts } from "./actions";
+import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn } from "./actions";
 
 export type TxnRow = {
   id: number;
@@ -62,7 +62,14 @@ export function StatementsTable({
     start(async () => {
       try {
         const res = await autoLinkAccounts();
-        setMsg(`✓ Автомат холболт: ${res.linked} гүйлгээ холбогдлоо.`);
+        if (res.linked > 0) {
+          const via = res.seeded > 0 ? ` (суурь зураглалаар ${res.seeded})` : "";
+          setMsg(`✓ Автомат холболт: ${res.linked} гүйлгээ холбогдлоо${via}.`);
+        } else {
+          setMsg(
+            "Холбогдох гүйлгээ олдсонгүй. Гүйлгээнүүдэд ангиллын код (AI ангилал) бичигдсэн эсэх, мөн Тохиргоо → «Ангилал → данс зураглал»-д тухайн компанийн зураглал бүртгэгдсэн эсэхийг шалгана уу.",
+          );
+        }
         router.refresh();
       } catch (e) {
         setMsg(e instanceof Error ? e.message : "Алдаа гарлаа.");
@@ -144,6 +151,25 @@ export function StatementsTable({
     setEditDt(r.debit_code ?? "");
     setEditKt(r.credit_code ?? "");
     setMsg(null);
+  }
+
+  function remove(r: TxnRow) {
+    if (!window.confirm(`Энэ гүйлгээг устгах уу?\n${r.txn_date.slice(0, 10)} · ${r.description ?? ""}`))
+      return;
+    setMsg(null);
+    start(async () => {
+      const res = await deleteTxn(r.id);
+      if (res.ok) {
+        setData((d) => d.filter((x) => x.id !== r.id));
+        setSelected((s) => {
+          const n = new Set(s);
+          n.delete(r.id);
+          return n;
+        });
+      } else {
+        setMsg(res.error);
+      }
+    });
   }
 
   function save(id: number) {
@@ -318,8 +344,9 @@ export function StatementsTable({
                   <>
                     <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{acctCell(r.debit_code)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{acctCell(r.credit_code)}</td>
-                    <td className="px-2 py-1">
-                      <button type="button" onClick={() => startEdit(r)} title="Засах" className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50">✏</button>
+                    <td className="whitespace-nowrap px-2 py-1">
+                      <button type="button" onClick={() => startEdit(r)} title="Засах" className="mr-1 rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50">✏</button>
+                      <button type="button" disabled={pending} onClick={() => remove(r)} title="Устгах" className="rounded border border-red-200 px-2 py-1 text-xs text-red-500 hover:bg-red-50 disabled:opacity-50">🗑</button>
                     </td>
                   </>
                 )}

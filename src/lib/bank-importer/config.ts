@@ -55,6 +55,20 @@ export const COMPANY_ACCOUNTS: Record<"TT" | "TR", AccountId[]> = {
   TR: ["TR"],
 };
 
+// account_id → компани бүлгийн код (COMPANY_ACCOUNTS-ийн урвуу).
+// Авто-холболтын ангилал→данс зураглалыг компаниар шүүхэд ашиглана.
+export const ACCOUNT_COMPANY: Record<string, "TT" | "TR"> = Object.fromEntries(
+  Object.entries(COMPANY_ACCOUNTS).flatMap(([co, ids]) =>
+    ids.map((id) => [id, co as "TT" | "TR"]),
+  ),
+);
+
+// Зураглалд ашиглах компани бүлгүүд (UI сонголтод).
+export const COMPANIES: { code: "TT" | "TR"; name: string }[] = [
+  { code: "TT", name: COMPANY_TT },
+  { code: "TR", name: COMPANY_TR },
+];
+
 // ── Гүйлгээ орхих түлхүүр үгс ─────────────────────────────────────────────
 export const SKIP_KEYWORDS = ["данс хооронд арилжаа", "доод үлдэгдэл"];
 
