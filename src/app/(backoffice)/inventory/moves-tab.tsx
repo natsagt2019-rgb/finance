@@ -135,6 +135,15 @@ export function MovesTab({
                       )}
                     </td>
                     <td className="no-print whitespace-nowrap px-4 py-2 text-right">
+                      <Link
+                        href={`/inventory/document/${
+                          m.type === "receipt" || m.type === "return_in" ? "bm-2" : "bm-3"
+                        }?${m.doc_no ? `doc=${encodeURIComponent(m.doc_no)}` : `move=${m.id}`}`}
+                        title="Анхан шатны баримт хэвлэх"
+                        className="mr-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      >
+                        🖨 Баримт
+                      </Link>
                       <MoveDelete id={m.id} />
                     </td>
                   </tr>

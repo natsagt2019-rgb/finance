@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { computeFifo, categoryLabel, fmt, fmtQty, type MoveLite } from "@/lib/inventory-calc";
 import { RowActions } from "./row-actions";
 import type { ItemRow, MoveRow } from "./types";
@@ -103,6 +105,13 @@ export function ItemsTab({ items, moves }: { items: ItemRow[]; moves: MoveRow[] 
                         {fmtQty(Number(it.reorder_point))}
                       </td>
                       <td className="no-print whitespace-nowrap px-4 py-2 text-right">
+                        <Link
+                          href={`/inventory/document/bm-5?item=${it.id}`}
+                          title="Агуулахын бүртгэл (БМ-5) хэвлэх"
+                          className="mr-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                        >
+                          🖨 БМ-5
+                        </Link>
                         <RowActions id={it.id} label={it.name} />
                       </td>
                     </tr>
