@@ -45,6 +45,8 @@ export function detectAccountInText(
 }
 
 // Нэг файлыг parse + ангилал хийж нормчилсон мөрүүд буцаана (DB-гүй).
+// Дүн нь анхны валютаар хадгалагдана (income/expense + exchange_rate); журнал/
+// тайланд төгрөгт хөрвүүлэхдээ дүн × ханш ашиглана.
 export function normalizeFile(
   buffer: ArrayBuffer | Buffer,
   account: AccountConfig,

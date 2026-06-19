@@ -24,6 +24,16 @@ function fmtMoney(n: number | null): string {
   });
 }
 
+// Гадаад валютын дүнг төгрөгт хөрвүүлнэ (дүн × ханш). MNT бол хэвээр.
+function toMnt(
+  amt: number | null,
+  rate: number,
+  currency: string | null,
+): number | null {
+  if (amt == null) return null;
+  return currency && currency !== "MNT" ? amt * (rate || 1) : amt;
+}
+
 function fmtDate(iso: string): string {
   return iso.slice(0, 10);
 }
@@ -265,10 +275,10 @@ export function ImportClient() {
                         />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums text-green-700">
-                        {fmtMoney(row.income)}
+                        {fmtMoney(toMnt(row.income, row.exchange_rate, row.currency))}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums text-red-700">
-                        {fmtMoney(row.expense)}
+                        {fmtMoney(toMnt(row.expense, row.exchange_rate, row.currency))}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right align-top tabular-nums">
                         {row.currency && row.currency !== "MNT" ? (
@@ -280,11 +290,8 @@ export function ImportClient() {
                               })}
                             </div>
                             <div className="text-[10px] text-zinc-400">
-                              {row.currency} ·{" "}
-                              {fmtMoney(
-                                (row.income ?? row.expense ?? 0) * row.exchange_rate,
-                              )}
-                              ₮
+                              {/* Анхны валютын дүн (дээр төгрөгөөр харуулсан) */}
+                              {row.currency} {fmtMoney(row.income ?? row.expense)}
                             </div>
                           </div>
                         ) : (
