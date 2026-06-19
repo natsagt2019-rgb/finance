@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn } from "./actions";
 
 export type TxnRow = {
@@ -48,6 +49,8 @@ export function StatementsTable({
   const [editKt, setEditKt] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  // Холболтын дараа «Журналд бичих»-ийг сануулна (тайланд харагдуулахын тулд).
+  const [postReminder, setPostReminder] = useState(false);
   // Bulk: харилцагчгүй зардлыг олноор зардалд бичих.
   const [onlyNoCp, setOnlyNoCp] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -59,12 +62,14 @@ export function StatementsTable({
 
   function autoLink() {
     setMsg(null);
+    setPostReminder(false);
     start(async () => {
       try {
         const res = await autoLinkAccounts();
         if (res.linked > 0) {
           const via = res.seeded > 0 ? ` (суурь зураглалаар ${res.seeded})` : "";
           setMsg(`✓ Автомат холболт: ${res.linked} гүйлгээ холбогдлоо${via}.`);
+          setPostReminder(true);
         } else {
           setMsg(
             "Холбогдох гүйлгээ олдсонгүй. Гүйлгээнүүдэд ангиллын код (AI ангилал) бичигдсэн эсэх, мөн Тохиргоо → «Ангилал → данс зураглал»-д тухайн компанийн зураглал бүртгэгдсэн эсэхийг шалгана уу.",
@@ -216,6 +221,20 @@ export function StatementsTable({
           }`}
         >
           {msg}
+        </div>
+      )}
+
+      {postReminder && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span>
+            📒 Тайланд харагдуулахын тулд кодолсон гүйлгээгээ журналд бичих хэрэгтэй.
+          </span>
+          <Link
+            href="/categorize"
+            className="rounded-md border border-amber-300 bg-white px-2 py-1 font-medium text-amber-800 hover:bg-amber-100"
+          >
+            AI ангилал → «Журналд бичих» →
+          </Link>
         </div>
       )}
 

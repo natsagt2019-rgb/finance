@@ -5,6 +5,19 @@
 //   node scripts/cashflow-2026.mjs          ← DRY-RUN
 //   node scripts/cashflow-2026.mjs --apply  ← cash_flow_lines бичнэ
 import pg from "pg";
+import { readFileSync } from "node:fs";
+
+// .env.local-оос орчны хувьсагч уншина (SUPABASE_DB_URL).
+const envTxt = readFileSync(".env.local", "utf8");
+for (const l of envTxt.split(/\r?\n/)) {
+  const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+  if (m && !(m[1] in process.env)) {
+    let v = m[2].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
+      v = v.slice(1, -1);
+    process.env[m[1]] = v;
+  }
+}
 
 const APPLY = process.argv.includes("--apply");
 const YEAR = 2026;
@@ -49,11 +62,7 @@ const CF_LABEL = {
 };
 
 const c = new pg.Client({
-  host: "aws-1-ap-southeast-2.pooler.supabase.com",
-  port: 5432,
-  user: `postgres.${process.env.PROJECT_REF}`,
-  password: process.env.PGPASSWORD,
-  database: "postgres",
+  connectionString: process.env.SUPABASE_DB_URL,
   ssl: { rejectUnauthorized: false },
 });
 await c.connect();

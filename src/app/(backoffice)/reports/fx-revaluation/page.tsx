@@ -44,26 +44,26 @@ export default async function FxRevaluationPage() {
   );
   const fxAccountsReady = hasGain && hasLoss;
 
-  // Валютын дансны одоогийн дэвтрийн үлдэгдэл (дебет-эерэг) — батлагдсан журналаас.
-  const bookByAcc = new Map<number, number>();
+  // Валютын дансны одоогийн дэвтрийн үлдэгдэл (дебет-эерэг) — нэгдсэн дэвтэр
+  // journal_entries-ээс (банкны постинг + албан журналын тусгал). Тайлантай
+  // ижил эх сурвалж: debit_code/credit_code/amount, данс КОДоор.
+  const bookByCode = new Map<string, number>();
   if (foreign.length > 0) {
-    const { data: lineData } = await supabase
-      .from("journal_lines")
-      .select("account_id, debit, credit, journals!inner(status)")
-      .in(
-        "account_id",
-        foreign.map((a) => a.id),
-      )
-      .eq("journals.status", "posted")
+    const codes = foreign.map((a) => a.code);
+    const codeSet = new Set(codes);
+    const { data: jeData } = await supabase
+      .from("journal_entries")
+      .select("debit_code, credit_code, amount")
+      .or(`debit_code.in.(${codes.join(",")}),credit_code.in.(${codes.join(",")})`)
       .limit(100000);
-    for (const l of (lineData as
-      | { account_id: number; debit: number; credit: number }[]
+    for (const e of (jeData as
+      | { debit_code: string | null; credit_code: string | null; amount: number }[]
       | null) ?? []) {
-      const cur = bookByAcc.get(l.account_id) ?? 0;
-      bookByAcc.set(
-        l.account_id,
-        cur + (Number(l.debit) || 0) - (Number(l.credit) || 0),
-      );
+      const amt = Number(e.amount) || 0;
+      if (e.debit_code && codeSet.has(e.debit_code))
+        bookByCode.set(e.debit_code, (bookByCode.get(e.debit_code) ?? 0) + amt);
+      if (e.credit_code && codeSet.has(e.credit_code))
+        bookByCode.set(e.credit_code, (bookByCode.get(e.credit_code) ?? 0) - amt);
     }
   }
 
@@ -74,7 +74,7 @@ export default async function FxRevaluationPage() {
     currency: (a.currency ?? "").toUpperCase(),
     nature: a.nature,
     type: a.type,
-    bookBalance: Math.round((bookByAcc.get(a.id) ?? 0) * 100) / 100,
+    bookBalance: Math.round((bookByCode.get(a.code) ?? 0) * 100) / 100,
   }));
 
   // Тэгшитгэлийн түүх.

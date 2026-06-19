@@ -128,6 +128,7 @@ export const navEntries: NavEntry[] = [
     items: [
       { href: "/settings/company", label: "Байгууллага", icon: "🏢" },
       { href: "/settings/bank-accounts", label: "Банкны данс", icon: "🏦" },
+      { href: "/settings/category-map", label: "Ангилал → данс зураглал", icon: "🔗" },
       { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
     ],
   },

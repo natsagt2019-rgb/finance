@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { RebuildCashFlowButton } from "./rebuild-button";
 import {
   CASH_FLOW,
   computeStatement,
@@ -84,8 +85,9 @@ export default async function CashFlowPage({
             Мөнгөн гүйлгээний тайлан
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            E-balance (СС №361), шууд арга. Эх өгөгдөл: ерөнхий журналын мөнгөн
-            гүйлгээний код.
+            E-balance (СС №361), шууд арга. Гүйлгээний ангиллын кодоос дүгнэнэ
+            (валютыг ханшаар MNT болгоно). Шинэ гүйлгээ кодлосны дараа «Дахин
+            дүгнэх» дарж шинэчилнэ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -108,6 +110,7 @@ export default async function CashFlowPage({
               Шинэчлэх
             </button>
           </form>
+          <RebuildCashFlowButton year={selYear} />
           <PrintButton />
         </div>
       </div>
