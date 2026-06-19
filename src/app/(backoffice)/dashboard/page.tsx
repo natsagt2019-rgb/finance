@@ -1,5 +1,6 @@
 import { loadDashboard } from "@/lib/dashboard";
 import { AGING_BUCKETS, AGING_LABEL } from "@/lib/receivables-calc";
+import { GettingStarted } from "@/components/getting-started";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -233,6 +234,8 @@ export default async function DashboardPage({
           </button>
         </form>
       </div>
+
+      <GettingStarted />
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
