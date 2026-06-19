@@ -11,6 +11,7 @@ import {
   resolveYear,
 } from "../shared";
 import { syncInventoryOpening } from "./actions";
+import { InventoryImport } from "./inventory-import";
 
 type SearchParams = { year?: string };
 
@@ -96,10 +97,14 @@ export default async function OpeningInventoryPage({
         <OpeningTabs year={year} years={OPENING_YEARS} balance={balance} />
       </div>
 
+      <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-3">
+        <InventoryImport year={year} />
+      </div>
+
       {!hasData ? (
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">
           {openDate} огноогоор үлдэгдэлтэй бараа олдсонгүй. «Бараа материал» цэсэд
-          орлого бүртгэх эсвэл схемээ deploy хийнэ үү.
+          орлого бүртгэх, эсвэл дээрх «Excel загвар татах»-аар бөөнөөр оруулна уу.
         </div>
       ) : (
         <>

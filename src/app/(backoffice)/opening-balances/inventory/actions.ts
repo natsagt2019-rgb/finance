@@ -1,13 +1,166 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/server";
-import { computeFifo, type MoveLite } from "@/lib/inventory-calc";
+import { computeFifo, CATEGORIES, type MoveLite } from "@/lib/inventory-calc";
 import { OPENING_SOURCES, openDateFor } from "../shared";
 import type { SyncResult } from "../sync-button";
 
 function r2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function num(v: unknown): number {
+  const n = Number(String(v ?? "").replace(/[, ]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+function toISO(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const m = String(v).trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
+}
+
+const OPENING_NOTE = "Эхний үлдэгдэл (импорт)";
+
+export type InvImportResult =
+  | { ok: true; items: number; moves: number }
+  | { ok: false; error: string };
+
+// Excel (загварын дагуу) → inv_items (байхгүйг үүсгэнэ) + нээлтийн нөөцийг
+// 'receipt' хөдөлгөөнөөр бичнэ. Дахин импортлоход тухайн барааны өмнөх импортын
+// нээлтийн мөрийг сольдог (idempotent). Ангиллыг шошго/кодоор тааруулна.
+export async function importInventoryExcel(
+  year: number,
+  formData: FormData,
+): Promise<InvImportResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Нэвтрэх шаардлагатай" };
+
+  const file = formData.get("file");
+  if (!file || typeof file === "string")
+    return { ok: false, error: "Файл сонгоогүй байна." };
+
+  let grid: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = xlsx.read(buf, { type: "buffer", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+  } catch (e) {
+    return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
+  }
+
+  const headerRow = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const find = (...keys: string[]) =>
+    headerRow.findIndex((h) => keys.some((k) => h.includes(k)));
+  const idx = {
+    name: find("нэр"),
+    cat: find("ангилал"),
+    unit: find("нэгж"),
+    sku: find("sku", "код"),
+    qty: find("тоо"),
+    cost: find("өртөг", "үнэ"),
+    date: find("огноо"),
+  };
+  if (idx.name < 0)
+    return { ok: false, error: "«Нэр» багана олдсонгүй. Загварыг ашиглана уу." };
+
+  // Шошго → ангиллын код (эсвэл шууд код).
+  const codeByLabel = new Map<string, string>();
+  for (const c of CATEGORIES) codeByLabel.set(c.label.toLowerCase(), c.code);
+  const validCodes = new Set(CATEGORIES.map((c) => c.code));
+  const catCodeOf = (raw: string): string => {
+    const s = raw.trim().toLowerCase();
+    if (!s) return "120299";
+    if (validCodes.has(s)) return s;
+    return codeByLabel.get(s) ?? "120299";
+  };
+
+  // Байгаа идэвхтэй барааг нэрээр (давхар үүсгэхгүй).
+  const { data: existing } = await supabase
+    .from("inv_items")
+    .select("id, name")
+    .eq("is_active", true)
+    .limit(20000);
+  const itemByName = new Map<string, number>();
+  for (const it of (existing as { id: number; name: string }[] | null) ?? [])
+    itemByName.set(it.name.trim().toLowerCase(), it.id);
+
+  const defaultDate = openDateFor(year);
+  let itemsCreated = 0;
+  type MoveIns = {
+    date: string;
+    type: string;
+    item_id: number;
+    qty: number;
+    unit_cost: number;
+    total_cost: number;
+    note: string;
+  };
+  const moves: MoveIns[] = [];
+  const touchedItemIds = new Set<number>();
+
+  for (let i = 1; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const name = String(row[idx.name] ?? "").trim();
+    if (!name) continue;
+    const qty = idx.qty >= 0 ? num(row[idx.qty]) : 0;
+    const unitCost = idx.cost >= 0 ? num(row[idx.cost]) : 0;
+    if (qty <= 0) continue;
+
+    const key = name.toLowerCase();
+    let itemId = itemByName.get(key);
+    if (itemId == null) {
+      const { data: ins, error } = await supabase
+        .from("inv_items")
+        .insert({
+          name,
+          category_code: idx.cat >= 0 ? catCodeOf(String(row[idx.cat] ?? "")) : "120299",
+          unit: idx.unit >= 0 ? String(row[idx.unit] ?? "").trim() || "ш" : "ш",
+          sku: idx.sku >= 0 ? String(row[idx.sku] ?? "").trim() || null : null,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+      if (error) return { ok: false, error: error.message };
+      itemId = (ins as { id: number }).id;
+      itemByName.set(key, itemId);
+      itemsCreated++;
+    }
+
+    touchedItemIds.add(itemId);
+    moves.push({
+      date: (idx.date >= 0 ? toISO(row[idx.date]) : null) ?? defaultDate,
+      type: "receipt",
+      item_id: itemId,
+      qty: Math.abs(qty),
+      unit_cost: r2(unitCost),
+      total_cost: r2(Math.abs(qty) * unitCost),
+      note: OPENING_NOTE,
+    });
+  }
+
+  // Idempotent: тухайн барааны өмнөх импортын нээлтийн мөрийг устгаад дахин бичнэ.
+  if (touchedItemIds.size > 0) {
+    await supabase
+      .from("inv_moves")
+      .delete()
+      .eq("note", OPENING_NOTE)
+      .in("item_id", [...touchedItemIds]);
+  }
+  if (moves.length > 0) {
+    const { error } = await supabase.from("inv_moves").insert(moves);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/opening-balances/inventory");
+  revalidatePath("/inventory");
+  return { ok: true, items: itemsCreated, moves: moves.length };
 }
 
 // Барааны эхний үлдэгдэл (нээлтийн огноо хүртэлх FIFO өртөг) → Дт бараа

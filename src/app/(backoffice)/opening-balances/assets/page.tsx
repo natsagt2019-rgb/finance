@@ -10,6 +10,7 @@ import {
   resolveYear,
 } from "../shared";
 import { syncAssetOpening } from "./actions";
+import { AssetsImport } from "./assets-import";
 
 type SearchParams = { year?: string };
 
@@ -100,10 +101,14 @@ export default async function OpeningAssetsPage({
         <OpeningTabs year={year} years={OPENING_YEARS} balance={balance} />
       </div>
 
+      <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-3">
+        <AssetsImport />
+      </div>
+
       {!hasData ? (
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">
-          Идэвхтэй үндсэн хөрөнгө олдсонгүй. «Үндсэн хөрөнгө» цэсэд карт бүртгэх
-          эсвэл схемээ deploy хийнэ үү.
+          Идэвхтэй үндсэн хөрөнгө олдсонгүй. «Үндсэн хөрөнгө» цэсэд карт бүртгэх,
+          эсвэл дээрх «Excel загвар татах»-аар бөөнөөр оруулна уу.
         </div>
       ) : (
         <>

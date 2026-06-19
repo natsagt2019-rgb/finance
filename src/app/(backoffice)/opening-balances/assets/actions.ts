@@ -1,12 +1,128 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/server";
 import { OPENING_SOURCES, openDateFor } from "../shared";
 import type { SyncResult } from "../sync-button";
 
 function r2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+// Excel нүднээс огноог YYYY-MM-DD болгоно (Date | serial | текст).
+function toISO(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime()))
+    return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return null;
+}
+
+function num(v: unknown): number {
+  const n = Number(String(v ?? "").replace(/[, ]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export type AssetImportResult =
+  | { ok: true; inserted: number; skipped: number }
+  | { ok: false; error: string };
+
+// Excel (загварын дагуу) → assets хүснэгтэд бөөнөөр оруулна. Ангиллыг нэрээр
+// тааруулна. Идэвхтэй ижил нэртэй хөрөнгө байвал алгасна (давхардлаас сэргийлж).
+export async function importAssetsExcel(
+  formData: FormData,
+): Promise<AssetImportResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Нэвтрэх шаардлагатай" };
+
+  const file = formData.get("file");
+  if (!file || typeof file === "string")
+    return { ok: false, error: "Файл сонгоогүй байна." };
+
+  let grid: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = xlsx.read(buf, { type: "buffer", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+  } catch (e) {
+    return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
+  }
+
+  // Толгойн мөрөөс баганын индексийг олно.
+  const idx: Record<string, number> = {};
+  const headerRow = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const find = (...keys: string[]) =>
+    headerRow.findIndex((h) => keys.some((k) => h.includes(k)));
+  idx.name = find("нэр");
+  idx.cat = find("ангилал");
+  idx.acquired = find("орсон огноо");
+  idx.cost = find("анхны өртөг", "өртөг");
+  idx.accum = find("элэгдэл");
+  idx.openDate = find("эхний үлдэгдлийн огноо", "үлдэгдлийн огноо");
+  idx.life = find("ашиглалт");
+  idx.salvage = find("үлдэгдэл өртөг");
+  idx.location = find("байршил");
+  idx.resp = find("хариуцагч");
+  if (idx.name < 0)
+    return { ok: false, error: "«Нэр» багана олдсонгүй. Загварыг ашиглана уу." };
+
+  // Ангилал нэр → id, идэвхтэй хөрөнгийн нэрс (давхардал шалгах).
+  const [{ data: catData }, { data: existing }] = await Promise.all([
+    supabase.from("asset_categories").select("id, name").eq("is_active", true).limit(2000),
+    supabase.from("assets").select("name").eq("is_active", true).limit(10000),
+  ]);
+  const catByName = new Map<string, number>();
+  for (const c of (catData as { id: number; name: string }[] | null) ?? [])
+    catByName.set(c.name.trim().toLowerCase(), c.id);
+  const existingNames = new Set(
+    ((existing as { name: string }[] | null) ?? []).map((a) =>
+      a.name.trim().toLowerCase(),
+    ),
+  );
+
+  const toInsert: Record<string, unknown>[] = [];
+  let skipped = 0;
+  for (let i = 1; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const name = String(row[idx.name] ?? "").trim();
+    if (!name) continue;
+    if (existingNames.has(name.toLowerCase())) {
+      skipped++;
+      continue;
+    }
+    existingNames.add(name.toLowerCase());
+    const catName = idx.cat >= 0 ? String(row[idx.cat] ?? "").trim().toLowerCase() : "";
+    toInsert.push({
+      name,
+      category_id: catByName.get(catName) ?? null,
+      acquired_date: idx.acquired >= 0 ? toISO(row[idx.acquired]) : null,
+      cost: idx.cost >= 0 ? r2(num(row[idx.cost])) : 0,
+      opening_accum_depreciation: idx.accum >= 0 ? r2(num(row[idx.accum])) : 0,
+      opening_date: idx.openDate >= 0 ? toISO(row[idx.openDate]) : null,
+      useful_life_years: idx.life >= 0 && row[idx.life] != null ? num(row[idx.life]) : null,
+      salvage_value: idx.salvage >= 0 ? r2(num(row[idx.salvage])) : 0,
+      location: idx.location >= 0 ? String(row[idx.location] ?? "").trim() || null : null,
+      responsible: idx.resp >= 0 ? String(row[idx.resp] ?? "").trim() || null : null,
+      status: "active",
+      is_active: true,
+    });
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("assets").insert(toInsert);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/opening-balances/assets");
+  revalidatePath("/assets");
+  return { ok: true, inserted: toInsert.length, skipped };
 }
 
 // Үндсэн хөрөнгийн эхний үлдэгдлийг журналд тусгана:
