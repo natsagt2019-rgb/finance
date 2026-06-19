@@ -6,47 +6,9 @@ import type { AccountId } from "./types";
 export const COMPANY_TT = "ТҮМЭН ТЭЭХ ХХК";
 export const COMPANY_TR = "ТҮМЭН РЕСУРС ХХК";
 
-// ── Данс → account_id mapping ─────────────────────────────────────────────
-// Файлын нэрнд агуулагдах тоогоор автоматаар танина.
-export const ACCOUNT_PATTERNS: Record<string, AccountId> = {
-  "411096635": "TT", // TDB Түмэн Тээх (MNT)
-  "435013050": "TR", // TDB Түмэн Ресурс (MNT)
-  C000074932: "GM", // Golomt
-  "9006906192": "MB", // M Bank
-  "411099342": "TTU", // TDB Түмэн Тээх — USD
-  "411099343": "TTE", // TDB Түмэн Тээх — EUR
-};
-
-// ── Банкны дэлгэрэнгүй нэр (UI харуулах) ─────────────────────────────────
-export const BANK_DISPLAY: Record<AccountId, string> = {
-  TT: "ХХБ / ТДБ — 411096635",
-  TR: "ТДБ — 435013050",
-  GM: "Голомт банк — 1175156757",
-  MB: "М Банк — 9006906192",
-  TTU: "ТДБ — 411099342 (USD)",
-  TTE: "ТДБ — 411099343 (EUR)",
-};
-
-// ── Данс → банкны GL данс (харилцах дансны өөрийн код) ────────────────────
-// Банкны гүйлгээний нэг тал үргэлж энэ данс: орлого→Дт, зарлага→Кт.
-// Энэ нь тогтмол тул import үед авто оноогдоно (гараар кодлох шаардлагагүй).
-export const BANK_GL: Partial<Record<AccountId, string>> = {
-  TT: "110102", // ХХ банк 411096635
-  GM: "110101", // Голомт 1175156757
-  MB: "110103", // М банк 9006906192
-  TTU: "110105", // ТДБ USD 411099342
-  TTE: "110106", // ТДБ EUR 411099343
-};
-
-// ── Данс → валют ──────────────────────────────────────────────────────────
-export const ACCOUNT_CURRENCY: Record<AccountId, string> = {
-  TT: "MNT",
-  TR: "MNT",
-  GM: "MNT",
-  MB: "MNT",
-  TTU: "USD",
-  TTE: "EUR",
-};
+// Тэмдэглэл: данс таних, дэлгэцийн нэр, GL код, валют нь одоо bank_accounts
+// бүртгэлээс (src/lib/bank-registry.ts) динамикаар авагдана. Хуучин hardcode
+// (ACCOUNT_PATTERNS/BANK_DISPLAY/BANK_GL/ACCOUNT_CURRENCY) устгав.
 
 // ── Компани → данс бүлэг ──────────────────────────────────────────────────
 // TT компанид USD/EUR данс ч багтана (гэхдээ MNT тайлан валютаар шүүгдэнэ).
@@ -68,6 +30,14 @@ export const COMPANIES: { code: "TT" | "TR"; name: string }[] = [
   { code: "TT", name: COMPANY_TT },
   { code: "TR", name: COMPANY_TR },
 ];
+
+// bank_accounts.company (чөлөөт текст, ж: "Түмэн Тээх" / "Түмэн Ресурс") →
+// компани бүлгийн код ('TT' | 'TR'). Зөвхөн Түмэн Ресурс тусдаа бүлэг; бусад
+// бүх данс (ХХБ/Голомт/М банк/валют) TT бүлэгт. Ангилал-кодлол ба category_gl_map
+// суурь зураглалыг компаниар сонгоход ашиглана.
+export function companyCode(company: string | null | undefined): "TT" | "TR" {
+  return (company ?? "").toLowerCase().includes("ресурс") ? "TR" : "TT";
+}
 
 // ── Гүйлгээ орхих түлхүүр үгс ─────────────────────────────────────────────
 export const SKIP_KEYWORDS = ["данс хооронд арилжаа", "доод үлдэгдэл"];

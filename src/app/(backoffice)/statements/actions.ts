@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { loadRegistry } from "@/lib/bank-registry";
-import { ACCOUNT_COMPANY } from "@/lib/bank-importer/config";
+import { companyCode } from "@/lib/bank-importer/config";
 
 export type ActionResult =
   | { ok: true }
@@ -91,12 +91,16 @@ export async function autoLinkAccounts(): Promise<{
   }
 
   const empty = (s: string | null) => !s || !s.trim();
-  // Банкны талын GL кодууд (харилцах данс) — bank_accounts бүртгэлээс. Offset
-  // (нөгөө тал) сурахдаа эдгээрийг хасна (банкны тал тогтмол, сурах зүйл биш).
+  // Банкны бүртгэл (нэг удаа) — GL код ба account_id → компани бүлгийн зураглал.
+  const registry = await loadRegistry(supabase);
+  // Банкны талын GL кодууд (харилцах данс). Offset (нөгөө тал) сурахдаа эдгээрийг
+  // хасна (банкны тал тогтмол, сурах зүйл биш).
   const bankCodes = new Set(
-    (await loadRegistry(supabase))
-      .map((a) => a.glCode)
-      .filter((c): c is string => !!c),
+    registry.map((a) => a.glCode).filter((c): c is string => !!c),
+  );
+  // account_id (дансны дугаар) → компани бүлгийн код (TT/TR) — суурь зураглалд.
+  const companyByAccount = new Map<string, "TT" | "TR">(
+    registry.map((a) => [a.accountNo, companyCode(a.company)]),
   );
 
   // 1) Сурах: ангиллын код → нөгөө тал данс (давамгайлсан).
@@ -167,7 +171,7 @@ export async function autoLinkAccounts(): Promise<{
   // Гүйлгээний account_id-аар компани бүлгийг олж суурь дансыг авна.
   const seedCode = (accountId: string, category: string | null): string | undefined => {
     if (!category) return undefined;
-    const company = ACCOUNT_COMPANY[accountId];
+    const company = companyByAccount.get(accountId);
     return company ? seed.get(company)?.get(category) : undefined;
   };
 

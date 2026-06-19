@@ -51,6 +51,7 @@ type TxnRow = {
   bank: string | null;
   income: number | null;
   expense: number | null;
+  exchange_rate: number | null;
   debit_code: string | null;
   credit_code: string | null;
 };
@@ -125,7 +126,7 @@ export default async function PartnerDetailPage({
   // бичигдсэн регистр (жишээ "рд:5540836") болон харилцагчийн нэр/alias-аар
   // (counterparty / master_name / description ilike). Олон query-г id-аар нэгтгэнэ.
   const txnSel =
-    "id, txn_date, description, bank, income, expense, debit_code, credit_code";
+    "id, txn_date, description, bank, income, expense, exchange_rate, debit_code, credit_code";
   const txnById = new Map<number, TxnRow>();
   const runTxn = async (col: string, value: string, exact: boolean) => {
     let tq = supabase.from("transactions").select(txnSel);
@@ -173,8 +174,10 @@ export default async function PartnerDetailPage({
   const accountsList = (accListData as { code: string; name: string }[] | null) ?? [];
 
   // ── Нийт дүнгүүд ─────────────────────────────────────────────────────────
-  const totalBankIncome = bankIncome.reduce((s, t) => s + (Number(t.income) || 0), 0);
-  const totalBankExpense = bankExpense.reduce((s, t) => s + (Number(t.expense) || 0), 0);
+  // Гадаад валютыг төгрөгт хөрвүүлж нэгтгэнэ (eBarimt-тай тулгалт MNT-ээр).
+  const rateOf = (t: TxnRow) => Number(t.exchange_rate) || 1;
+  const totalBankIncome = bankIncome.reduce((s, t) => s + (Number(t.income) || 0) * rateOf(t), 0);
+  const totalBankExpense = bankExpense.reduce((s, t) => s + (Number(t.expense) || 0) * rateOf(t), 0);
   const totalVatOut = vatOut.reduce((s, v) => s + (Number(v.total_amount) || 0), 0);
   const totalVatIn = vatIn.reduce((s, v) => s + (Number(v.total_amount) || 0), 0);
   const totalInv = invoices.reduce((s, i) => s + (Number(i.amount) || 0), 0);

@@ -34,6 +34,7 @@ export type AccountConfig = {
   currency: string; // MNT | USD | EUR …
   glCode: string | null; // харилцах дансны GL код (110xxx)
   label: string; // харагдах нэр
+  company?: string | null; // компани (Түмэн Тээх / Түмэн Ресурс) — ангилалд
 };
 
 // Ангилалын чиглэл: 'M' = орлого, 'N' = зарлага, '' = тодорхойгүй

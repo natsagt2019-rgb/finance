@@ -66,12 +66,12 @@ export default async function ReconcileActPage({
   const { data: invData } = await invQ.limit(NUM_LIMIT);
 
   // Кредит — банкны орлого (регистр/нэр/код-оор, дэлгэрэнгүй хуудастай адил).
-  type TxnLite = { id: number; txn_date: string; description: string | null; income: number | null };
+  type TxnLite = { id: number; txn_date: string; description: string | null; income: number | null; exchange_rate: number | null };
   const txnById = new Map<number, TxnLite>();
   const runTxn = async (col: string, value: string, exact: boolean) => {
     let tq = supabase
       .from("transactions")
-      .select("id, txn_date, description, income")
+      .select("id, txn_date, description, income, exchange_rate")
       .not("income", "is", null);
     tq = exact ? tq.eq(col, value) : tq.ilike(col, `%${value}%`);
     if (from) tq = tq.gte("txn_date", from);
@@ -105,7 +105,7 @@ export default async function ReconcileActPage({
       ref: "",
       desc: t.description || `Төлбөр — ${partner.name}`,
       debit: 0,
-      credit: Number(t.income) || 0,
+      credit: (Number(t.income) || 0) * (Number(t.exchange_rate) || 1),
     });
   }
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

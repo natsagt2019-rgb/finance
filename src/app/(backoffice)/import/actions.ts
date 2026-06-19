@@ -20,12 +20,12 @@ async function loadBankAccounts(
 ): Promise<AccountConfig[]> {
   const { data } = await supabase
     .from("bank_accounts")
-    .select("account_no, bank_type, currency, gl_code, label")
+    .select("account_no, bank_type, currency, gl_code, label, company")
     .eq("is_active", true)
     .limit(1000);
   return (
     (data as
-      | { account_no: string; bank_type: string; currency: string; gl_code: string | null; label: string }[]
+      | { account_no: string; bank_type: string; currency: string; gl_code: string | null; label: string; company: string | null }[]
       | null) ?? []
   ).map((a) => ({
     accountNo: a.account_no,
@@ -33,6 +33,7 @@ async function loadBankAccounts(
     currency: a.currency || "MNT",
     glCode: a.gl_code,
     label: a.label || a.account_no,
+    company: a.company,
   }));
 }
 

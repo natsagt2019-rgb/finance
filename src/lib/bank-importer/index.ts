@@ -4,13 +4,14 @@
 // DB ажиллагаа (cutoff унших, upsert) нь Next.js server action-д байна —
 // энд зөвхөн цэвэр parse + ангилал логик.
 import { applyCodes } from "./coder";
+import { companyCode } from "./config";
 import { parseFile } from "./parsers";
 import type { AccountConfig, NormalizedTxn } from "./types";
 
 export { sheetHeaderText } from "./parsers";
 
 export type { AccountId, AccountConfig, BankType, NormalizedTxn } from "./types";
-export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY } from "./config";
+export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES } from "./config";
 
 // Файлын нэрэн дэх дансны дугаараар тохирох дансыг (bank_accounts) тодорхойлно.
 // Жнь: 'ST_411099344_9944.XLS' + [{accountNo:'411099344',…}] → тэр данс.
@@ -53,12 +54,13 @@ export function normalizeFile(
   cutoff: Date,
 ): NormalizedTxn[] {
   let txns = parseFile(buffer, account, cutoff);
-  // Ангиллын дүрэм (кодлол) — одоохондоо нэг ерөнхий дүрмээр.
-  txns = txns.map((t) => applyCodes(t, "TT"));
+  // Ангиллын дүрэм (кодлол) — дансны компани бүлгээр (TT/TR) сонгоно.
+  const co = companyCode(account.company);
+  txns = txns.map((t) => applyCodes(t, co));
 
   return txns.map((t) => ({
     ...t,
-    company: "",
+    company: account.company ?? "",
     currency: t.currency ?? account.currency ?? "MNT",
     master_code: null,
     master_name: null,
