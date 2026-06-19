@@ -126,7 +126,10 @@ export const navEntries: NavEntry[] = [
   {
     title: "Тохиргоо",
     icon: "⚙",
-    items: [{ href: "/users", label: "Хэрэглэгчид", icon: "👤" }],
+    items: [
+      { href: "/settings/company", label: "Байгууллага", icon: "🏢" },
+      { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
+    ],
   },
 ];
 

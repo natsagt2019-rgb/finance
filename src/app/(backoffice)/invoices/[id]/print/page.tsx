@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { COMPANY, VAT_RATE } from "@/lib/company";
+import { loadCompany, VAT_RATE } from "@/lib/company";
 import { INVOICE_SELECT, type InvoiceRow } from "../../types";
 import { PrintActions } from "./print-actions";
 
@@ -27,6 +27,7 @@ export default async function InvoicePrintPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const company = await loadCompany();
 
   const { data, error } = await supabase
     .from("invoices")
@@ -89,15 +90,15 @@ export default async function InvoicePrintPage({
 
         {/* Компанийн нэр */}
         <div className="text-[26px] font-bold text-[#5b6fa0]">
-          {COMPANY.name}
+          {company.name}
         </div>
         <div className="mt-1 text-xs leading-7 text-zinc-500">
-          {COMPANY.address}
+          {company.address}
           <br />
-          Утас: {COMPANY.phone} &nbsp;|&nbsp; {COMPANY.email} &nbsp;|&nbsp;{" "}
-          {COMPANY.web}
+          Утас: {company.phone} &nbsp;|&nbsp; {company.email} &nbsp;|&nbsp;{" "}
+          {company.web}
           <br />
-          ТТД: {COMPANY.register} &nbsp;|&nbsp; НӨАТ: {COMPANY.taxId}
+          ТТД: {company.register} &nbsp;|&nbsp; НӨАТ: {company.taxId}
         </div>
 
         {/* Гарчиг */}
@@ -134,13 +135,13 @@ export default async function InvoicePrintPage({
           <div className="pb-4">
             <div className={labelCls}>Төлбөр хүлээн авагч</div>
             <div className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-600">
-              <strong className="text-zinc-800">{COMPANY.nameUpper}</strong>
+              <strong className="text-zinc-800">{company.nameUpper}</strong>
               <br />
-              {COMPANY.bankName}
+              {company.bankName}
               <br />
-              Данс: {COMPANY.bankAccount} (MNT)
+              Данс: {company.bankAccount} (MNT)
               <br />
-              IBAN: {COMPANY.bankIban}
+              IBAN: {company.bankIban}
               <br />
               {inv.responsible ? (
                 <>Хариуцагч: {inv.responsible}</>
@@ -256,16 +257,16 @@ export default async function InvoicePrintPage({
           <div className="self-end text-center text-[11px] text-zinc-300">
             {inv.invoice_no || `#${inv.id}`} &nbsp;|&nbsp; {inv.inv_date}
             <br />
-            {COMPANY.name}
+            {company.name}
           </div>
           <div className="flex min-w-[200px] flex-col gap-4">
             <div className="flex flex-col items-center gap-1">
-              <span>Захирал: {COMPANY.director}</span>
+              <span>Захирал: {company.director}</span>
               <div className="mt-7 w-36 border-t border-zinc-400" />
               <span className="text-[10px] text-zinc-400">Гарын үсэг</span>
             </div>
             <div className="flex flex-col items-center gap-1">
-              <span>Нягтлан: {COMPANY.accountant}</span>
+              <span>Нягтлан: {company.accountant}</span>
               <div className="mt-7 w-36 border-t border-zinc-400" />
               <span className="text-[10px] text-zinc-400">Гарын үсэг</span>
             </div>

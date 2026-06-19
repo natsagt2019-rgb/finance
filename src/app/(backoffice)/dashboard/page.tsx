@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import { loadDashboard } from "@/lib/dashboard";
 import { AGING_BUCKETS, AGING_LABEL } from "@/lib/receivables-calc";
+import { isCompanyRegistered } from "@/lib/company";
 import { GettingStarted } from "@/components/getting-started";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -208,8 +211,30 @@ export default async function DashboardPage({
     error = e instanceof Error ? e.message : "Өгөгдөл ачаалахад алдаа гарлаа.";
   }
 
+  const companyRegistered = await isCompanyRegistered();
+
   return (
     <div>
+      {!companyRegistered && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+              <span>🏢</span> Эхлээд үндсэн байгууллагаа бүртгэнэ үү
+            </h2>
+            <p className="mt-1 text-sm text-amber-800">
+              Байгууллагын нэр, хаяг, ТТД, банкны мэдээллийг бүртгэснээр нэхэмжлэх
+              болон тооцооны баримтад зөв хэвлэгдэнэ.
+            </p>
+          </div>
+          <Link
+            href="/settings/company"
+            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            Байгууллага бүртгэх →
+          </Link>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">

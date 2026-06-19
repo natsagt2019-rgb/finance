@@ -2,23 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadCompany } from "@/lib/company";
 import { PrintButton } from "@/components/print-button";
 
 // НХМаягт ТМ-3 — Тооцооны үлдэгдлийн баталгаа (хуучин reconcile_act.html).
 // Дебит = нэхэмжлэл (авлага үүсэх), Кредит = банкны орлого (төлбөр).
 // Цэвэр = Дебит − Кредит: + авлага, − өглөг.
-
-// Өөрийн (нэхэмжлэгч) байгууллагын мэдээлэл. Шаардвал засна.
-const COMPANY = {
-  name: "ТҮМЭН ТЭЭХ ХХК",
-  register: "",
-  address: "",
-  phone: "",
-  email: "",
-  bank_name: "",
-  bank_account: "",
-  accountant: "",
-};
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const NUM_LIMIT = 5000;
@@ -42,6 +31,7 @@ export default async function ReconcileActPage({
   const { id } = await params;
   const sp = await searchParams;
   const supabase = await createClient();
+  const company = await loadCompany();
   const pid = Number(id);
   const from = sp.date_from && ISO.test(sp.date_from) ? sp.date_from : "";
   const to = sp.date_to && ISO.test(sp.date_to) ? sp.date_to : "";
@@ -158,13 +148,13 @@ export default async function ReconcileActPage({
           <div className="flex-1 border border-black p-2 text-[10pt] leading-relaxed">
             <div className="mb-1 border-b border-black pb-1 font-bold">Нэхэмжлэгч:</div>
             <div>Байгууллагын нэр:</div>
-            <div className="text-[11pt] font-bold">{COMPANY.name}</div>
-            <div>Хаяг: {field(COMPANY.address)}</div>
-            <div>РД: {field(COMPANY.register)}</div>
-            <div>Утас: {field(COMPANY.phone)}</div>
-            <div>Э-Шуудан: {field(COMPANY.email)}</div>
-            <div>Банк: {field(COMPANY.bank_name)}</div>
-            <div>Дансны дугаар: {field(COMPANY.bank_account)}</div>
+            <div className="text-[11pt] font-bold">{company.name}</div>
+            <div>Хаяг: {field(company.address)}</div>
+            <div>РД: {field(company.register)}</div>
+            <div>Утас: {field(company.phone)}</div>
+            <div>Э-Шуудан: {field(company.email)}</div>
+            <div>Банк: {field(company.bankName)}</div>
+            <div>Дансны дугаар: {field(company.bankAccount)}</div>
           </div>
           <div className="flex-1 border border-black p-2 text-[10pt] leading-relaxed">
             <div className="mb-1 border-b border-black pb-1 font-bold">Төлөгч:</div>
@@ -206,8 +196,8 @@ export default async function ReconcileActPage({
           <div className="flex-1">
             <div className="font-bold">Нэхэмжлэгч байгууллагын нягтлан бодогч</div>
             <div className="mt-5 h-px w-48 border-b border-black" />
-            <div>/{field(COMPANY.accountant)}/</div>
-            <div className="text-[9.5pt] text-zinc-600">{COMPANY.name}</div>
+            <div>/{field(company.accountant)}/</div>
+            <div className="text-[9.5pt] text-zinc-600">{company.name}</div>
           </div>
           <div className="flex-1">
             <div className="font-bold">Төлөгч байгууллагын нягтлан бодогч</div>
