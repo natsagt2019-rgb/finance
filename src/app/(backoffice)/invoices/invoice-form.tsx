@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -21,11 +21,15 @@ export function InvoiceForm({ mode, invoice, partners }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // "Хадгалаад хэвлэх" дарвал хадгалсны дараа стандарт хэвлэх хуудас руу очино.
+  const printAfterRef = useRef(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
+    const printAfter = printAfterRef.current;
+    printAfterRef.current = false;
 
     startTransition(async () => {
       try {
@@ -35,6 +39,10 @@ export function InvoiceForm({ mode, invoice, partners }: Props) {
             : await createInvoice(formData);
         if (!res.ok) {
           setError(res.error);
+          return;
+        }
+        if (printAfter) {
+          router.push(`/invoices/${res.id}/print`);
           return;
         }
         router.push("/invoices");
@@ -187,7 +195,7 @@ export function InvoiceForm({ mode, invoice, partners }: Props) {
         </div>
       )}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         <button
           type="submit"
           disabled={isPending}
@@ -195,9 +203,29 @@ export function InvoiceForm({ mode, invoice, partners }: Props) {
         >
           {isPending ? "Хадгалж байна…" : mode === "edit" ? "Хадгалах" : "Нэмэх"}
         </button>
+        <button
+          type="submit"
+          disabled={isPending}
+          onClick={() => {
+            printAfterRef.current = true;
+          }}
+          title="Хадгалаад стандарт загвараар хэвлэх хуудас руу шилжинэ"
+          className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+        >
+          🖨 Хадгалаад хэвлэх
+        </button>
+        {mode === "edit" && (
+          <Link
+            href={`/invoices/${invoice.id}/print`}
+            target="_blank"
+            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            🖨 Хэвлэх (шинэ цонх)
+          </Link>
+        )}
         <Link
           href="/invoices"
-          className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          className="ml-auto rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
         >
           Болих
         </Link>
