@@ -106,12 +106,12 @@ SELECT
     year,
     month,
     account_id,
-    SUM(income)  AS total_income,
-    SUM(expense) AS total_expense,
-    SUM(COALESCE(income, 0)) - SUM(COALESCE(expense, 0)) AS net_cashflow,
+    SUM(COALESCE(income,  0) * COALESCE(exchange_rate, 1)) AS total_income,
+    SUM(COALESCE(expense, 0) * COALESCE(exchange_rate, 1)) AS total_expense,
+    SUM(COALESCE(income,  0) * COALESCE(exchange_rate, 1))
+      - SUM(COALESCE(expense, 0) * COALESCE(exchange_rate, 1)) AS net_cashflow,
     COUNT(*)     AS txn_count
-FROM transactions
-WHERE currency = 'MNT'          -- гадаад валютыг MNT тайлангаас тусгаарлана
+FROM transactions          -- бүх валют: дүн × ханш-аар MNT-д хөрвүүлж нэгтгэнэ
 GROUP BY year, month, account_id
 ORDER BY year, month, account_id;
 
@@ -124,10 +124,9 @@ SELECT
     account_id,
     COALESCE(income_code, expense_code) AS category_code,
     CASE WHEN income_code IS NOT NULL THEN 'income' ELSE 'expense' END AS direction,
-    SUM(COALESCE(income, expense, 0)) AS total
-FROM transactions
+    SUM(COALESCE(income, expense, 0) * COALESCE(exchange_rate, 1)) AS total
+FROM transactions          -- бүх валют: дүн × ханш-аар MNT-д хөрвүүлнэ
 WHERE COALESCE(income_code, expense_code) IS NOT NULL
-  AND currency = 'MNT'          -- гадаад валютыг MNT тайлангаас тусгаарлана
 GROUP BY year, month, account_id, category_code, direction
 ORDER BY year, month, account_id, category_code;
 
@@ -139,11 +138,11 @@ SELECT
     t.account_id,
     t.year,
     b.opening_balance,
-    SUM(COALESCE(t.income,  0)) AS total_income,
-    SUM(COALESCE(t.expense, 0)) AS total_expense,
+    SUM(COALESCE(t.income,  0) * COALESCE(t.exchange_rate, 1)) AS total_income,
+    SUM(COALESCE(t.expense, 0) * COALESCE(t.exchange_rate, 1)) AS total_expense,
     b.opening_balance
-        + SUM(COALESCE(t.income,  0))
-        - SUM(COALESCE(t.expense, 0)) AS current_balance
+        + SUM(COALESCE(t.income,  0) * COALESCE(t.exchange_rate, 1))
+        - SUM(COALESCE(t.expense, 0) * COALESCE(t.exchange_rate, 1)) AS current_balance
 FROM transactions t
 JOIN account_balances b
     ON b.account_id = t.account_id AND b.year = t.year
@@ -157,10 +156,10 @@ SELECT
     year,
     COALESCE(master_name, counterparty) AS display_name,
     master_code,
-    SUM(COALESCE(income,  0)) AS total_income,
-    SUM(COALESCE(expense, 0)) AS total_expense,
+    SUM(COALESCE(income,  0) * COALESCE(exchange_rate, 1)) AS total_income,
+    SUM(COALESCE(expense, 0) * COALESCE(exchange_rate, 1)) AS total_expense,
     COUNT(*) AS txn_count
-FROM transactions
+FROM transactions          -- бүх валют: дүн × ханш-аар MNT-д хөрвүүлнэ
 GROUP BY account_id, year, display_name, master_code
 ORDER BY total_expense DESC;
 
@@ -194,10 +193,10 @@ CREATE INDEX IF NOT EXISTS idx_partners_name ON partners (name);
 CREATE OR REPLACE VIEW partner_cashflow AS
 SELECT
     master_code,
-    SUM(COALESCE(income,  0)) AS total_income,
-    SUM(COALESCE(expense, 0)) AS total_expense,
+    SUM(COALESCE(income,  0) * COALESCE(exchange_rate, 1)) AS total_income,
+    SUM(COALESCE(expense, 0) * COALESCE(exchange_rate, 1)) AS total_expense,
     COUNT(*)                  AS txn_count
-FROM transactions
+FROM transactions          -- бүх валют: дүн × ханш-аар MNT-д хөрвүүлнэ
 WHERE master_code IS NOT NULL AND master_code <> ''
 GROUP BY master_code;
 
