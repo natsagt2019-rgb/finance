@@ -4,29 +4,82 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { navItems, type NavItem } from "@/lib/nav";
+import {
+  navEntries,
+  allHrefs,
+  isGroup,
+  type NavItem,
+  type NavGroup,
+} from "@/lib/nav";
 import { LogoutButton } from "@/components/logout-button";
 
-// Бүх замыг (дэд цэс оруулаад) хавтгайруулна — идэвхтэй цэсийг
-// "хамгийн урт тохирол" дүрмээр тодорхойлоход ашиглана.
-const allHrefs: string[] = navItems.flatMap((i) => [
-  i.href,
-  ...(i.children?.map((c) => c.href) ?? []),
-]);
+const OPEN_GROUPS_KEY = "nege:nav:open-groups";
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   const isActive = (href: string) => {
-    const matches = pathname === href || pathname.startsWith(href + "/");
+    // Query string (?kind=…)-ийг хасаж зөвхөн замаар харьцуулна.
+    const path = href.split("?")[0];
+    const matches = pathname === path || pathname.startsWith(path + "/");
     if (!matches) return false;
     // Илүү тодорхой (урт) тохирол байвал эх замыг идэвхгүй болгоно
     // (жишээ нь /cash/bank-summary дээр /cash-ийг тодруулахгүй).
-    return !allHrefs.some(
-      (o) =>
-        o.length > href.length &&
-        (pathname === o || pathname.startsWith(o + "/")),
+    return !allHrefs.some((o) => {
+      const op = o.split("?")[0];
+      return (
+        op.length > path.length &&
+        (pathname === op || pathname.startsWith(op + "/"))
+      );
+    });
+  };
+
+  // Бүлэгт идэвхтэй цэс байгаа эсэх (анхдагчаар нээлттэй байлгахад).
+  const groupHasActive = (g: NavGroup) =>
+    g.items.some(
+      (i) => isActive(i.href) || i.children?.some((c) => isActive(c.href)),
     );
+
+  // Идэвхтэй бүлэг анхнаасаа нээлттэй (SSR/CSR тогтвортой). localStorage-ийг
+  // mount дээр нэмж уншиж нэгтгэнэ.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const s = new Set<string>();
+    navEntries.forEach((e) => {
+      if (isGroup(e) && groupHasActive(e)) s.add(e.title);
+    });
+    return s;
+  });
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(OPEN_GROUPS_KEY);
+      if (raw) {
+        const saved: string[] = JSON.parse(raw);
+        setOpenGroups((prev) => {
+          const next = new Set(prev);
+          saved.forEach((t) => next.add(t));
+          return next;
+        });
+      }
+    } catch {
+      /* localStorage байхгүй/эвдэрсэн бол алгасна */
+    }
+    // pathname солигдоход идэвхтэй бүлгийг нээж байх.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleGroup = (title: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      try {
+        localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        /* алгасна */
+      }
+      return next;
+    });
   };
 
   const renderLink = (item: NavItem, child = false) => (
@@ -34,31 +87,71 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
       key={item.href}
       href={item.href}
       onClick={onNavigate}
-      className={`flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-        child ? "ml-4 border-l border-zinc-200 pl-4" : ""
+      className={`flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        child ? "ml-3 border-l border-zinc-200 pl-4" : ""
       } ${
         isActive(item.href)
           ? "bg-zinc-900 text-white"
           : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
       }`}
     >
-      <span className="w-4 text-center">{item.icon}</span>
-      {item.label}
+      <span className="w-4 shrink-0 text-center">{item.icon}</span>
+      <span className="min-w-0 flex-1">{item.label}</span>
     </Link>
   );
 
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-      {navItems.map((item) =>
-        item.children?.length ? (
-          <div key={item.href} className="space-y-1">
-            {renderLink(item)}
-            {item.children.map((c) => renderLink(c, true))}
+      {navEntries.map((entry) => {
+        // Дан цэс (дашбоард, Цалин, Хөрөнгө, Бараа…) — шууд линк.
+        if (!isGroup(entry)) return renderLink(entry);
+
+        const g: NavGroup = entry;
+        const open = openGroups.has(g.title);
+        return (
+          <div key={g.title} className="pt-1">
+            <button
+              type="button"
+              onClick={() => toggleGroup(g.title)}
+              aria-expanded={open}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+            >
+              <span className="w-4 shrink-0 text-center text-sm">{g.icon}</span>
+              <span className="min-w-0 flex-1 text-left normal-case">
+                {g.title}
+              </span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+              >
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+
+            {open && (
+              <div className="mt-1 space-y-1">
+                {g.items.map((item) =>
+                  item.children?.length ? (
+                    <div key={item.href} className="space-y-1">
+                      {renderLink(item)}
+                      {item.children.map((c) => renderLink(c, true))}
+                    </div>
+                  ) : (
+                    renderLink(item)
+                  ),
+                )}
+              </div>
+            )}
           </div>
-        ) : (
-          renderLink(item)
-        ),
-      )}
+        );
+      })}
     </nav>
   );
 }
