@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { VAT_SELECT, type VatRow, type VatType } from "./types";
 import { TypeToggle } from "./type-toggle";
 import { BulkTypeBar } from "./bulk-type-bar";
+import { DeleteByMonth } from "./delete-by-month";
 
 const ROW_LIMIT = 300; // жагсаалтад харуулах дээд хэмжээ (нэгтгэл view-ээс бүрэн)
 
@@ -90,6 +91,11 @@ export default async function VatPage({
     byMonth.set(r.month, m);
   }
   const monthsList = [...byMonth.keys()].sort((a, b) => a - b);
+  // Сараар устгах товчинд: сар тус бүрийн нийт баримтын тоо (борл. + худ.авалт).
+  const monthCounts = monthsList.map((m) => {
+    const d = byMonth.get(m)!;
+    return { month: m, count: d.oCnt + d.iCnt };
+  });
   const totOutVat = sumOf(summary.filter((r) => r.type === "out"), "vat_sum");
   const totInVat = sumOf(summary.filter((r) => r.type === "in"), "vat_sum");
   const totOutCnt = summary
@@ -144,12 +150,15 @@ export default async function VatPage({
             нэгтгэл.
           </p>
         </div>
-        <Link
-          href="/vat/import"
-          className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-        >
-          ↥ Excel оруулах
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <DeleteByMonth months={monthCounts} />
+          <Link
+            href="/vat/import"
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+          >
+            ↥ Excel оруулах
+          </Link>
+        </div>
       </div>
 
       {/* Stat картууд */}

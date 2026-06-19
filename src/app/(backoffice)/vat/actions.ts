@@ -91,6 +91,25 @@ export async function bulkSetVatType(
   return { ok: true, count: data?.length ?? 0 };
 }
 
+// ── Тухайн сарын бүх НӨАТ баримтыг устгах ────────────────────────────────────
+// month: 1..12. type заавал биш — өгвөл зөвхөн тэр төрлийг (out/in) устгана.
+export async function deleteVatByMonth(
+  month: number,
+  type?: VatType | "",
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const supabase = await requireAuth();
+  if (!Number.isInteger(month) || month < 1 || month > 12)
+    return { ok: false, error: "Сар буруу." };
+
+  let q = supabase.from("vat_records").delete().eq("month", month);
+  if (type === "out" || type === "in") q = q.eq("type", type);
+  const { data, error } = await q.select("id");
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/vat");
+  return { ok: true, count: data?.length ?? 0 };
+}
+
 // Өгөгдсөн ДДТД-уудаас DB-д аль хэдийн орсон болохыг олно.
 async function existingDdtds(
   supabase: SupabaseClient,
