@@ -2,7 +2,12 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { loadCompany, VAT_RATE } from "@/lib/company";
-import { INVOICE_SELECT, type InvoiceRow } from "../../types";
+import {
+  INVOICE_SELECT,
+  INVOICE_LINE_SELECT,
+  type InvoiceRow,
+  type InvoiceLine,
+} from "../../types";
 import { PrintActions } from "./print-actions";
 
 function fmtMoney(n: number): string {
@@ -49,6 +54,14 @@ export default async function InvoicePrintPage({
     if (p) partner = p as PartnerInfo;
   }
   const recipientName = partner?.name || inv.partner_name || "—";
+
+  // Нэхэмжлэлийн мөрүүд (байвал бодит мөрүүдийг хэвлэнэ).
+  const { data: lineData } = await supabase
+    .from("invoice_lines")
+    .select(INVOICE_LINE_SELECT)
+    .eq("invoice_id", Number(id))
+    .order("sort", { ascending: true });
+  const lines = (lineData as InvoiceLine[] | null) ?? [];
 
   // inv.amount = НӨАТ-тай нийт дүн (форм "Нийт дүн"; төлөв нь paid_amount-ийг
   // үүнтэй харьцуулдаг). НӨАТ-ыг нийт дүнгээс ЗАДЛАН гаргана — дээр нь нэмэхгүй.
@@ -189,20 +202,39 @@ export default async function InvoicePrintPage({
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b border-zinc-100">
-              <td className="px-2.5 py-2.5 text-zinc-700">
-                {inv.description || "Тээврийн үйлчилгээ"}
-              </td>
-              <td className="px-2.5 py-2.5 text-center text-zinc-700">1</td>
-              <td className="px-2.5 py-2.5 text-right text-zinc-700">
-                {fmtMoney(net)}₮
-              </td>
-              <td className="px-2.5 py-2.5 text-right text-zinc-700">
-                {fmtMoney(net)}₮
-              </td>
-            </tr>
-            {[0, 1].map((i) => (
-              <tr key={i} className="bg-[#f8f9fb]">
+            {lines.length > 0 ? (
+              lines.map((l, i) => (
+                <tr key={i} className="border-b border-zinc-100">
+                  <td className="px-2.5 py-2.5 text-zinc-700">
+                    {l.description || "—"}
+                  </td>
+                  <td className="px-2.5 py-2.5 text-center text-zinc-700">
+                    {(Number(l.qty) || 0).toLocaleString("en-US")}
+                  </td>
+                  <td className="px-2.5 py-2.5 text-right text-zinc-700">
+                    {fmtMoney(Number(l.unit_price) || 0)}₮
+                  </td>
+                  <td className="px-2.5 py-2.5 text-right text-zinc-700">
+                    {fmtMoney(Number(l.amount) || 0)}₮
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr className="border-b border-zinc-100">
+                <td className="px-2.5 py-2.5 text-zinc-700">
+                  {inv.description || "Тээврийн үйлчилгээ"}
+                </td>
+                <td className="px-2.5 py-2.5 text-center text-zinc-700">1</td>
+                <td className="px-2.5 py-2.5 text-right text-zinc-700">
+                  {fmtMoney(net)}₮
+                </td>
+                <td className="px-2.5 py-2.5 text-right text-zinc-700">
+                  {fmtMoney(net)}₮
+                </td>
+              </tr>
+            )}
+            {Array.from({ length: Math.max(0, 2 - lines.length) }).map((_, i) => (
+              <tr key={`f${i}`} className="bg-[#f8f9fb]">
                 <td className="px-2.5 py-2 text-transparent">—</td>
                 <td className="px-2.5 py-2 text-center text-transparent">—</td>
                 <td className="px-2.5 py-2 text-right text-transparent">—</td>

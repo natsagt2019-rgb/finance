@@ -23,6 +23,18 @@ export const INVOICE_SELECT =
   "id, invoice_no, inv_date, due_date, partner_id, partner_name, " +
   "responsible, description, amount, paid_amount, status, currency, is_active";
 
+// Нэхэмжлэлийн мөр (line item). amount = qty × unit_price (НӨАТ-гүй).
+export type InvoiceLine = {
+  id?: number;
+  description: string;
+  qty: number;
+  unit_price: number;
+  amount: number;
+};
+
+export const INVOICE_LINE_SELECT =
+  "id, description, qty, unit_price, amount";
+
 export const INVOICE_STATUSES: InvoiceStatus[] = ["open", "partial", "paid"];
 
 // Нэхэмжлэлийн дүн/төлсөн дүнгээс төлвийг тооцоолно.

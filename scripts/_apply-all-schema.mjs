@@ -28,6 +28,7 @@ const FILES = [
   "scripts/inventory-schema.sql",      // inv_items, inv_moves, inv_counts, inv_settings
   "scripts/staff-receivables-schema.sql", // staff_receivables (employees + inv_moves + salary_records-аас хамаарна)
   "scripts/company-settings-schema.sql",  // үндсэн байгууллагын мэдээлэл (нэг мөр)
+  "scripts/invoice-lines-schema.sql",     // нэхэмжлэлийн мөр (line items)
   "scripts/cash-entries-extra-cols.sql",
   "scripts/cash-entries-partner-cols.sql",
   "scripts/journal-entries-source-id.sql",
