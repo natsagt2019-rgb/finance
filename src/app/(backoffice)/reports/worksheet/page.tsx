@@ -14,6 +14,28 @@ function f(n: number): string {
 
 type AccRow = { code: string; name: string; type: string | null };
 
+// Дансны type байхгүй (NULL) үед кодын эхний оронгоос дүгнэнэ (стандарт дансны
+// төлөвлөгөө: 1=хөрөнгө, 3/4=өр, 5=өмч, 6=орлого, 7/8=зардал). "asset" руу
+// автоматаар буулгахгүй — орлого/зардлыг буруу ангилж ашиг гажихаас сэргийлнэ.
+function typeFromCode(code: string): string {
+  switch (code[0]) {
+    case "1":
+      return "asset";
+    case "3":
+    case "4":
+      return "liability";
+    case "5":
+      return "equity";
+    case "6":
+      return "income";
+    case "7":
+    case "8":
+      return "expense";
+    default:
+      return "asset";
+  }
+}
+
 type Acct = {
   code: string;
   name: string;
@@ -88,7 +110,7 @@ export default async function WorksheetPage({
     .limit(5000);
   const accInfo = new Map<string, { name: string; type: string }>();
   for (const a of (accData as AccRow[] | null) ?? [])
-    accInfo.set(a.code, { name: a.name, type: a.type ?? "asset" });
+    accInfo.set(a.code, { name: a.name, type: a.type ?? typeFromCode(a.code) });
 
   // Нэгтгэлийг SQL дотор (worksheet_range RPC) — мөрийн хязгааргүй, хурдан.
   const { data: wsData } = await supabase.rpc("worksheet_range", { d_from: from, d_to: to });
@@ -100,7 +122,7 @@ export default async function WorksheetPage({
     acctByCode.set(r.code, {
       code: r.code,
       name: info?.name ?? r.code,
-      type: info?.type ?? "asset",
+      type: info?.type ?? typeFromCode(r.code),
       openNet: Number(r.opening) || 0,
       pDr: Number(r.pdebit) || 0,
       pCr: Number(r.pcredit) || 0,

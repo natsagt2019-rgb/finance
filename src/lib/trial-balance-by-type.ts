@@ -33,10 +33,10 @@ export type BalRow = {
   closeKt: number;
 };
 
-// Нэг дансны төрлийн нэгтгэсэн мөр.
+// Нэг дансны төрлийн нэгтгэсэн мөр ("unknown" = төрөлгүй/идэвхгүй данс).
 export type TypeRow = BalRow & {
-  type: AccountType;
-  code: string; // дансны төрлийн код (1..5)
+  type: AccountType | "unknown";
+  code: string; // дансны төрлийн код (1..5, эсвэл "?")
   name: string; // дансны төрлийн нэр
 };
 
@@ -96,9 +96,14 @@ export function groupByType(
   typeByCode: Map<string, AccountType>,
 ): { rows: TypeRow[]; total: BalRow } {
   const acc = new Map<AccountType, BalRow>();
+  const unknown = ZERO(); // дансны төрөлгүй/идэвхгүй кодуудыг тусад нь
   for (const r of rows) {
     const t = typeByCode.get(r.code);
-    if (!t) continue; // дансны төрөлгүй код алгасна
+    if (!t) {
+      // Чимээгүй алгасахгүй — тэнцэл нуугдахаас сэргийлж "Тодорхойгүй"-д цуглуулна.
+      addRow(unknown, r);
+      continue;
+    }
     const cur = acc.get(t) ?? ZERO();
     addRow(cur, r);
     acc.set(t, cur);
@@ -114,6 +119,14 @@ export function groupByType(
       !rounded.turnKt && !rounded.closeDt && !rounded.closeKt;
     if (empty) continue;
     out.push({ type: meta.type, code: meta.code, name: meta.name, ...rounded });
+  }
+
+  // Төрөлгүй код байвал ил харуулна (нийт дүнд оруулж тэнцлийг бодит болгоно).
+  const ur = round(unknown);
+  const unknownEmpty =
+    !ur.openDt && !ur.openKt && !ur.turnDt && !ur.turnKt && !ur.closeDt && !ur.closeKt;
+  if (!unknownEmpty) {
+    out.push({ type: "unknown", code: "?", name: "Тодорхойгүй төрөл", ...ur });
   }
 
   return { rows: out, total: sumBal(out) };

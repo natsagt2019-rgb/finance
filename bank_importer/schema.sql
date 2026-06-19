@@ -513,11 +513,11 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
     GROUP BY m.code
   ),
   cost AS (
-    SELECT 'K' || (regexp_match(upper(t.description), '^K(10|[1-9])'))[1] AS code,
+    SELECT 'K' || (regexp_match(upper(t.description), '^K([0-9]+)'))[1] AS code,
            SUM(COALESCE(t.expense,0)) AS amt, COUNT(*)::int AS n
     FROM transactions t
     WHERE (t.txn_date AT TIME ZONE INTERVAL '+08:00')::date BETWEEN d_from AND d_to
-      AND (regexp_match(upper(t.description), '^K(10|[1-9])')) IS NOT NULL
+      AND (regexp_match(upper(t.description), '^K([0-9]+)')) IS NOT NULL
     GROUP BY 1
   )
   SELECT m.code, m.name,
@@ -579,21 +579,39 @@ $$;
 
 
 -- ── 23. Харилцагчийн тооцооны товчоо (авлага/өглөг) ─────────────────────
--- Харилцагч тус бүрийн авлага (120101) ба өглөг (310101) үлдэгдэл, as-of.
+-- Харилцагч тус бүрийн авлага/өглөгийн үлдэгдэл, as-of. Авлага = type='asset' +
+-- нэр/fs_line-д "авлага" (хасагдуулгагүй); өглөг = type='liability' + "өглөг".
+-- (isReceivableAccount/isPayableAccount-тай ижил логик — бүх дэд дансыг хамруулна.)
 -- /reports/partner-balances хэрэглэнэ.
 CREATE OR REPLACE FUNCTION partner_balances(d_to DATE)
 RETURNS TABLE(partner TEXT, receivable NUMERIC, payable NUMERIC, txn_count INT)
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  WITH ar AS (
+    SELECT code FROM accounts
+    WHERE type='asset'
+      AND lower(coalesce(name,'')||' '||coalesce(fs_line,'')) LIKE '%авлага%'
+      AND lower(coalesce(name,'')||' '||coalesce(fs_line,'')) NOT LIKE '%хасагдуулга%'
+  ),
+  ap AS (
+    SELECT code FROM accounts
+    WHERE type='liability'
+      AND lower(coalesce(name,'')||' '||coalesce(fs_line,'')) LIKE '%өглөг%'
+  )
   SELECT partner_name,
-    COALESCE(SUM(CASE WHEN debit_code='120101' THEN amount WHEN credit_code='120101' THEN -amount ELSE 0 END),0)::numeric,
-    COALESCE(SUM(CASE WHEN credit_code='310101' THEN amount WHEN debit_code='310101' THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN debit_code IN (SELECT code FROM ar) THEN amount
+                      WHEN credit_code IN (SELECT code FROM ar) THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN credit_code IN (SELECT code FROM ap) THEN amount
+                      WHEN debit_code IN (SELECT code FROM ap) THEN -amount ELSE 0 END),0)::numeric,
     COUNT(*)::int
   FROM journal_entries
   WHERE partner_name IS NOT NULL AND partner_name<>'' AND txn_date<=d_to
-    AND (debit_code IN ('120101','310101') OR credit_code IN ('120101','310101'))
+    AND (debit_code IN (SELECT code FROM ar) OR credit_code IN (SELECT code FROM ar)
+      OR debit_code IN (SELECT code FROM ap) OR credit_code IN (SELECT code FROM ap))
   GROUP BY partner_name
-  HAVING ABS(COALESCE(SUM(CASE WHEN debit_code='120101' THEN amount WHEN credit_code='120101' THEN -amount ELSE 0 END),0))>1
-      OR ABS(COALESCE(SUM(CASE WHEN credit_code='310101' THEN amount WHEN debit_code='310101' THEN -amount ELSE 0 END),0))>1;
+  HAVING ABS(COALESCE(SUM(CASE WHEN debit_code IN (SELECT code FROM ar) THEN amount
+                              WHEN credit_code IN (SELECT code FROM ar) THEN -amount ELSE 0 END),0))>1
+      OR ABS(COALESCE(SUM(CASE WHEN credit_code IN (SELECT code FROM ap) THEN amount
+                              WHEN debit_code IN (SELECT code FROM ap) THEN -amount ELSE 0 END),0))>1;
 $$;
 
 

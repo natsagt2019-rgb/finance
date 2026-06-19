@@ -23,6 +23,7 @@ type Entry = {
   amount: number;
   debit_code: string | null;
   credit_code: string | null;
+  partner_name: string | null;
 };
 
 type Line = { id: number; date: string; desc: string; debit: number; credit: number; balance: number };
@@ -77,6 +78,10 @@ export default async function PartnerStatementPage({
   const allCodes = [...recvSet, ...paySet];
 
   const pKey = normalizePartner(partnerInput);
+  // Коарс шүүлт: үг хооронд '%' тавьж том/жижиг үсэг, илүү зайг тэвчинэ
+  // (жнь "НЭГДЭЛ ХХК" → "%НЭГДЭЛ%ХХК%"). Дараа нь JS-д нормчлолоор яг тулгана.
+  const likePattern =
+    "%" + pKey.replace(/[%_\\]/g, "\\$&").replace(/ /g, "%") + "%";
   let sections: AcctSection[] = [];
 
   if (partnerInput && allCodes.length > 0) {
@@ -86,21 +91,23 @@ export default async function PartnerStatementPage({
     const [{ data: dr }, { data: cr }] = await Promise.all([
       supabase
         .from("journal_entries")
-        .select("id, txn_date, description, amount, debit_code, credit_code")
+        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name")
         .in("debit_code", allCodes)
         .lte("txn_date", to)
-        .ilike("partner_name", partnerInput)
+        .ilike("partner_name", likePattern)
         .limit(ENTRY_LIMIT),
       supabase
         .from("journal_entries")
-        .select("id, txn_date, description, amount, debit_code, credit_code")
+        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name")
         .in("credit_code", allCodes)
         .lte("txn_date", to)
-        .ilike("partner_name", partnerInput)
+        .ilike("partner_name", likePattern)
         .limit(ENTRY_LIMIT),
     ]);
     for (const e of [...((dr as Entry[] | null) ?? []), ...((cr as Entry[] | null) ?? [])]) {
       if (seen.has(e.id)) continue;
+      // Коарс шүүлтийн илүүг нормчлолоор яг тулгаж хасна.
+      if (normalizePartner(e.partner_name) !== pKey) continue;
       seen.add(e.id);
       entries.push(e);
     }
