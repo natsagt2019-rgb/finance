@@ -49,6 +49,9 @@ export type PostingTxn = {
   income_code: string | null;
   expense_code: string | null;
   account_id: string;
+  // Ханш — гадаад валютын дүнг төгрөгт хөрвүүлнэ (MNT-д 1). Журналд ҮРГЭЛЖ
+  // төгрөгөөр бичнэ (нягтлан бодох бүртгэлийн функциональ валют = MNT).
+  exchange_rate: number | null;
   // Залруулсан GL кодууд (autoLink/гар) — журналд эдгээрийг шууд хэрэглэнэ.
   debit_code: string | null;
   credit_code: string | null;
@@ -100,7 +103,10 @@ export function buildBankJournalRows(
   for (const t of txns) {
     const isIncome = Number(t.income) > 0;
     const code = isIncome ? t.income_code : t.expense_code;
-    const amount = Number(t.income) || Number(t.expense) || 0;
+    // Журнал ВСЕГДА төгрөгөөр: гадаад валютын дүнг ханшаар хөрвүүлнэ (MNT-д rate=1).
+    const rate = Number(t.exchange_rate) || 1;
+    const raw = Number(t.income) || Number(t.expense) || 0;
+    const amount = Math.round(raw * rate * 100) / 100;
     const dt = (t.debit_code ?? "").trim();
     const kt = (t.credit_code ?? "").trim();
 

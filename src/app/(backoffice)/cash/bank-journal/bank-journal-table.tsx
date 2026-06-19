@@ -10,6 +10,7 @@ type Txn = {
   counterparty: string | null;
   income: number | null;
   expense: number | null;
+  exchange_rate: number | null;
   debit_code: string | null;
   credit_code: string | null;
 };
@@ -26,6 +27,15 @@ function fmt(n: number, ccy = "MNT"): string {
   if (!n) return "—";
   const d = ccy === "MNT" ? 0 : 2;
   return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+// Төгрөгийн дүйцэл (гадаад валютын данс дээр давхар харуулна — журнал MNT-ээр бичигдэнэ).
+function fmtMnt(n: number): string {
+  if (!n) return "";
+  return `${Math.round(n).toLocaleString("en-US")}₮`;
+}
+// Гүйлгээний MNT дүйцэл: дүн × ханш (ханшгүй бол 0).
+function toMnt(amount: number, rate: number | null): number {
+  return amount * (Number(rate) || 0);
 }
 function ubDate(ts: string): string {
   return new Date(ts).toLocaleDateString("en-CA", { timeZone: "Asia/Ulaanbaatar" });
@@ -56,6 +66,17 @@ export function BankJournalTable({
     for (const g of groups) for (const r of g.rows) m.set(r.t.id, r.inc > 0);
     return m;
   }, [groups]);
+
+  // Гадаад валютын данс — MNT дүйцлийг давхар харуулна (журнал төгрөгөөр бичигдэнэ).
+  const foreign = ccy !== "MNT";
+  const totalInMnt = useMemo(
+    () => groups.reduce((s, g) => s + g.rows.reduce((a, r) => a + toMnt(r.inc, r.t.exchange_rate), 0), 0),
+    [groups],
+  );
+  const totalOutMnt = useMemo(
+    () => groups.reduce((s, g) => s + g.rows.reduce((a, r) => a + toMnt(r.exp, r.t.exchange_rate), 0), 0),
+    [groups],
+  );
 
   const toggle = (id: number) =>
     setSel((p) => {
@@ -162,6 +183,7 @@ export function BankJournalTable({
                     key={g.code}
                     g={g}
                     ccy={ccy}
+                    foreign={foreign}
                     sel={sel}
                     allSel={allSel}
                     onToggle={toggle}
@@ -175,8 +197,18 @@ export function BankJournalTable({
             <tr className="border-t-2 border-zinc-300 bg-zinc-100 font-bold text-zinc-900">
               <td className="no-print border border-zinc-200" />
               <td colSpan={4} className="border border-zinc-200 px-3 py-2">Нийт</td>
-              <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-green-700">{fmt(totalIn, ccy)}</td>
-              <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-red-600">{fmt(totalOut, ccy)}</td>
+              <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-green-700">
+                {fmt(totalIn, ccy)}
+                {foreign && totalInMnt ? (
+                  <div className="text-[10px] font-normal text-zinc-500">{fmtMnt(totalInMnt)}</div>
+                ) : null}
+              </td>
+              <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-red-600">
+                {fmt(totalOut, ccy)}
+                {foreign && totalOutMnt ? (
+                  <div className="text-[10px] font-normal text-zinc-500">{fmtMnt(totalOutMnt)}</div>
+                ) : null}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -188,6 +220,7 @@ export function BankJournalTable({
 function BlockRows({
   g,
   ccy,
+  foreign,
   sel,
   allSel,
   onToggle,
@@ -197,6 +230,7 @@ function BlockRows({
 }: {
   g: Group;
   ccy: string;
+  foreign: boolean;
   sel: Set<number>;
   allSel: boolean;
   onToggle: (id: number) => void;
@@ -204,6 +238,8 @@ function BlockRows({
   onEdit: (id: number, code: string) => void;
   accounts: Acc[];
 }) {
+  const groupInMnt = g.rows.reduce((a, r) => a + toMnt(r.inc, r.t.exchange_rate), 0);
+  const groupOutMnt = g.rows.reduce((a, r) => a + toMnt(r.exp, r.t.exchange_rate), 0);
   return (
     <>
       <tr className="bg-zinc-50 font-semibold text-zinc-700">
@@ -229,15 +265,35 @@ function BlockRows({
             </div>
           </td>
           <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-500">{t.counterparty || "—"}</td>
-          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">{inc ? fmt(inc, ccy) : "—"}</td>
-          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">{exp ? fmt(exp, ccy) : "—"}</td>
+          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">
+            {inc ? fmt(inc, ccy) : "—"}
+            {foreign && inc ? (
+              <div className="text-[10px] text-zinc-400">{fmtMnt(toMnt(inc, t.exchange_rate))}</div>
+            ) : null}
+          </td>
+          <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">
+            {exp ? fmt(exp, ccy) : "—"}
+            {foreign && exp ? (
+              <div className="text-[10px] text-zinc-400">{fmtMnt(toMnt(exp, t.exchange_rate))}</div>
+            ) : null}
+          </td>
         </tr>
       ))}
       <tr className="bg-amber-50/60 font-medium text-zinc-800">
         <td className="no-print border border-zinc-200" />
         <td colSpan={4} className="border border-zinc-200 px-3 py-1.5 text-right">Харьцсан дансны дүн</td>
-        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">{fmt(g.totalIn, ccy)}</td>
-        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">{fmt(g.totalOut, ccy)}</td>
+        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">
+          {fmt(g.totalIn, ccy)}
+          {foreign && groupInMnt ? (
+            <div className="text-[10px] font-normal text-zinc-500">{fmtMnt(groupInMnt)}</div>
+          ) : null}
+        </td>
+        <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">
+          {fmt(g.totalOut, ccy)}
+          {foreign && groupOutMnt ? (
+            <div className="text-[10px] font-normal text-zinc-500">{fmtMnt(groupOutMnt)}</div>
+          ) : null}
+        </td>
       </tr>
     </>
   );

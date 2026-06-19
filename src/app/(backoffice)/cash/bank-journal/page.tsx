@@ -24,6 +24,7 @@ type Txn = {
   counterparty: string | null;
   income: number | null;
   expense: number | null;
+  exchange_rate: number | null;
   debit_code: string | null;
   credit_code: string | null;
 };
@@ -76,7 +77,7 @@ export default async function BankJournalPage({
   for (let offset = 0; offset < 100000; offset += PAGE) {
     const { data, error: e } = await supabase
       .from("transactions")
-      .select("id, txn_date, description, counterparty, income, expense, debit_code, credit_code")
+      .select("id, txn_date, description, counterparty, income, expense, exchange_rate, debit_code, credit_code")
       .eq("account_id", acc)
       .gte("txn_date", `${fromYear}-01-01T00:00:00+08:00`)
       .lte("txn_date", `${to}T23:59:59.999+08:00`)

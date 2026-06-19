@@ -244,7 +244,7 @@ export async function postBankJournal(year: number): Promise<PostJournalResult> 
     const { data, error } = await supabase
       .from("transactions")
       .select(
-        "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id, debit_code, credit_code",
+        "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id, exchange_rate, debit_code, credit_code",
       )
       .eq("year", year)
       .order("txn_date", { ascending: true })
