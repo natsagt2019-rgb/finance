@@ -10,8 +10,10 @@ import {
   computeVacation,
   tenureYears,
   paramsFromSettings,
+  normalizeSalaryType,
   DEFAULT_MONTH_HOURS_2026,
   type SalaryParams,
+  type SalaryType,
   type VacationResult,
 } from "@/lib/salary-calc";
 
@@ -46,6 +48,7 @@ function readEmployee(formData: FormData) {
     name: [lastName, firstName].filter(Boolean).join(" "), // "Овог Нэр" нийлмэл
     company: get("company") || null,
     position: get("position") || null,
+    salary_type: normalizeSalaryType(get("salary_type")),
     base_salary: num(formData.get("base_salary")),
     phone_allowance: num(formData.get("phone_allowance")),
     register: get("register") || null,
@@ -235,12 +238,17 @@ export type SalaryInputRow = {
   employee_id: number;
   employee_name: string;
   company: string | null;
+  salary_type: SalaryType;
   base_salary: number;
   worked_hours: number;
+  manual_amount: number; // "manual" төрөлд бодогдсон цалин
   phone_allowance: number;
   bonus: number;
   vacation_amount: number;
-  other_deduction: number;
+  late_deduction: number; // хоцролт
+  savings_deduction: number; // хуримтлал
+  discipline_deduction: number; // сахилгын шийтгэл
+  other_deduction: number; // бусад
   staff_inv_settle?: number; // БМ дутагдлын авлагыг энэ удаа барагдуулах дүн
 };
 
@@ -271,7 +279,17 @@ async function postSalaryJournal(
   supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
   year: number,
   month: number,
-  records: { gross: number; sh_insurance: number; pit: number; advance: number; net: number; other_deduction: number }[],
+  records: {
+    gross: number;
+    sh_insurance: number;
+    pit: number;
+    advance: number;
+    net: number;
+    late_deduction: number;
+    savings_deduction: number;
+    discipline_deduction: number;
+    other_deduction: number;
+  }[],
 ): Promise<void> {
   const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
   const sum = (k: keyof (typeof records)[number]) =>
@@ -280,7 +298,14 @@ async function postSalaryJournal(
   if (gross <= 0) return;
   const sh = r2(sum("sh_insurance"));
   const pit = r2(sum("pit"));
-  const advOther = r2(sum("advance") + sum("other_deduction"));
+  // Урьдчилгаа + бүх нэмэлт суутгал (хоцролт/хуримтлал/сахилга/бусад).
+  const advOther = r2(
+    sum("advance") +
+      sum("late_deduction") +
+      sum("savings_deduction") +
+      sum("discipline_deduction") +
+      sum("other_deduction"),
+  );
   const net = r2(sum("net"));
 
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -317,14 +342,20 @@ export async function saveSalary(
   const mh = monthHours[month - 1] ?? 0;
 
   const records = rows.map((r) => {
+    const salaryType = normalizeSalaryType(r.salary_type);
     const c = computeRow(
       {
         base: r.base_salary,
         monthHours: mh,
         workedHours: r.worked_hours,
+        salaryType,
+        manualAmount: r.manual_amount,
         phoneAllowance: r.phone_allowance,
         bonus: r.bonus,
         vacationAmount: r.vacation_amount,
+        lateDeduction: r.late_deduction,
+        savingsDeduction: r.savings_deduction,
+        disciplineDeduction: r.discipline_deduction,
         otherDeduction: r.other_deduction,
       },
       params,
@@ -335,12 +366,16 @@ export async function saveSalary(
       month,
       employee_name: r.employee_name,
       company: r.company,
+      salary_type: salaryType,
       base_salary: r.base_salary,
       worked_hours: r.worked_hours,
       month_hours: mh,
       phone_allowance: r.phone_allowance,
       bonus: r.bonus,
       vacation_amount: r.vacation_amount,
+      late_deduction: r.late_deduction,
+      savings_deduction: r.savings_deduction,
+      discipline_deduction: r.discipline_deduction,
       other_deduction: r.other_deduction,
       ...c,
       is_active: true,

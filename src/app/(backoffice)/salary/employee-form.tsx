@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { SALARY_TYPES, SALARY_TYPE_LABELS } from "@/lib/salary-calc";
 import { createEmployee, updateEmployee } from "./actions";
 import { COMPANIES, type EmployeeRow } from "./types";
 
@@ -99,6 +100,25 @@ export function EmployeeForm({ mode, employee }: Props) {
             placeholder="Харилцагчийн менежер"
             className={inputCls}
           />
+        </div>
+
+        <div>
+          <label className={labelCls}>Цалингийн төрөл</label>
+          <select
+            name="salary_type"
+            defaultValue={employee?.salary_type ?? "fixed"}
+            className={inputCls}
+          >
+            {SALARY_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {SALARY_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-zinc-400">
+            Тогтмол — үндсэн цалинг цагаар хувааж бодно. Цагийн хөлс — «Үндсэн
+            цалин» нь 1 цагийн хөлс. Гараар — цалинг тооцоонд гараар оруулна.
+          </p>
         </div>
 
         <div>

@@ -3,7 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { computeRow, type SalaryParams } from "@/lib/salary-calc";
+import {
+  computeRow,
+  normalizeSalaryType,
+  SALARY_TYPE_LABELS,
+  type SalaryParams,
+  type SalaryType,
+} from "@/lib/salary-calc";
 import {
   saveSalary,
   computeVacationAmount,
@@ -20,13 +26,25 @@ type EditRow = {
   employee_id: number;
   employee_name: string;
   company: string | null;
+  salary_type: SalaryType;
   base_salary: number;
   worked_hours: number;
+  manual_amount: number; // "manual" төрөлд гараар оруулсан бодогдсон цалин
   phone_allowance: number;
   bonus: number;
   vacation_amount: number;
-  other_deduction: number;
+  late_deduction: number; // хоцролт
+  savings_deduction: number; // хуримтлал
+  discipline_deduction: number; // сахилгын шийтгэл
+  other_deduction: number; // бусад
   staff_inv_settle: number; // энэ удаа барагдуулах БМ авлага (other_deduction-д орсон)
+};
+
+// Цалингийн төрлийн богино шошго (хүснэгтэд).
+const TYPE_BADGE: Record<SalaryType, string> = {
+  fixed: "Тогтмол",
+  hourly: "Цаг",
+  manual: "Гараар",
 };
 
 const cellInput =
@@ -58,17 +76,29 @@ export function CalcTab({
     const byEmp = new Map(records.map((r) => [r.employee_id, r]));
     return employees.map((e) => {
       const rec = byEmp.get(e.id);
+      const salaryType = normalizeSalaryType(rec?.salary_type ?? e.salary_type);
       return {
         employee_id: e.id,
         employee_name: e.name,
         company: e.company,
+        salary_type: salaryType,
         base_salary: rec ? Number(rec.base_salary) : Number(e.base_salary) || 0,
-        worked_hours: rec ? Number(rec.worked_hours) : monthHours,
+        // Тогтмол бол бүтэн сар, бусад төрөлд 0-ээс эхэлнэ.
+        worked_hours: rec
+          ? Number(rec.worked_hours)
+          : salaryType === "fixed"
+            ? monthHours
+            : 0,
+        // "manual" төрөлд хадгалсан бодогдсон цалинг сэргээнэ.
+        manual_amount: rec ? Number(rec.computed_salary) : 0,
         phone_allowance: rec
           ? Number(rec.phone_allowance)
           : Number(e.phone_allowance) || 0,
         bonus: rec ? Number(rec.bonus) : 0,
         vacation_amount: rec ? Number(rec.vacation_amount) : 0,
+        late_deduction: rec ? Number(rec.late_deduction) : 0,
+        savings_deduction: rec ? Number(rec.savings_deduction) : 0,
+        discipline_deduction: rec ? Number(rec.discipline_deduction) : 0,
         other_deduction: rec ? Number(rec.other_deduction) : 0,
         staff_inv_settle: 0,
       };
@@ -131,9 +161,14 @@ export function CalcTab({
         base: r.base_salary,
         monthHours,
         workedHours: r.worked_hours,
+        salaryType: r.salary_type,
+        manualAmount: r.manual_amount,
         phoneAllowance: r.phone_allowance,
         bonus: r.bonus,
         vacationAmount: r.vacation_amount,
+        lateDeduction: r.late_deduction,
+        savingsDeduction: r.savings_deduction,
+        disciplineDeduction: r.discipline_deduction,
         otherDeduction: r.other_deduction,
       },
       params,
@@ -157,11 +192,16 @@ export function CalcTab({
       employee_id: r.employee_id,
       employee_name: r.employee_name,
       company: r.company,
+      salary_type: r.salary_type,
       base_salary: r.base_salary,
       worked_hours: r.worked_hours,
+      manual_amount: r.manual_amount,
       phone_allowance: r.phone_allowance,
       bonus: r.bonus,
       vacation_amount: r.vacation_amount,
+      late_deduction: r.late_deduction,
+      savings_deduction: r.savings_deduction,
+      discipline_deduction: r.discipline_deduction,
       other_deduction: r.other_deduction,
       staff_inv_settle: r.staff_inv_settle,
     }));
@@ -223,6 +263,9 @@ export function CalcTab({
               <th className="px-3 py-2 text-right">ЭМНДШ</th>
               <th className="px-3 py-2 text-right">ХХОАТ</th>
               <th className="px-3 py-2 text-right">Урьдчилгаа</th>
+              <th className="px-3 py-2 text-right">Хоцролт</th>
+              <th className="px-3 py-2 text-right">Хуримтлал</th>
+              <th className="px-3 py-2 text-right">Сахилга</th>
               <th className="px-3 py-2 text-right">Бус.суут</th>
               <th className="px-3 py-2 text-right">Гарт олгох</th>
             </tr>
@@ -231,11 +274,24 @@ export function CalcTab({
             {computed.map(({ row: r, c }) => (
               <tr key={r.employee_id} className="hover:bg-zinc-50">
                 <td className="whitespace-nowrap px-3 py-2">
-                  <div className="font-medium text-zinc-800">{r.employee_name}</div>
+                  <div className="flex items-center gap-1.5 font-medium text-zinc-800">
+                    {r.employee_name}
+                    {r.salary_type !== "fixed" && (
+                      <span
+                        className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600"
+                        title={SALARY_TYPE_LABELS[r.salary_type]}
+                      >
+                        {TYPE_BADGE[r.salary_type]}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-zinc-400">{r.company || "—"}</div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
                   {fmt(r.base_salary)}
+                  {r.salary_type === "hourly" && (
+                    <span className="ml-0.5 text-[10px] text-zinc-400">/цаг</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <input
@@ -243,10 +299,11 @@ export function CalcTab({
                     step="0.5"
                     min="0"
                     value={r.worked_hours}
+                    disabled={r.salary_type === "manual"}
                     onChange={(e) =>
                       update(r.employee_id, "worked_hours", Number(e.target.value))
                     }
-                    className={`${cellInput} w-20`}
+                    className={`${cellInput} w-20 disabled:bg-zinc-100 disabled:text-zinc-300`}
                   />
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -297,7 +354,21 @@ export function CalcTab({
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-zinc-800">
-                  {fmt(c.computed_salary)}
+                  {r.salary_type === "manual" ? (
+                    <input
+                      type="number"
+                      step="1000"
+                      min="0"
+                      value={r.manual_amount}
+                      onChange={(e) =>
+                        update(r.employee_id, "manual_amount", Number(e.target.value))
+                      }
+                      className={cellInput}
+                      title="Бодогдсон цалинг гараар оруулна"
+                    />
+                  ) : (
+                    fmt(c.computed_salary)
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium text-zinc-900">
                   {fmt(c.gross)}
@@ -310,6 +381,42 @@ export function CalcTab({
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-blue-700">
                   {fmt(c.advance)}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <input
+                    type="number"
+                    step="1000"
+                    min="0"
+                    value={r.late_deduction}
+                    onChange={(e) =>
+                      update(r.employee_id, "late_deduction", Number(e.target.value))
+                    }
+                    className={cellInput}
+                  />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <input
+                    type="number"
+                    step="1000"
+                    min="0"
+                    value={r.savings_deduction}
+                    onChange={(e) =>
+                      update(r.employee_id, "savings_deduction", Number(e.target.value))
+                    }
+                    className={cellInput}
+                  />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <input
+                    type="number"
+                    step="1000"
+                    min="0"
+                    value={r.discipline_deduction}
+                    onChange={(e) =>
+                      update(r.employee_id, "discipline_deduction", Number(e.target.value))
+                    }
+                    className={cellInput}
+                  />
                 </td>
                 <td className="px-3 py-2 text-right">
                   <input
@@ -367,6 +474,9 @@ export function CalcTab({
               <td className="px-3 py-2 text-right tabular-nums text-blue-700">
                 {fmt(totals.adv)}
               </td>
+              <td />
+              <td />
+              <td />
               <td />
               <td className="px-3 py-2 text-right tabular-nums text-green-700">
                 {fmt(totals.net)}

@@ -1,4 +1,4 @@
-import type { PitTier } from "@/lib/salary-calc";
+import type { PitTier, SalaryType } from "@/lib/salary-calc";
 
 // ── Ажилтан ─────────────────────────────────────────────────────────────────
 export type EmployeeStatus = "active" | "inactive";
@@ -10,6 +10,7 @@ export type EmployeeRow = {
   first_name: string | null; // Нэр
   company: string | null;
   position: string | null;
+  salary_type: SalaryType; // тогтмол / цагийн хөлс / гараар
   base_salary: number;
   phone_allowance: number;
   register: string | null;
@@ -21,7 +22,7 @@ export type EmployeeRow = {
 };
 
 export const EMPLOYEE_SELECT =
-  "id, name, last_name, first_name, company, position, base_salary, phone_allowance, " +
+  "id, name, last_name, first_name, company, position, salary_type, base_salary, phone_allowance, " +
   "register, bank_account, hired_date, experience_years, status, is_active";
 
 // ── Цалингийн мөр ─────────────────────────────────────────────────────────────
@@ -32,13 +33,17 @@ export type SalaryRow = {
   month: number;
   employee_name: string | null;
   company: string | null;
+  salary_type: SalaryType;
   base_salary: number;
   worked_hours: number;
   month_hours: number;
   phone_allowance: number;
   bonus: number;
   vacation_amount: number;
-  other_deduction: number;
+  late_deduction: number; // хоцролт
+  savings_deduction: number; // хуримтлал
+  discipline_deduction: number; // сахилгын шийтгэл
+  other_deduction: number; // бусад
   computed_salary: number;
   gross: number;
   sh_insurance: number;
@@ -49,9 +54,10 @@ export type SalaryRow = {
 };
 
 export const SALARY_SELECT =
-  "id, employee_id, year, month, employee_name, company, base_salary, " +
+  "id, employee_id, year, month, employee_name, company, salary_type, base_salary, " +
   "worked_hours, month_hours, phone_allowance, bonus, vacation_amount, " +
-  "other_deduction, computed_salary, gross, sh_insurance, pit, advance, net, is_active";
+  "late_deduction, savings_deduction, discipline_deduction, other_deduction, " +
+  "computed_salary, gross, sh_insurance, pit, advance, net, is_active";
 
 // ── Тохиргоо ─────────────────────────────────────────────────────────────────
 export type SalarySettings = {

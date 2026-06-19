@@ -9,6 +9,24 @@
 // max = null бол "түүнээс дээш" гэсэн дээд шатлал.
 export type PitTier = { max: number | null; deduction: number };
 
+// Цалингийн төрөл:
+//   fixed  — Тогтмол: үндсэн ÷ сарын цаг × ажилласан цаг
+//   hourly — Цагийн хөлс: 1 цагийн хөлс × ажилласан цаг (үндсэн = цагийн хөлс)
+//   manual — Гараар (тогтмол биш/бусад): бодогдсон цалинг шууд оруулна
+export type SalaryType = "fixed" | "hourly" | "manual";
+
+export const SALARY_TYPES: readonly SalaryType[] = ["fixed", "hourly", "manual"];
+
+export const SALARY_TYPE_LABELS: Record<SalaryType, string> = {
+  fixed: "Тогтмол",
+  hourly: "Цагийн хөлс",
+  manual: "Гараар (тогтмол биш)",
+};
+
+export function normalizeSalaryType(v: unknown): SalaryType {
+  return v === "hourly" || v === "manual" ? v : "fixed";
+}
+
 // 2026 оны анхдагч тогтмол (settings байхгүй үед fallback).
 export const DEFAULT_MONTH_HOURS_2026 = [
   136, 152, 168, 176, 160, 168, 184, 168, 176, 184, 160, 184,
@@ -62,6 +80,28 @@ export function computedSalary(
   return round((base / monthHours) * workedHours);
 }
 
+// Цалингийн төрлөөс хамаарсан бодогдсон цалин.
+//   fixed  → computedSalary(...)
+//   hourly → base (цагийн хөлс) × ажилласан цаг
+//   manual → гараар оруулсан дүн (manualAmount)
+export function computedSalaryByType(
+  type: SalaryType,
+  base: number,
+  monthHours: number,
+  workedHours: number,
+  manualAmount = 0,
+): number {
+  switch (type) {
+    case "hourly":
+      return round(base * workedHours);
+    case "manual":
+      return round(manualAmount);
+    case "fixed":
+    default:
+      return computedSalary(base, monthHours, workedHours);
+  }
+}
+
 // ЭМНДШ = MIN(Нийт цалин, дээд хязгаар) × хувь.
 export function shInsurance(gross: number, params = DEFAULT_PARAMS): number {
   return round(Math.min(gross, params.shCeiling) * params.shRate);
@@ -95,10 +135,16 @@ export type SalaryInput = {
   base: number;
   monthHours: number;
   workedHours: number;
+  salaryType?: SalaryType; // анхдагч "fixed"
+  manualAmount?: number; // "manual" төрөлд бодогдсон цалинг шууд авна
   phoneAllowance?: number;
   bonus?: number;
   vacationAmount?: number;
-  otherDeduction?: number;
+  // Суутгалууд (бүгд цэвэр цалингаас хасагдана)
+  lateDeduction?: number; // хоцролт
+  savingsDeduction?: number; // хуримтлал
+  disciplineDeduction?: number; // сахилгын шийтгэл
+  otherDeduction?: number; // бусад
 };
 
 export type SalaryComputed = {
@@ -117,17 +163,30 @@ export function computeRow(
   input: SalaryInput,
   params: SalaryParams = DEFAULT_PARAMS,
 ): SalaryComputed {
+  const type = input.salaryType ?? "fixed";
   const phone = input.phoneAllowance ?? 0;
   const bonus = input.bonus ?? 0;
   const vacation = input.vacationAmount ?? 0;
-  const other = input.otherDeduction ?? 0;
+  // Бүх нэмэлт суутгал (урьдчилгаанаас гадна).
+  const deductions =
+    (input.lateDeduction ?? 0) +
+    (input.savingsDeduction ?? 0) +
+    (input.disciplineDeduction ?? 0) +
+    (input.otherDeduction ?? 0);
 
-  const computed = computedSalary(input.base, input.monthHours, input.workedHours);
+  const computed = computedSalaryByType(
+    type,
+    input.base,
+    input.monthHours,
+    input.workedHours,
+    input.manualAmount ?? 0,
+  );
   const gross = round(computed + phone + bonus + vacation);
   const sh = shInsurance(gross, params);
   const tax = pit(gross, sh, params);
-  const adv = advance(input.base, params);
-  const net = round(gross - sh - tax - adv - other);
+  // Урьдчилгаа (үндсэн × хувь) зөвхөн тогтмол цалинд утгатай.
+  const adv = type === "fixed" ? advance(input.base, params) : 0;
+  const net = round(gross - sh - tax - adv - deductions);
 
   return {
     computed_salary: computed,
