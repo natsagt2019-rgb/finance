@@ -103,7 +103,15 @@ export function parseTdb(
   cutoff: Date,
 ): NormalizedTxn[] {
   const accountNo = account.accountNo;
-  const currency = account.currency || "MNT";
+  // Валютыг толгойн мөрүүдээс илрүүлнэ (ж: "Дансны дугаар: 411099344 USD") —
+  // гадаад валют олдвол ханшийг col16-аас уншина. Олдохгүй бол бүртгэлийн валют.
+  const hdrText = rows
+    .slice(0, 12)
+    .flat()
+    .map((c) => String(c ?? ""))
+    .join(" ");
+  const curM = hdrText.match(/\b(USD|EUR|CNY|RUB|JPY|GBP|KRW)\b/);
+  const currency = curM ? curM[1] : account.currency || "MNT";
   const col = TDB_COL;
   const result: NormalizedTxn[] = [];
 
