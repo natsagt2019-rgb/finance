@@ -2,7 +2,8 @@
 
 import type { CashType } from "@/lib/cash-calc";
 
-export const COMPANIES = ["ТҮМЭН РЕСУРС", "ТҮМЭН ТЭЭХ"] as const;
+// Нийтлэг build — компанийн тогтмол утга байхгүй (шаардвал энд нэмнэ).
+export const COMPANIES: readonly string[] = [];
 
 export const CURRENCIES = ["MNT", "USD", "CNY", "EUR", "RUB"] as const;
 

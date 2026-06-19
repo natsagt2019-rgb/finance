@@ -64,6 +64,6 @@ export const DEPRECIATION_SELECT =
   "monthly_depreciation, accumulated_depreciation, net_book_value, is_active";
 
 // ── Туслах ─────────────────────────────────────────────────────────────────
-export const COMPANIES = ["ТҮМЭН РЕСУРС", "ТҮМЭН ТЭЭХ"] as const;
+export const COMPANIES: readonly string[] = [];
 export const TABS = ["assets", "depreciation", "summary", "settings"] as const;
 export type Tab = (typeof TABS)[number];

@@ -1,6 +1,7 @@
 // Бараа материалын модулийн төрлүүд + Supabase select мөрүүд.
 
-export const COMPANIES = ["ТҮМЭН РЕСУРС", "ТҮМЭН ТЭЭХ"] as const;
+// Нийтлэг build — компанийн тогтмол утга байхгүй (шаардвал энд нэмнэ).
+export const COMPANIES: readonly string[] = [];
 
 export const TABS = ["items", "moves", "stock", "count", "settings"] as const;
 export type Tab = (typeof TABS)[number];

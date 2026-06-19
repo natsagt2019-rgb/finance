@@ -67,6 +67,7 @@ export const SETTINGS_SELECT =
   "id, year, month_hours, sh_rate, sh_ceiling, pit_rate, advance_rate, pit_tiers";
 
 // ── Туслах ─────────────────────────────────────────────────────────────────
-export const COMPANIES = ["ТҮМЭН РЕСУРС", "ТҮМЭН ТЭЭХ"] as const;
+// Нийтлэг build — компанийн тогтмол утга байхгүй (шаардвал энд нэмнэ).
+export const COMPANIES: readonly string[] = [];
 export const TABS = ["employees", "calc", "summary", "settings"] as const;
 export type Tab = (typeof TABS)[number];
