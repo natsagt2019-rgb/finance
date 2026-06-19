@@ -41,6 +41,25 @@ export default async function EditAssetPage({
         Хөрөнгө засах — {asset.name}
       </h1>
 
+      {/* Анхан шатны баримтууд (Сангийн сайдын 347-р тушаал) — хэвлэх */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-zinc-500">Анхан шатны баримт:</span>
+        {[
+          { f: "ux-1", label: "ҮХ-1 Хүлээн авах" },
+          { f: "ux-2", label: "ҮХ-2 Их засвар" },
+          { f: "ux-3", label: "ҮХ-3 Ашиглалтаас хасах" },
+          { f: "ux-4", label: "ҮХ-4 Дотоод шилжүүлэг" },
+        ].map(({ f, label }) => (
+          <Link
+            key={f}
+            href={`/assets/${asset.id}/document/${f}`}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            🖨 {label}
+          </Link>
+        ))}
+      </div>
+
       <div className="mt-6">
         <AssetForm mode="edit" asset={asset} categories={categories} />
       </div>
