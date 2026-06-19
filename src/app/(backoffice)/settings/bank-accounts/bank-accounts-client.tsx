@@ -19,6 +19,7 @@ const BANK_LABEL: Record<string, string> = {
   tdb: "ТДБ (Худалдаа хөгжил)",
   golomt: "Голомт",
   mbank: "М банк",
+  khas: "Хас банк (XacBank)",
 };
 const CURRENCIES = ["MNT", "USD", "EUR", "CNY", "RUB", "JPY", "GBP"];
 

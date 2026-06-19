@@ -25,7 +25,7 @@ export type NormalizedTxn = {
 export type AccountId = string;
 
 // Банкны төрөл — parser-ийг сонгоход ашиглана.
-export type BankType = "tdb" | "golomt" | "mbank";
+export type BankType = "tdb" | "golomt" | "mbank" | "khas";
 
 // Нэг банкны дансны тохиргоо (bank_accounts хүснэгтээс ачаалагдана).
 export type AccountConfig = {

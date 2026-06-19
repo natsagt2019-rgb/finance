@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   detectAccount,
+  detectAccountInText,
+  sheetHeaderText,
   normalizeFile,
   type AccountId,
   type AccountConfig,
@@ -203,7 +205,17 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
   const accounts = await loadBankAccounts(supabase);
 
   for (const file of files) {
-    const account = detectAccount(file.name, accounts);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    // Эхлээд файлын нэрээр (ж: ТДБ ST_<данс>_…), дараа нь файлын агуулгаас
+    // (ж: Хас банк — нэр дугааргүй) данс таних.
+    let account = detectAccount(file.name, accounts);
+    if (!account) {
+      try {
+        account = detectAccountInText(sheetHeaderText(buffer), accounts);
+      } catch {
+        account = null;
+      }
+    }
     if (!account) {
       fileResults.push({
         filename: file.name,
@@ -213,13 +225,12 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
         error:
           accounts.length === 0
             ? "Банкны данс бүртгээгүй байна. Тохиргоо → Банкны данс дээр нэмнэ үү."
-            : "Файлын нэрнээс банк/данс тодорхойлж чадсангүй (данс бүртгэснээ шалгана уу)",
+            : "Банк/данс тодорхойлж чадсангүй (файлын нэр эсвэл доторх дансны дугаар бүртгэлд таарахгүй)",
       });
       continue;
     }
 
     try {
-      const buffer = Buffer.from(await file.arrayBuffer());
       // Бүх мөрийг уншина (огнооны cutoff шүүлтгүй) — давхардлыг мөрөөр шалгана.
       const txns = normalizeFile(buffer, account, new Date(0));
       const start = rows.length;

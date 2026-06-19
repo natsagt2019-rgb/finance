@@ -232,6 +232,63 @@ export function parseMbank(
   return result;
 }
 
+// "500,000.00" / "-" / тоо → тоо (Хас банкны текст дүн).
+function khasNum(val: unknown): number {
+  if (typeof val === "number") return val;
+  const s = String(val ?? "").trim();
+  if (!s || s === "-") return 0;
+  const n = Number(s.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Хас банк (XacBank) XLSX унших. Толгой: "Огноо" мөрнөөс дата эхэлнэ.
+// Багана: Огноо(0) Утга(1) Харьцсан данс(2) Дугаар(3) Орлого(4) Зарлага(5) Үлдэгдэл(6).
+export function parseKhas(
+  rows: Row[],
+  account: AccountConfig,
+  cutoff: Date,
+): NormalizedTxn[] {
+  let start = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i]?.[0] ?? "").trim() === "Огноо") {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start < 0) start = 9;
+
+  const result: NormalizedTxn[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const row = rows[i] ?? [];
+    const txnDate = toIsoDate(cell(row, 0)) ?? toExcelDate(cell(row, 0));
+    if (!txnDate) continue; // огноогүй (footer/хоосон) таслагдана
+    if (txnDate.getTime() <= cutoff.getTime()) continue;
+
+    const rawDesc = String(cell(row, 1) ?? "").trim();
+    if (rawDesc === "Эхний үлдэгдэл") continue; // нээлтийн үлдэгдэл алгасна
+    if (shouldSkip(rawDesc)) continue;
+
+    const income = khasNum(cell(row, 4));
+    const expense = khasNum(cell(row, 5));
+    if (income === 0 && expense === 0) continue;
+
+    const ctpy = String(cell(row, 2) ?? "").trim();
+    result.push({
+      account_id: account.accountNo,
+      txn_date: txnDate,
+      bank: account.label || "Хас банк",
+      description: cleanDescription(rawDesc),
+      counterparty: ctpy,
+      account_no: "",
+      exchange_rate: 1.0,
+      currency: account.currency || "MNT",
+      income: income > 0 ? income : null,
+      expense: expense > 0 ? expense : null,
+    });
+  }
+  return result;
+}
+
 // Workbook-ийн эхний sheet-ийг array-of-arrays болгож унших.
 function sheetRows(buffer: ArrayBuffer | Buffer): Row[] {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
@@ -242,6 +299,21 @@ function sheetRows(buffer: ArrayBuffer | Buffer): Row[] {
     blankrows: true,
     defval: null,
   });
+}
+
+// Файлын эхний мөрүүдийн текст (агуулгаас данс таних — Хас зэрэг файлын нэр
+// дугааргүй банкинд). Том үсгээр нэгтгэнэ.
+export function sheetHeaderText(
+  buffer: ArrayBuffer | Buffer,
+  maxRows = 15,
+): string {
+  const rows = sheetRows(buffer);
+  return rows
+    .slice(0, maxRows)
+    .flat()
+    .map((c) => String(c ?? ""))
+    .join(" ")
+    .toUpperCase();
 }
 
 // Компакт форматын харилцагч (col5: "MN…IBAN НЭР" эсвэл "12345 НЭР") → нэр гаргах.
@@ -324,6 +396,9 @@ export function parseFile(
   }
   if (account.bankType === "mbank") {
     return parseMbank(rows, account, cutoff);
+  }
+  if (account.bankType === "khas") {
+    return parseKhas(rows, account, cutoff);
   }
   throw new Error(`Танихгүй банкны төрөл: ${account.bankType}`);
 }

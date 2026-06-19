@@ -7,6 +7,8 @@ import { applyCodes } from "./coder";
 import { parseFile } from "./parsers";
 import type { AccountConfig, NormalizedTxn } from "./types";
 
+export { sheetHeaderText } from "./parsers";
+
 export type { AccountId, AccountConfig, BankType, NormalizedTxn } from "./types";
 export { CATEGORY_CODES, INCOME_CODES, EXPENSE_CODES, BANK_DISPLAY } from "./config";
 
@@ -23,6 +25,21 @@ export function detectAccount(
   );
   for (const acc of sorted) {
     if (acc.accountNo && name.includes(acc.accountNo.toUpperCase())) return acc;
+  }
+  return null;
+}
+
+// Файлын агуулгын текстээс данс таних (файлын нэр дугааргүй банкинд — ж: Хас).
+export function detectAccountInText(
+  text: string,
+  accounts: AccountConfig[],
+): AccountConfig | null {
+  const hay = text.toUpperCase();
+  const sorted = [...accounts].sort(
+    (a, b) => b.accountNo.length - a.accountNo.length,
+  );
+  for (const acc of sorted) {
+    if (acc.accountNo && hay.includes(acc.accountNo.toUpperCase())) return acc;
   }
   return null;
 }

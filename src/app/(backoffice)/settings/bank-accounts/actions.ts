@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-const BANK_TYPES = ["tdb", "golomt", "mbank"];
+const BANK_TYPES = ["tdb", "golomt", "mbank", "khas"];
 
 function str(v: FormDataEntryValue | null): string {
   return String(v ?? "").trim();
