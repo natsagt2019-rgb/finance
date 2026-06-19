@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as xlsx from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
 import { postJournal } from "@/lib/post-journal";
@@ -37,8 +38,12 @@ function num(v: FormDataEntryValue | null): number {
 function readEmployee(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const statusRaw = get("status");
+  const lastName = get("last_name");
+  const firstName = get("first_name");
   return {
-    name: get("name"),
+    last_name: lastName || null,
+    first_name: firstName || null,
+    name: [lastName, firstName].filter(Boolean).join(" "), // "Овог Нэр" нийлмэл
     company: get("company") || null,
     position: get("position") || null,
     base_salary: num(formData.get("base_salary")),
@@ -101,6 +106,129 @@ export async function deleteEmployee(id: number): Promise<ActionResult> {
   return { ok: true, id: data.id as number };
 }
 
+// ── Ажилтан: Excel-ээр бөөнөөр оруулах ───────────────────────────────────────
+// Excel нүднээс огноог YYYY-MM-DD болгоно (Date | serial | текст).
+function cellISO(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return null;
+}
+
+function cellNum(v: unknown): number {
+  const n = Number(String(v ?? "").replace(/[, ]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export type EmployeeImportResult =
+  | { ok: true; inserted: number; skipped: number }
+  | { ok: false; error: string };
+
+// Excel (загварын дагуу) → employees хүснэгтэд бөөнөөр оруулна.
+// Давхардал: ДД/Регистр (байвал), үгүй бол "Овог Нэр"-ээр шалгаж алгасна.
+export async function importEmployeesExcel(
+  formData: FormData,
+): Promise<EmployeeImportResult> {
+  const { supabase } = await requireAuth();
+
+  const file = formData.get("file");
+  if (!file || typeof file === "string")
+    return { ok: false, error: "Файл сонгоогүй байна." };
+
+  let grid: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = xlsx.read(buf, { type: "buffer", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+  } catch (e) {
+    return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
+  }
+
+  // Толгойн мөрөөс баганын индексийг олно.
+  const headerRow = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const find = (...keys: string[]) =>
+    headerRow.findIndex((h) => keys.some((k) => h.includes(k)));
+  const idx = {
+    last: find("овог"),
+    first: find("нэр"),
+    company: find("компани"),
+    position: find("тушаал"),
+    hired: find("огноо"),
+    exp: find("туршлага"),
+    base: find("үндсэн", "цалин"),
+    phone: find("утас"),
+    register: find("регистр", "дд"),
+    bank: find("данс"),
+    status: find("төлөв"),
+  };
+  if (idx.first < 0)
+    return { ok: false, error: "«Нэр» багана олдсонгүй. Загварыг ашиглана уу." };
+
+  // Байгаа ажилтнууд — давхардал шалгах (регистр + нийлмэл нэр).
+  const { data: existing } = await supabase
+    .from("employees")
+    .select("name, register")
+    .limit(20000);
+  const seenReg = new Set<string>();
+  const seenName = new Set<string>();
+  for (const e of (existing as { name: string | null; register: string | null }[] | null) ?? []) {
+    if (e.register) seenReg.add(e.register.trim().toLowerCase());
+    if (e.name) seenName.add(e.name.trim().toLowerCase());
+  }
+
+  const at = (row: unknown[], i: number) =>
+    i >= 0 ? String(row[i] ?? "").trim() : "";
+
+  const toInsert: Record<string, unknown>[] = [];
+  let skipped = 0;
+  for (let i = 1; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const firstName = at(row, idx.first);
+    if (!firstName) continue;
+    const lastName = at(row, idx.last);
+    const name = [lastName, firstName].filter(Boolean).join(" ");
+    const register = at(row, idx.register);
+
+    const regKey = register.toLowerCase();
+    const nameKey = name.toLowerCase();
+    if ((register && seenReg.has(regKey)) || (!register && seenName.has(nameKey))) {
+      skipped++;
+      continue;
+    }
+    if (register) seenReg.add(regKey);
+    seenName.add(nameKey);
+
+    const statusRaw = at(row, idx.status).toLowerCase();
+    toInsert.push({
+      last_name: lastName || null,
+      first_name: firstName,
+      name,
+      company: at(row, idx.company) || null,
+      position: at(row, idx.position) || null,
+      hired_date: idx.hired >= 0 ? cellISO(row[idx.hired]) : null,
+      experience_years: idx.exp >= 0 ? cellNum(row[idx.exp]) : 0,
+      base_salary: idx.base >= 0 ? cellNum(row[idx.base]) : 0,
+      phone_allowance: idx.phone >= 0 ? cellNum(row[idx.phone]) : 0,
+      register: register || null,
+      bank_account: at(row, idx.bank) || null,
+      status: statusRaw.includes("идэвхгүй") ? "inactive" : "active",
+      is_active: true,
+    });
+  }
+
+  if (toInsert.length === 0)
+    return { ok: false, error: "Оруулах мөр олдсонгүй (бүгд хоосон эсвэл давхардсан)." };
+
+  const { error } = await supabase.from("employees").insert(toInsert);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/salary");
+  return { ok: true, inserted: toInsert.length, skipped };
+}
+
 // ── Цалин тооцоо: тухайн сарын мөрүүдийг бодож хадгалах ──────────────────────
 // calc-tab-аас ирэх нэг мөрийн оролт.
 export type SalaryInputRow = {
@@ -133,6 +261,48 @@ async function loadParams(
       : DEFAULT_MONTH_HOURS_2026;
 
   return { params: paramsFromSettings(data), monthHours };
+}
+
+// Тухайн сарын цалингийн журнал (нэгтгэсэн) — journal_entries (тайлангийн эх сурвалж).
+//   Дт 700101 (нийт цалин) / Кт 310501 НДШ + Кт 310401 ХХОАТ
+//                         + Кт 120601 урьдчилгаа/бусад суутгал + Кт 310201 цэвэр өглөг
+// idempotent: тухайн сарын source='salary' бичилтийг солино.
+async function postSalaryJournal(
+  supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
+  year: number,
+  month: number,
+  records: { gross: number; sh_insurance: number; pit: number; advance: number; net: number; other_deduction: number }[],
+): Promise<void> {
+  const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+  const sum = (k: keyof (typeof records)[number]) =>
+    records.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const gross = r2(sum("gross"));
+  if (gross <= 0) return;
+  const sh = r2(sum("sh_insurance"));
+  const pit = r2(sum("pit"));
+  const advOther = r2(sum("advance") + sum("other_deduction"));
+  const net = r2(sum("net"));
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const lastDay = new Date(year, month, 0).getDate();
+  const date = `${year}-${pad(month)}-${pad(lastDay)}`;
+  const tag = `${year}-${pad(month)}`;
+
+  await supabase.from("journal_entries").delete().eq("source", "salary").eq("txn_date", date);
+
+  const rows: Record<string, unknown>[] = [];
+  const push = (amt: number, kt: string, desc: string) => {
+    if (r2(amt) > 0)
+      rows.push({
+        txn_date: date, description: desc, amount: r2(amt),
+        debit_code: "700101", credit_code: kt, is_opening: false, source: "salary",
+      });
+  };
+  push(sh, "310501", `${tag} цалин: НДШ суутгал`);
+  push(pit, "310401", `${tag} цалин: ХХОАТ суутгал`);
+  push(advOther, "120601", `${tag} цалин: урьдчилгаа/бусад суутгал`);
+  push(net, "310201", `${tag} цалин: цэвэр өглөг`);
+  if (rows.length > 0) await supabase.from("journal_entries").insert(rows);
 }
 
 export async function saveSalary(
@@ -184,6 +354,10 @@ export async function saveSalary(
     .upsert(records, { onConflict: "employee_id,year,month" });
 
   if (error) return { ok: false, error: error.message };
+
+  // Цалингийн нэгтгэсэн журнал (Дт 700101 / Кт суутгал+цэвэр өглөг).
+  await postSalaryJournal(supabase, year, month, records);
+  revalidatePath("/journals");
 
   // БМ дутагдлын авлага барагдуулах (Дт Цалин хөлсний өглөг / Кт Ажилчдын авлага).
   const settleRows = rows.filter((r) => (r.staff_inv_settle ?? 0) > 0);

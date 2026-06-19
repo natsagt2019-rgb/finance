@@ -5,7 +5,9 @@ export type EmployeeStatus = "active" | "inactive";
 
 export type EmployeeRow = {
   id: number;
-  name: string;
+  name: string; // "Овог Нэр" нийлмэл (last_name + first_name-ээс автоматаар бүрдэнэ)
+  last_name: string | null; // Овог
+  first_name: string | null; // Нэр
   company: string | null;
   position: string | null;
   base_salary: number;
@@ -19,7 +21,7 @@ export type EmployeeRow = {
 };
 
 export const EMPLOYEE_SELECT =
-  "id, name, company, position, base_salary, phone_allowance, " +
+  "id, name, last_name, first_name, company, position, base_salary, phone_allowance, " +
   "register, bank_account, hired_date, experience_years, status, is_active";
 
 // ── Цалингийн мөр ─────────────────────────────────────────────────────────────

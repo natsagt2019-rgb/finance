@@ -1,4 +1,5 @@
 import { RowActions } from "./row-actions";
+import { EmployeesImport } from "./employees-import";
 import type { EmployeeRow } from "./types";
 
 function fmtMoney(n: number): string {
@@ -48,10 +49,14 @@ export function EmployeesTab({ employees }: { employees: EmployeeRow[] }) {
         </div>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-3">
+        <EmployeesImport />
+      </div>
+
       <div className="mt-4 rounded-2xl border border-zinc-200 bg-white">
         {employees.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-zinc-500">
-            Ажилтан бүртгэгдээгүй байна.
+            Ажилтан бүртгэгдээгүй байна. Дээрх «Excel загвар татах»-аар бөөнөөр оруулж болно.
           </div>
         ) : (
           <div className="overflow-x-auto">

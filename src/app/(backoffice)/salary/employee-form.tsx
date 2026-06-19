@@ -50,15 +50,26 @@ export function EmployeeForm({ mode, employee }: Props) {
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
+          <label className={labelCls}>Овог</label>
+          <input
+            type="text"
+            name="last_name"
+            defaultValue={employee?.last_name ?? ""}
+            placeholder="Нацагдорж"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
           <label className={labelCls}>
-            Овог Нэр <span className="text-red-500">*</span>
+            Нэр <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
-            name="name"
+            name="first_name"
             required
-            defaultValue={employee?.name ?? ""}
-            placeholder="Нацагдорж"
+            defaultValue={employee?.first_name ?? ""}
+            placeholder="Болд"
             className={inputCls}
           />
         </div>
