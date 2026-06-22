@@ -75,7 +75,13 @@ export default async function CashFlowPage({
     (cashRow as { closing_total: number | null } | null)?.closing_total ?? 0,
   );
   const closingCashCalc = openingCash + netFlow;
-  const diff = closingCashCalc - closingCashBs;
+  // Албан маягт (СС №361): эхний үлдэгдэл + цэвэр гүйлгээ + ханшийн өөрчлөлтийн
+  // нөлөө = эцсийн үлдэгдэл. Шууд аргын гүйлгээ нь хийгдсэн өдрийн ханшаар, баланс
+  // нь тайлант үеийн эцсийн ханшаар бичигддэг тул зөрүү нь голчлон валютын мөнгөн
+  // хөрөнгийн ханшийн өөрчлөлт болно — албан маягтын тусдаа мөрөөр харуулна.
+  const hasCashBs = cashRow != null;
+  const fxEffect = hasCashBs ? closingCashBs - openingCash - netFlow : 0;
+  const closingCash = hasCashBs ? closingCashBs : closingCashCalc;
 
   return (
     <div>
@@ -134,14 +140,14 @@ export default async function CashFlowPage({
         <div className="mt-4 flex flex-wrap gap-3 print:hidden">
           <span
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              Math.abs(diff) < 0.5
+              hasCashBs
                 ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700"
+                : "bg-amber-100 text-amber-700"
             }`}
           >
-            {Math.abs(diff) < 0.5
-              ? "✓ Тулгалт зөв (эхний + гүйлгээ = эцсийн үлдэгдэл)"
-              : `⚠ Зөрүү: ${fmt(diff)}`}
+            {hasCashBs
+              ? `✓ Балансын мөнгөтэй тулсан (ханшийн нөлөө: ${fmt(fxEffect)})`
+              : "⚠ Балансын мөнгөний үлдэгдэл алга — тулгалт хийгдсэнгүй (баланс дахин дүгнэнэ үү)"}
           </span>
         </div>
       ) : null}
@@ -185,18 +191,29 @@ export default async function CashFlowPage({
             })}
             <tr className="border-t-2 border-zinc-300">
               <td className="px-4 py-1.5 font-semibold text-zinc-900">
-                5. Мөнгөний эхний үлдэгдэл
+                5. Мөнгө, түүнтэй адилтгах хөрөнгийн эхний үлдэгдэл
               </td>
               <td className="px-4 py-1.5 text-right font-semibold tabular-nums">
                 {fmt(openingCash)}
               </td>
             </tr>
+            {hasCashBs ? (
+              <tr>
+                <td className="px-4 py-1.5 font-semibold text-zinc-900">
+                  6. Гадаад валютын ханшийн өөрчлөлтийн нөлөө
+                </td>
+                <td className="px-4 py-1.5 text-right font-semibold tabular-nums">
+                  {fmt(fxEffect)}
+                </td>
+              </tr>
+            ) : null}
             <tr className="bg-zinc-50 font-semibold">
               <td className="px-4 py-1.5 text-zinc-900">
-                6. Мөнгөний эцсийн үлдэгдэл
+                {hasCashBs ? "7" : "6"}. Мөнгө, түүнтэй адилтгах хөрөнгийн эцсийн
+                үлдэгдэл
               </td>
               <td className="px-4 py-1.5 text-right tabular-nums">
-                {fmt(closingCashCalc)}
+                {fmt(closingCash)}
               </td>
             </tr>
           </tbody>
