@@ -119,6 +119,7 @@ export const navEntries: NavEntry[] = [
       { href: "/reports/notes", label: "Санхүүгийн тодруулга", icon: "📝" },
       { href: "/reports/cash-flow", label: "Мөнгөн гүйлгээний тайлан", icon: "💵" },
       { href: "/reports/inventory", label: "Бараа материалын тайлан", icon: "📦" },
+      { href: "/reports/inventory-moves", label: "Бараа материалын хөдөлгөөний журнал", icon: "📋" },
       { href: "/reports/fx-revaluation", label: "Ханшийн тэгшитгэл", icon: "💱" },
       { href: "/reports/worksheet", label: "Ажлын хүснэгт", icon: "🧮" },
     ],
