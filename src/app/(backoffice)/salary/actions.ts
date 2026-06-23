@@ -242,9 +242,21 @@ export type SalaryInputRow = {
   base_salary: number;
   worked_hours: number;
   manual_amount: number; // "manual" төрөлд бодогдсон цалин
+  // Цагийн үзүүлэлт (мэдээллийн — Үе 1)
+  overtime_hours: number;
+  holiday_overtime_hours: number;
+  late_minutes: number;
+  // Нэмэгдэл
   phone_allowance: number;
   bonus: number;
   vacation_amount: number;
+  transport_allowance: number;
+  meal_allowance: number;
+  fuel_allowance: number;
+  tenure_allowance: number;
+  overtime_pay: number;
+  holiday_overtime_pay: number;
+  // Суутгал
   late_deduction: number; // хоцролт
   savings_deduction: number; // хуримтлал
   discipline_deduction: number; // сахилгын шийтгэл
@@ -353,6 +365,12 @@ export async function saveSalary(
         phoneAllowance: r.phone_allowance,
         bonus: r.bonus,
         vacationAmount: r.vacation_amount,
+        transportAllowance: r.transport_allowance,
+        mealAllowance: r.meal_allowance,
+        fuelAllowance: r.fuel_allowance,
+        tenureAllowance: r.tenure_allowance,
+        overtimePay: r.overtime_pay,
+        holidayOvertimePay: r.holiday_overtime_pay,
         lateDeduction: r.late_deduction,
         savingsDeduction: r.savings_deduction,
         disciplineDeduction: r.discipline_deduction,
@@ -370,9 +388,18 @@ export async function saveSalary(
       base_salary: r.base_salary,
       worked_hours: r.worked_hours,
       month_hours: mh,
+      overtime_hours: r.overtime_hours,
+      holiday_overtime_hours: r.holiday_overtime_hours,
+      late_minutes: r.late_minutes,
       phone_allowance: r.phone_allowance,
       bonus: r.bonus,
       vacation_amount: r.vacation_amount,
+      transport_allowance: r.transport_allowance,
+      meal_allowance: r.meal_allowance,
+      fuel_allowance: r.fuel_allowance,
+      tenure_allowance: r.tenure_allowance,
+      overtime_pay: r.overtime_pay,
+      holiday_overtime_pay: r.holiday_overtime_pay,
       late_deduction: r.late_deduction,
       savings_deduction: r.savings_deduction,
       discipline_deduction: r.discipline_deduction,
