@@ -27,7 +27,7 @@ export default async function NewMovePage({
     timeZone: "Asia/Ulaanbaatar",
   });
 
-  const [{ data: itemData }, { data: accData }, { data: partData }, { data: moveData }] =
+  const [{ data: itemData }, { data: accData }, { data: partData }, { data: moveData }, { data: locData }] =
     await Promise.all([
       supabase
         .from("inv_items")
@@ -51,11 +51,18 @@ export default async function NewMovePage({
         .from("inv_moves")
         .select("id, date, type, qty, unit_cost, item_id")
         .limit(20000),
+      supabase
+        .from("inv_locations")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name", { ascending: true })
+        .limit(2000),
     ]);
 
   const items = (itemData as ItemRow[] | null) ?? [];
   const accounts = (accData as AccountOption[] | null) ?? [];
   const partners = (partData as PartnerOption[] | null) ?? [];
+  const locations = (locData as { id: number; name: string }[] | null) ?? [];
 
   // Бараа бүрийн одоогийн үлдэгдэл (форм дээр харуулна).
   const byItem = new Map<number, MoveLite[]>();
@@ -88,6 +95,7 @@ export default async function NewMovePage({
           items={items}
           accounts={accounts}
           partners={partners}
+          locations={locations}
           stock={stock}
           today={today}
         />

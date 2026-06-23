@@ -53,6 +53,7 @@ export function MoveForm({
   items,
   accounts,
   partners,
+  locations,
   stock,
   today,
 }: {
@@ -60,12 +61,14 @@ export function MoveForm({
   items: ItemRow[];
   accounts: AccountOption[];
   partners: PartnerOption[];
+  locations: { id: number; name: string }[];
   stock: Record<number, number>;
   today: string;
 }) {
   const router = useRouter();
   const [type, setType] = useState<MoveType>(initialType);
   const [itemId, setItemId] = useState<number>(items[0]?.id ?? 0);
+  const [locationId, setLocationId] = useState<string>("");
   const [qty, setQty] = useState<string>("");
   const [unitCost, setUnitCost] = useState<string>("");
   const [vat, setVat] = useState<string>("");
@@ -104,6 +107,7 @@ export function MoveForm({
       vat_amount: usesVat(type) ? Number(vat) || 0 : 0,
       partner_id: usesPartner(type) && partnerId ? Number(partnerId) : null,
       counter_account_id: counterId ? Number(counterId) : null,
+      location_id: locationId ? Number(locationId) : null,
       doc_no: docNo || null,
       company: company || null,
       note: note || null,
@@ -287,6 +291,24 @@ export function MoveForm({
             ))}
           </select>
         </div>
+
+        {locations.length > 0 && (
+          <div>
+            <label className={labelCls}>Байршил (агуулах)</label>
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— сонгох —</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="sm:col-span-2">
           <label className={labelCls}>Тэмдэглэл</label>

@@ -150,6 +150,7 @@ export type MoveInput = {
   vat_amount: number;
   partner_id: number | null;
   counter_account_id: number | null;
+  location_id?: number | null;
   doc_no: string | null;
   company: string | null;
   note: string | null;
@@ -203,6 +204,7 @@ export async function createMove(input: MoveInput): Promise<ActionResult> {
       vat_amount: vat,
       partner_id: input.partner_id,
       counter_account_id: input.counter_account_id,
+      location_id: input.location_id ?? null,
       doc_no: input.doc_no || MOVE_DOC[input.type],
       company: input.company,
       note: input.note,
