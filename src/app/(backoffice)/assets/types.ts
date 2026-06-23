@@ -14,6 +14,16 @@ export const CATEGORY_SELECT =
   "id, code, name, useful_life_years, account_code, accum_account_code, " +
   "expense_account_code, is_active";
 
+// ── Байршил (мастер) ─────────────────────────────────────────────────────────
+export type LocationRow = {
+  id: number;
+  code: string | null;
+  name: string;
+  is_active: boolean;
+};
+
+export const LOCATION_SELECT = "id, code, name, is_active";
+
 // ── Хөрөнгийн карт ───────────────────────────────────────────────────────────
 export type AssetStatus = "active" | "disposed";
 
@@ -28,20 +38,27 @@ export type AssetRow = {
   salvage_value: number;
   useful_life_years: number | null;
   location: string | null;
+  location_id: number | null; // байршлын лавлах (asset_locations)
+  barcode: string | null; // баар код
   responsible: string | null;
   opening_date: string | null; // эхний үлдэгдлийн огноо
   opening_accum_depreciation: number; // тэр огноо дахь хуримтлагдсан элэгдэл
   status: AssetStatus;
   disposed_date: string | null;
   disposal_note: string | null;
+  disposal_type: "writeoff" | "sale" | null;
+  disposal_proceeds: number;
+  disposal_vat: number;
+  disposal_journal_id: number | null;
   is_active: boolean;
 };
 
 export const ASSET_SELECT =
   "id, name, code, category_id, company, acquired_date, cost, salvage_value, " +
-  "useful_life_years, location, responsible, opening_date, " +
+  "useful_life_years, location, location_id, barcode, responsible, opening_date, " +
   "opening_accum_depreciation, status, disposed_date, " +
-  "disposal_note, is_active";
+  "disposal_note, disposal_type, disposal_proceeds, disposal_vat, " +
+  "disposal_journal_id, is_active";
 
 // ── Элэгдлийн снапшот ────────────────────────────────────────────────────────
 export type DepreciationRow = {
@@ -65,5 +82,5 @@ export const DEPRECIATION_SELECT =
 
 // ── Туслах ─────────────────────────────────────────────────────────────────
 export const COMPANIES: readonly string[] = [];
-export const TABS = ["assets", "depreciation", "summary", "settings"] as const;
+export const TABS = ["assets", "depreciation", "summary", "locations", "settings"] as const;
 export type Tab = (typeof TABS)[number];

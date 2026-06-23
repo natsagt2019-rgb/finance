@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { computeAsset } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { buildDisposalJournal, type DisposalType } from "@/lib/asset-disposal";
+import { VAT_RATE, loadCompany } from "@/lib/company";
 import { postJournal } from "@/lib/post-journal";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
@@ -145,6 +147,7 @@ function readAsset(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const statusRaw = get("status");
   const categoryId = num(formData.get("category_id"));
+  const locationId = num(formData.get("location_id"));
   const life = num(formData.get("useful_life_years"));
   return {
     name: get("name"),
@@ -156,6 +159,8 @@ function readAsset(formData: FormData) {
     salvage_value: num(formData.get("salvage_value")),
     useful_life_years: life > 0 ? life : null,
     location: get("location") || null,
+    location_id: locationId > 0 ? locationId : null,
+    barcode: get("barcode") || null,
     responsible: get("responsible") || null,
     opening_date: get("opening_date") || null,
     opening_accum_depreciation: num(formData.get("opening_accum_depreciation")),
@@ -292,6 +297,220 @@ export async function saveDepreciation(
   return { ok: true, id: records.length };
 }
 
+// ── Хасалт / Борлуулалт ─────────────────────────────────────────────────────
+// Стандарт чартын тогтмол данс (категориос хамаарахгүй):
+const ACC_GAIN = "620500"; // ҮХ борлуулсны олз
+const ACC_LOSS = "820100"; // ҮХ хассаны гарз
+const ACC_VAT = "330100"; // НӨАТ-ын өглөг
+
+// Журналыг бүрэн устгах (entries + lines + journal).
+async function deleteJournalFull(supabase: Supa, journalId: number): Promise<void> {
+  await supabase.from("journal_entries").delete().eq("journal_id", journalId);
+  await supabase.from("journal_lines").delete().eq("journal_id", journalId);
+  await supabase.from("journals").delete().eq("id", journalId);
+}
+
+// Хасах огнооноос (он, сар) гаргах.
+function ymOf(date: string): { year: number; month: number } | null {
+  const m = /^(\d{4})-(\d{2})/.exec(date);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]) };
+}
+
+// Хөрөнгийг хасах / борлуулах: GL журнал бичээд төлвийг disposed болгоно.
+// Идемпотент: дахин дуудвал өмнөх журналыг устгаад шинээр бичнэ.
+export async function disposeAsset(
+  assetId: number,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const type = (get("disposal_type") === "sale" ? "sale" : "writeoff") as DisposalType;
+  const disposedDate = get("disposed_date");
+  if (!disposedDate) return { ok: false, error: "Хасах огноо заавал шаардлагатай." };
+  const ym = ymOf(disposedDate);
+  if (!ym) return { ok: false, error: "Хасах огноо буруу форматтай." };
+  const note = get("disposal_note") || null;
+  const settlement = get("settlement_code") || "110200";
+  const partnerRaw = get("partner_id");
+  const partnerId = partnerRaw ? Number(partnerRaw) : null;
+  const noVat = get("no_vat") === "1";
+  const proceedsInput = num(formData.get("proceeds"));
+
+  // Хөрөнгө + ангилал.
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select(
+      "id, cost, salvage_value, useful_life_years, acquired_date, opening_date, " +
+        "opening_accum_depreciation, category_id, disposal_journal_id",
+    )
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const aData = aRaw as unknown as {
+    id: number;
+    cost: number;
+    salvage_value: number;
+    useful_life_years: number | null;
+    acquired_date: string | null;
+    opening_date: string | null;
+    opening_accum_depreciation: number;
+    category_id: number | null;
+    disposal_journal_id: number | null;
+  };
+
+  const catRes = aData.category_id
+    ? await supabase
+        .from("asset_categories")
+        .select("account_code, accum_account_code, useful_life_years")
+        .eq("id", aData.category_id)
+        .single()
+    : { data: null };
+  const cat = catRes.data as unknown as {
+    account_code: string | null;
+    accum_account_code: string | null;
+    useful_life_years: number | null;
+  } | null;
+
+  const assetAcc = cat?.account_code ?? null;
+  const accumAcc = cat?.accum_account_code ?? null;
+  if (!assetAcc || !accumAcc)
+    return {
+      ok: false,
+      error:
+        "Ангилалд хөрөнгийн данс ба хуримтлагдсан элэгдлийн данс тохируулна уу (Тохиргоо таб).",
+    };
+
+  // Хасах огнооны сар хүртэлх хуримтлагдсан элэгдэл (asset-calc.ts).
+  const life = resolveUsefulLife(
+    aData.useful_life_years as number | null,
+    cat?.useful_life_years as number | null,
+  );
+  const calc = computeAsset(
+    {
+      cost: Number(aData.cost) || 0,
+      salvageValue: Number(aData.salvage_value) || 0,
+      usefulLifeYears: life,
+      acquiredDate: aData.acquired_date as string | null,
+      openingDate: aData.opening_date as string | null,
+      openingAccumDepreciation: Number(aData.opening_accum_depreciation) || 0,
+    },
+    ym.year,
+    ym.month,
+  );
+
+  // НӨАТ: борлуулалт ба компани НӨАТ төлөгч бол 10% (no_vat сонголтоор алгасна).
+  const company = await loadCompany();
+  const vat =
+    type === "sale" && !noVat && company.isVatPayer
+      ? Math.round(proceedsInput * VAT_RATE * 100) / 100
+      : 0;
+
+  const built = buildDisposalJournal({
+    type,
+    cost: Number(aData.cost) || 0,
+    accumulated: calc.accumulatedDepreciation,
+    proceeds: type === "sale" ? proceedsInput : 0,
+    vat,
+    accounts: {
+      asset: assetAcc,
+      accum: accumAcc,
+      gain: ACC_GAIN,
+      loss: ACC_LOSS,
+      vatPayable: ACC_VAT,
+      settlement,
+    },
+  });
+  if (!built.ok) return { ok: false, error: built.error };
+
+  // Дансны код → id.
+  const codes = [...new Set(built.lines.map((l) => l.code))];
+  const { data: accs } = await supabase.from("accounts").select("id, code").in("code", codes);
+  const idByCode = new Map<string, number>();
+  for (const a of (accs as { id: number; code: string }[] | null) ?? [])
+    idByCode.set(a.code, a.id);
+  const lines = built.lines.map((l) => ({
+    account_id: idByCode.get(l.code),
+    debit: l.debit,
+    credit: l.credit,
+    description: l.description,
+  }));
+  const missing = lines.find((l) => l.account_id == null);
+  if (missing) {
+    const code = built.lines.find((l) => idByCode.get(l.code) == null)?.code;
+    return { ok: false, error: `Дансны код олдсонгүй: ${code}. accounts хүснэгтэд нэмнэ үү.` };
+  }
+
+  // Идемпотент: өмнөх хасалтын журналыг устгана.
+  const prevJid = aData.disposal_journal_id as number | null;
+  if (prevJid) await deleteJournalFull(supabase, prevJid);
+
+  const typeLabel = type === "sale" ? "борлуулалт" : "хасалт";
+  const res = await postJournal(supabase, {
+    date: disposedDate,
+    description: `Үндсэн хөрөнгө ${typeLabel}${note ? ` — ${note}` : ""}`,
+    reference: `DISP-${assetId}`,
+    partner_id: partnerId,
+    source: "asset_disposal",
+    lines: lines as { account_id: number; debit: number; credit: number; description: string }[],
+  });
+  if (!res.ok) return { ok: false, error: `Журнал: ${res.error}` };
+
+  // Хөрөнгийн төлвийг шинэчилнэ.
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({
+      status: "disposed",
+      disposed_date: disposedDate,
+      disposal_note: note,
+      disposal_type: type,
+      disposal_proceeds: type === "sale" ? proceedsInput : 0,
+      disposal_vat: vat,
+      disposal_journal_id: res.id,
+    })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: res.id };
+}
+
+// Хасалт/борлуулалтыг буцаах: журналыг устгаж, хөрөнгийг идэвхжүүлнэ.
+export async function reverseDisposal(assetId: number): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+
+  const { data: aData, error: ae } = await supabase
+    .from("assets")
+    .select("id, disposal_journal_id")
+    .eq("id", assetId)
+    .single();
+  if (ae || !aData) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+
+  const jid = aData.disposal_journal_id as number | null;
+  if (jid) await deleteJournalFull(supabase, jid);
+
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({
+      status: "active",
+      disposed_date: null,
+      disposal_type: null,
+      disposal_proceeds: 0,
+      disposal_vat: 0,
+      disposal_journal_id: null,
+    })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: assetId };
+}
+
 // ── Ангилал: нэмэх / засах / устгах ─────────────────────────────────────────
 function readCategory(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
@@ -346,6 +565,62 @@ export async function deleteCategory(id: number): Promise<ActionResult> {
   const { supabase } = await requireAuth();
   const { data, error } = await supabase
     .from("asset_categories")
+    .update({ is_active: false })
+    .eq("id", id)
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/assets");
+  return { ok: true, id: data.id as number };
+}
+
+// ── Байршил: нэмэх / засах / устгах ─────────────────────────────────────────
+function readLocation(formData: FormData) {
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+  return { code: get("code") || null, name: get("name") };
+}
+
+export async function createLocation(formData: FormData): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const v = readLocation(formData);
+  if (!v.name) return { ok: false, error: "Байршлын нэр заавал шаардлагатай." };
+
+  const { data, error } = await supabase
+    .from("asset_locations")
+    .insert(v)
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/assets");
+  return { ok: true, id: data.id as number };
+}
+
+export async function updateLocation(
+  id: number,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const v = readLocation(formData);
+  if (!v.name) return { ok: false, error: "Байршлын нэр заавал шаардлагатай." };
+
+  const { data, error } = await supabase
+    .from("asset_locations")
+    .update(v)
+    .eq("id", id)
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/assets");
+  return { ok: true, id: data.id as number };
+}
+
+export async function deleteLocation(id: number): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const { data, error } = await supabase
+    .from("asset_locations")
     .update({ is_active: false })
     .eq("id", id)
     .select("id")

@@ -2,12 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { loadCompany } from "@/lib/company";
 import { AssetForm } from "../asset-form";
+import { DisposePanel } from "../dispose-panel";
 import {
   ASSET_SELECT,
   CATEGORY_SELECT,
+  LOCATION_SELECT,
   type AssetRow,
   type CategoryRow,
+  type LocationRow,
 } from "../types";
 
 export default async function EditAssetPage({
@@ -18,19 +22,29 @@ export default async function EditAssetPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: assetData }, { data: catData }] = await Promise.all([
-    supabase.from("assets").select(ASSET_SELECT).eq("id", Number(id)).single(),
-    supabase
-      .from("asset_categories")
-      .select(CATEGORY_SELECT)
-      .eq("is_active", true)
-      .order("code", { ascending: true })
-      .limit(500),
-  ]);
+  const [{ data: assetData }, { data: catData }, { data: locData }, company] =
+    await Promise.all([
+      supabase.from("assets").select(ASSET_SELECT).eq("id", Number(id)).single(),
+      supabase
+        .from("asset_categories")
+        .select(CATEGORY_SELECT)
+        .eq("is_active", true)
+        .order("code", { ascending: true })
+        .limit(500),
+      supabase
+        .from("asset_locations")
+        .select(LOCATION_SELECT)
+        .eq("is_active", true)
+        .order("code", { ascending: true })
+        .limit(500),
+      loadCompany(),
+    ]);
 
   const asset = assetData as AssetRow | null;
   if (!asset) notFound();
   const categories = (catData as CategoryRow[] | null) ?? [];
+  const locations = (locData as LocationRow[] | null) ?? [];
+  const category = categories.find((c) => c.id === asset.category_id) ?? null;
 
   return (
     <div>
@@ -61,7 +75,11 @@ export default async function EditAssetPage({
       </div>
 
       <div className="mt-6">
-        <AssetForm mode="edit" asset={asset} categories={categories} />
+        <AssetForm mode="edit" asset={asset} categories={categories} locations={locations} />
+      </div>
+
+      <div className="mt-6 max-w-2xl">
+        <DisposePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
       </div>
     </div>
   );

@@ -4,15 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 import {
   ASSET_SELECT,
   CATEGORY_SELECT,
+  LOCATION_SELECT,
   COMPANIES,
   TABS,
   type Tab,
   type AssetRow,
   type CategoryRow,
+  type LocationRow,
 } from "./types";
 import { AssetsTab } from "./assets-tab";
 import { DepreciationTab } from "./depreciation-tab";
 import { SummaryTab } from "./summary-tab";
+import { LocationsTab } from "./locations-tab";
 import { SettingsTab } from "./settings-tab";
 
 type SearchParams = {
@@ -26,6 +29,7 @@ const TAB_LABELS: Record<Tab, string> = {
   assets: "Хөрөнгийн бүртгэл",
   depreciation: "Элэгдэл тооцоо",
   summary: "Нэгтгэл",
+  locations: "Байршил / баар код",
   settings: "Ангилал/тохиргоо",
 };
 
@@ -57,6 +61,15 @@ export default async function AssetsPage({
     .order("code", { ascending: true })
     .limit(500);
   const categories = (catData as CategoryRow[] | null) ?? [];
+
+  // Байршил (идэвхтэй)
+  const { data: locData } = await supabase
+    .from("asset_locations")
+    .select(LOCATION_SELECT)
+    .eq("is_active", true)
+    .order("code", { ascending: true })
+    .limit(500);
+  const locations = (locData as LocationRow[] | null) ?? [];
 
   // Хөрөнгө (идэвхтэй)
   const { data: assetData, error: assetErr } = await supabase
@@ -203,7 +216,7 @@ export default async function AssetsPage({
 
       <div className="mt-5">
         {tab === "assets" && (
-          <AssetsTab assets={assets} categories={categories} />
+          <AssetsTab assets={assets} categories={categories} locations={locations} />
         )}
         {tab === "depreciation" && (
           <DepreciationTab
@@ -221,6 +234,9 @@ export default async function AssetsPage({
             year={year}
             month={month}
           />
+        )}
+        {tab === "locations" && (
+          <LocationsTab locations={locations} assets={assets} />
         )}
         {tab === "settings" && <SettingsTab categories={categories} />}
       </div>
