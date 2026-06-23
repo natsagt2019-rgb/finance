@@ -320,13 +320,13 @@ async function postSalaryJournal(
     if (r2(amt) > 0)
       rows.push({
         txn_date: date, description: desc, amount: r2(amt),
-        debit_code: "700101", credit_code: kt, is_opening: false, source: "salary",
+        debit_code: "720100", credit_code: kt, is_opening: false, source: "salary",
       });
   };
-  push(sh, "310501", `${tag} цалин: НДШ суутгал`);
-  push(pit, "310401", `${tag} цалин: ХХОАТ суутгал`);
-  push(advOther, "120601", `${tag} цалин: урьдчилгаа/бусад суутгал`);
-  push(net, "310201", `${tag} цалин: цэвэр өглөг`);
+  push(sh, "320200", `${tag} цалин: НДШ суутгал`);
+  push(pit, "320300", `${tag} цалин: ХХОАТ суутгал`);
+  push(advOther, "130400", `${tag} цалин: урьдчилгаа/бусад суутгал`);
+  push(net, "320100", `${tag} цалин: цэвэр өглөг`);
   if (rows.length > 0) await supabase.from("journal_entries").insert(rows);
 }
 

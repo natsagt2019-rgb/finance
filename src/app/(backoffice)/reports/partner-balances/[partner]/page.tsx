@@ -50,9 +50,9 @@ export default async function PartnerLedgerPage({
   const rows = entries.map((e) => {
     const amt = Number(e.amount) || 0;
     const recEff =
-      e.debit_code === "120101" ? amt : e.credit_code === "120101" ? -amt : 0;
+      e.debit_code === "130100" ? amt : e.credit_code === "130100" ? -amt : 0;
     const payEff =
-      e.credit_code === "310101" ? amt : e.debit_code === "310101" ? -amt : 0;
+      e.credit_code === "310100" ? amt : e.debit_code === "310100" ? -amt : 0;
     runRec += recEff;
     runPay += payEff;
     return { ...e, recEff, payEff, net: runRec - runPay };

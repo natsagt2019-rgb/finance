@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-const AP = "310101"; // Дансны өглөг (нийлүүлэгч)
-const INPUT_VAT = "120201"; // НӨАТ-ын авлага (суутгал)
+const AP = "310100"; // Нийлүүлэгч, гүйцэтгэгчийн өглөг
+const INPUT_VAT = "130600"; // НӨАТ-ын авлага (суутгал)
 
 export type ActionResult = { ok: true; id: number } | { ok: false; error: string };
 
