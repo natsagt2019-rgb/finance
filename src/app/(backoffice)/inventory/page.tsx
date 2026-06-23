@@ -54,27 +54,47 @@ export default async function InventoryPage({
   const month =
     monthNum >= 1 && monthNum <= 12 ? monthNum : Number(today.slice(5, 7));
 
+  // PostgREST-ийн max-rows (≈1000) хязгаараас болж нэг .limit() том датад
+  // хүрэлцэхгүй (1000+ мөр бол таслагдаж үлдэгдэл буруу гарна). inv_items ба
+  // inv_moves-ийг .range()-ээр хуудаслаж БҮРЭН татна.
+  async function fetchAll<T>(
+    build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  ): Promise<{ rows: T[]; error: { message: string } | null }> {
+    const PAGE = 1000;
+    const rows: T[] = [];
+    for (let offset = 0; offset < 500000; offset += PAGE) {
+      const { data, error } = await build(offset, offset + PAGE - 1);
+      if (error) return { rows, error };
+      const page = (data as T[] | null) ?? [];
+      rows.push(...page);
+      if (page.length < PAGE) break;
+    }
+    return { rows, error: null };
+  }
+
   const [
-    { data: itemData, error: itemErr },
-    { data: moveData },
+    { rows: itemRows, error: itemErr },
+    { rows: moveRows },
     { data: setData },
     { data: accData },
     { data: partData },
     { data: empData },
   ] = await Promise.all([
-    supabase
-      .from("inv_items")
-      .select(ITEM_SELECT)
-      .eq("is_active", true)
-      .order("category_code", { ascending: true })
-      .order("name", { ascending: true })
-      .limit(5000),
-    supabase
-      .from("inv_moves")
-      .select(MOVE_SELECT)
-      .order("date", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20000),
+    fetchAll<ItemRow>((from, to) =>
+      supabase
+        .from("inv_items")
+        .select(ITEM_SELECT)
+        .eq("is_active", true)
+        .order("category_code", { ascending: true })
+        .order("name", { ascending: true })
+        .range(from, to)),
+    fetchAll<MoveRow>((from, to) =>
+      supabase
+        .from("inv_moves")
+        .select(MOVE_SELECT)
+        .order("date", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)),
     supabase.from("inv_settings").select(SETTINGS_SELECT).eq("id", 1).maybeSingle(),
     supabase
       .from("accounts")
@@ -96,9 +116,9 @@ export default async function InventoryPage({
       .limit(5000),
   ]);
 
-  const allItems = (itemData as ItemRow[] | null) ?? [];
+  const allItems = itemRows;
   const items = company ? allItems.filter((i) => i.company === company) : allItems;
-  const allMoves = (moveData as MoveRow[] | null) ?? [];
+  const allMoves = moveRows;
   const settings = (setData as InvSettings | null) ?? null;
   const accounts = (accData as AccountOption[] | null) ?? [];
   const partners = (partData as PartnerOption[] | null) ?? [];
