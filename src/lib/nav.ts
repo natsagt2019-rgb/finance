@@ -130,6 +130,7 @@ export const navEntries: NavEntry[] = [
       { href: "/reports/inventory-cost", label: "Барааны өртгийн тайлан", icon: "📦" },
       { href: "/reports/inventory-aging", label: "Бараа материалын насжилтын тайлан", icon: "📦" },
       { href: "/reports/inventory-trade", label: "Худалдан авалт, борлуулалтын тайлан", icon: "🛒" },
+      { href: "/reports/inventory-prices", label: "Барааны үнийн тайлан", icon: "💲" },
       { href: "/reports/fx-revaluation", label: "Ханшийн тэгшитгэл", icon: "💱" },
       { href: "/reports/worksheet", label: "Ажлын хүснэгт", icon: "🧮" },
     ],
