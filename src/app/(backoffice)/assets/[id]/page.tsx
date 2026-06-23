@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadCompany } from "@/lib/company";
 import { AssetForm } from "../asset-form";
+import { AcquirePanel } from "../acquire-panel";
 import { DisposePanel } from "../dispose-panel";
 import {
   ASSET_SELECT,
@@ -78,7 +79,8 @@ export default async function EditAssetPage({
         <AssetForm mode="edit" asset={asset} categories={categories} locations={locations} />
       </div>
 
-      <div className="mt-6 max-w-2xl">
+      <div className="mt-6 max-w-2xl space-y-6">
+        <AcquirePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
         <DisposePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
       </div>
     </div>

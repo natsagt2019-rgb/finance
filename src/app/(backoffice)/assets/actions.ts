@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
 import { buildDisposalJournal, type DisposalType } from "@/lib/asset-disposal";
+import { buildAcquisitionJournal } from "@/lib/asset-acquisition";
 import { VAT_RATE, loadCompany } from "@/lib/company";
 import { postJournal } from "@/lib/post-journal";
 
@@ -502,6 +503,136 @@ export async function reverseDisposal(assetId: number): Promise<ActionResult> {
       disposal_vat: 0,
       disposal_journal_id: null,
     })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: assetId };
+}
+
+// ── Худалдан авалт ──────────────────────────────────────────────────────────
+const ACC_INPUT_VAT = "130600"; // НӨАТ-ын авлага (худалдан авалтын)
+
+// Хөрөнгийн худалдан авалтыг GL журналд бичих. Идемпотент (дахин бичвэл өмнөхийг устгана).
+export async function acquireAsset(
+  assetId: number,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const settlement = get("settlement_code") || "310100";
+  const partnerRaw = get("partner_id");
+  const partnerId = partnerRaw ? Number(partnerRaw) : null;
+  const noVat = get("no_vat") === "1";
+  const note = get("note") || null;
+
+  // Хөрөнгө + ангилал.
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select("id, cost, acquired_date, category_id, acquisition_journal_id")
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const aData = aRaw as unknown as {
+    id: number;
+    cost: number;
+    acquired_date: string | null;
+    category_id: number | null;
+    acquisition_journal_id: number | null;
+  };
+
+  const catRes = aData.category_id
+    ? await supabase
+        .from("asset_categories")
+        .select("account_code")
+        .eq("id", aData.category_id)
+        .single()
+    : { data: null };
+  const assetAcc =
+    (catRes.data as unknown as { account_code: string | null } | null)?.account_code ?? null;
+  if (!assetAcc)
+    return {
+      ok: false,
+      error: "Ангилалд хөрөнгийн данс тохируулна уу (Тохиргоо таб).",
+    };
+
+  const date = get("acquired_date") || aData.acquired_date;
+  if (!date) return { ok: false, error: "Худалдан авсан огноо заавал шаардлагатай." };
+
+  // НӨАТ: компани НӨАТ төлөгч бол 10% (no_vat сонголтоор алгасна).
+  const company = await loadCompany();
+  const cost = Number(aData.cost) || 0;
+  const vat = !noVat && company.isVatPayer ? Math.round(cost * VAT_RATE * 100) / 100 : 0;
+
+  const built = buildAcquisitionJournal({
+    cost,
+    vat,
+    accounts: { asset: assetAcc, inputVat: ACC_INPUT_VAT, settlement },
+  });
+  if (!built.ok) return { ok: false, error: built.error };
+
+  // Дансны код → id.
+  const codes = [...new Set(built.lines.map((l) => l.code))];
+  const { data: accs } = await supabase.from("accounts").select("id, code").in("code", codes);
+  const idByCode = new Map<string, number>();
+  for (const a of (accs as { id: number; code: string }[] | null) ?? [])
+    idByCode.set(a.code, a.id);
+  const lines = built.lines.map((l) => ({
+    account_id: idByCode.get(l.code),
+    debit: l.debit,
+    credit: l.credit,
+    description: l.description,
+  }));
+  if (lines.some((l) => l.account_id == null)) {
+    const code = built.lines.find((l) => idByCode.get(l.code) == null)?.code;
+    return { ok: false, error: `Дансны код олдсонгүй: ${code}. accounts хүснэгтэд нэмнэ үү.` };
+  }
+
+  // Идемпотент: өмнөх худалдан авалтын журналыг устгана.
+  const prevJid = aData.acquisition_journal_id;
+  if (prevJid) await deleteJournalFull(supabase, prevJid);
+
+  const res = await postJournal(supabase, {
+    date,
+    description: `Үндсэн хөрөнгө худалдан авалт${note ? ` — ${note}` : ""}`,
+    reference: `ACQ-${assetId}`,
+    partner_id: partnerId,
+    source: "asset_acquisition",
+    lines: lines as { account_id: number; debit: number; credit: number; description: string }[],
+  });
+  if (!res.ok) return { ok: false, error: `Журнал: ${res.error}` };
+
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({ acquisition_vat: vat, acquisition_journal_id: res.id })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: res.id };
+}
+
+// Худалдан авалтыг буцаах: журналыг устгана.
+export async function reverseAcquisition(assetId: number): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select("id, acquisition_journal_id")
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const jid = (aRaw as unknown as { acquisition_journal_id: number | null }).acquisition_journal_id;
+  if (jid) await deleteJournalFull(supabase, jid);
+
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({ acquisition_vat: 0, acquisition_journal_id: null })
     .eq("id", assetId);
   if (ue) return { ok: false, error: ue.message };
 
