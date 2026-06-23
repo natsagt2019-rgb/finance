@@ -7,7 +7,7 @@ export default async function LocationsPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("inv_locations")
-    .select("id, code, name, keeper, note")
+    .select("id, code, name, keeper, note, is_bonded")
     .eq("is_active", true)
     .order("code", { ascending: true })
     .order("name", { ascending: true })
