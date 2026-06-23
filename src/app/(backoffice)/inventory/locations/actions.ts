@@ -22,6 +22,7 @@ export async function createLocation(formData: FormData): Promise<ActionResult> 
       code: String(formData.get("code") ?? "").trim() || null,
       name,
       keeper: String(formData.get("keeper") ?? "").trim() || null,
+      is_bonded: formData.get("is_bonded") === "on",
       note: String(formData.get("note") ?? "").trim() || null,
     })
     .select("id")

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createLocation, deleteLocation } from "./actions";
 
 export type LocationRow = {
-  id: number; code: string | null; name: string; keeper: string | null; note: string | null;
+  id: number; code: string | null; name: string; keeper: string | null; note: string | null; is_bonded?: boolean;
 };
 
 export function LocationsClient({ locations }: { locations: LocationRow[] }) {
@@ -45,6 +45,10 @@ export function LocationsClient({ locations }: { locations: LocationRow[] }) {
         <label className="flex flex-col gap-1 text-xs text-zinc-500">Тэмдэглэл
           <input name="note" className={`${inp} w-48`} />
         </label>
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-zinc-600">
+          <input type="checkbox" name="is_bonded" className="h-4 w-4 rounded border-zinc-300" />
+          Гаалийн баталгаат
+        </label>
         <button type="submit" disabled={pending} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50">
           {pending ? "Хадгалж байна…" : "Нэмэх"}
         </button>
@@ -69,7 +73,10 @@ export function LocationsClient({ locations }: { locations: LocationRow[] }) {
             {locations.map((l) => (
               <tr key={l.id} className="hover:bg-zinc-50">
                 <td className="px-3 py-1.5 font-mono text-xs text-zinc-500">{l.code ?? ""}</td>
-                <td className="px-3 py-1.5 text-zinc-700">{l.name}</td>
+                <td className="px-3 py-1.5 text-zinc-700">
+                  {l.name}
+                  {l.is_bonded && <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">Гааль</span>}
+                </td>
                 <td className="px-3 py-1.5 text-zinc-500">{l.keeper ?? ""}</td>
                 <td className="px-3 py-1.5 text-zinc-500">{l.note ?? ""}</td>
                 <td className="px-3 py-1.5 text-right">

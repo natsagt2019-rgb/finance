@@ -104,6 +104,7 @@ export const navEntries: NavEntry[] = [
       { href: "/inventory/locations", label: "Байршил (агуулах)", icon: "📍" },
       { href: "/inventory/recipes", label: "Хөрвүүлэлт (орц)", icon: "⚗" },
       { href: "/inventory/transfer", label: "Дотоод шилжүүлэг", icon: "⇄" },
+      { href: "/inventory/to-asset", label: "Үндсэн хөрөнгө рүү шилжүүлэх", icon: "🏗" },
     ],
   },
 
