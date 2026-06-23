@@ -69,6 +69,8 @@ export function MoveForm({
   const [type, setType] = useState<MoveType>(initialType);
   const [itemId, setItemId] = useState<number>(items[0]?.id ?? 0);
   const [locationId, setLocationId] = useState<string>("");
+  const [lotNo, setLotNo] = useState<string>("");
+  const [expiryDate, setExpiryDate] = useState<string>("");
   const [qty, setQty] = useState<string>("");
   const [unitCost, setUnitCost] = useState<string>("");
   const [vat, setVat] = useState<string>("");
@@ -108,6 +110,8 @@ export function MoveForm({
       partner_id: usesPartner(type) && partnerId ? Number(partnerId) : null,
       counter_account_id: counterId ? Number(counterId) : null,
       location_id: locationId ? Number(locationId) : null,
+      lot_no: inbound && lotNo ? lotNo : null,
+      expiry_date: inbound && expiryDate ? expiryDate : null,
       doc_no: docNo || null,
       company: company || null,
       note: note || null,
@@ -291,6 +295,19 @@ export function MoveForm({
             ))}
           </select>
         </div>
+
+        {inbound && (
+          <>
+            <div>
+              <label className={labelCls}>Цуврал / лот (заавал биш)</label>
+              <input type="text" value={lotNo} onChange={(e) => setLotNo(e.target.value)} placeholder="LOT-001" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Дуусах хугацаа (заавал биш)</label>
+              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={inputCls} />
+            </div>
+          </>
+        )}
 
         {locations.length > 0 && (
           <div>

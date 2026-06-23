@@ -151,6 +151,8 @@ export type MoveInput = {
   partner_id: number | null;
   counter_account_id: number | null;
   location_id?: number | null;
+  lot_no?: string | null;
+  expiry_date?: string | null;
   doc_no: string | null;
   company: string | null;
   note: string | null;
@@ -205,6 +207,8 @@ export async function createMove(input: MoveInput): Promise<ActionResult> {
       partner_id: input.partner_id,
       counter_account_id: input.counter_account_id,
       location_id: input.location_id ?? null,
+      lot_no: input.lot_no ?? null,
+      expiry_date: input.expiry_date ?? null,
       doc_no: input.doc_no || MOVE_DOC[input.type],
       company: input.company,
       note: input.note,

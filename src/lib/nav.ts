@@ -103,6 +103,7 @@ export const navEntries: NavEntry[] = [
       { href: "/inventory/prices", label: "Барааны үнэ", icon: "💲" },
       { href: "/inventory/locations", label: "Байршил (агуулах)", icon: "📍" },
       { href: "/inventory/recipes", label: "Хөрвүүлэлт (орц)", icon: "⚗" },
+      { href: "/inventory/transfer", label: "Дотоод шилжүүлэг", icon: "⇄" },
     ],
   },
 
@@ -137,6 +138,7 @@ export const navEntries: NavEntry[] = [
       { href: "/reports/inventory-prices", label: "Барааны үнийн тайлан", icon: "💲" },
       { href: "/reports/inventory-by-location", label: "Үлдэгдэл байршлаар", icon: "📍" },
       { href: "/reports/inventory-conversions", label: "Хөрвүүлэлтийн товчоо тайлан", icon: "⚗" },
+      { href: "/reports/inventory-expiry", label: "Дуусах хугацааны тайлан", icon: "⏳" },
       { href: "/reports/fx-revaluation", label: "Ханшийн тэгшитгэл", icon: "💱" },
       { href: "/reports/worksheet", label: "Ажлын хүснэгт", icon: "🧮" },
     ],
