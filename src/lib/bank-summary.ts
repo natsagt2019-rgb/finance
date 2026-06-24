@@ -38,8 +38,8 @@ function zeros(): number[] {
   return new Array(12).fill(0);
 }
 
-// Нэг дансны блок байгуулна.
-function buildBlock(
+// Нэг дансны (банк эсвэл касс) блок байгуулна.
+export function buildBlock(
   accountId: string,
   bank: string,
   income: number[],
@@ -66,6 +66,18 @@ function buildBlock(
     yearOpening,
     yearClosing: closing[11],
   };
+}
+
+// Олон блокийг (банк + касс) нэг нэгтгэлийн блок болгон нэмнэ.
+export function combineBlocks(
+  blocks: BankBlock[],
+  accountId: string,
+  label: string,
+): BankBlock {
+  const totIncome = MONTHS.map((_, i) => blocks.reduce((s, b) => s + b.income[i], 0));
+  const totExpense = MONTHS.map((_, i) => blocks.reduce((s, b) => s + b.expense[i], 0));
+  const totOpening = blocks.reduce((s, b) => s + b.yearOpening, 0);
+  return buildBlock(accountId, label, totIncome, totExpense, totOpening);
 }
 
 export function buildBankSummary(

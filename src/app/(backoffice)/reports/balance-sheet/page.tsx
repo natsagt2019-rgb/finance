@@ -10,6 +10,8 @@ import {
   journalHasYear,
   reportYears,
 } from "@/lib/fs-from-journal";
+import { bankJournalStatus } from "@/lib/bank-journal-status";
+import { BankJournalBanner } from "../bank-journal-banner";
 
 type SearchParams = { year?: string; period?: string; from?: string; to?: string };
 
@@ -72,6 +74,11 @@ export default async function BalanceSheetPage({
       });
     }
   }
+
+  // Банкны хуулга журналд бүрэн тусаагүй (кодгүй/хуучирсан) эсэхийг шалгана.
+  const bankStatus = yearFromJournal
+    ? await bankJournalStatus(supabase, selYear)
+    : null;
 
   const label = rangeMode
     ? `${from} → ${to}`
@@ -158,6 +165,10 @@ export default async function BalanceSheetPage({
           {selYear} оны гүйлгээ баланс ороогүй байна. Эхлээд дансны үлдэгдлийг
           импортолно уу.
         </div>
+      ) : null}
+
+      {bankStatus ? (
+        <BankJournalBanner year={selYear} status={bankStatus} />
       ) : null}
 
       {/* Тэнцлийн шалгалт */}

@@ -108,12 +108,19 @@ export type PostJournalResult =
   | { ok: true; id: number; number: string }
   | { ok: false; error: string };
 
-// Дараагийн журналын дугаар: GL-000001 (одоо байгаа тооноос).
+// Дараагийн журналын дугаар: GL-000001 (одоо байгаа ХАМГИЙН ИХ дугаараас +1).
+// count(*)+1 БИШ — журнал устгахад тоо багасч одоо байгаа дугаартай давхцаж
+// (unique constraint) постинг бүтэлгүйтдэг тул бодит max дугаараас үргэлжлүүлнэ.
 async function nextNumber(supabase: Supa): Promise<string> {
-  const { count } = await supabase
+  const { data } = await supabase
     .from("journals")
-    .select("id", { count: "exact", head: true });
-  return `GL-${String((count ?? 0) + 1).padStart(6, "0")}`;
+    .select("number")
+    .like("number", "GL-%")
+    .order("number", { ascending: false })
+    .limit(1);
+  const last = (data as { number: string }[] | null)?.[0]?.number ?? null;
+  const n = last ? parseInt(last.slice(3), 10) || 0 : 0;
+  return `GL-${String(n + 1).padStart(6, "0")}`;
 }
 
 export async function postJournal(

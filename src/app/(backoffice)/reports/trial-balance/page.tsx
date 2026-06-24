@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { journalHasYear, reportYears } from "@/lib/fs-from-journal";
+import { bankJournalStatus } from "@/lib/bank-journal-status";
+import { BankJournalBanner } from "../bank-journal-banner";
 import { TrialBalanceImportClient } from "./import-client";
 import { TrialBalanceView } from "./trial-balance-view";
 import { PnlSummaryBox, type PnlSummary } from "./pnl-summary";
@@ -116,6 +118,11 @@ export default async function TrialBalancePage({
     pnl = { income, cogs, expense };
   }
 
+  // Банкны хуулга журналд бүрэн тусаагүй (кодгүй/хуучирсан) эсэхийг шалгана.
+  const bankStatus = yearFromJournal
+    ? await bankJournalStatus(supabase, viewYear)
+    : null;
+
   const inputCls =
     "rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900";
 
@@ -166,6 +173,10 @@ export default async function TrialBalancePage({
             : "Огноо сонгоход журналаас гарна"}
         </span>
       </form>
+
+      {bankStatus ? (
+        <BankJournalBanner year={viewYear} status={bankStatus} />
+      ) : null}
 
       {!rangeMode && (
         <div className="mt-4 print:hidden">

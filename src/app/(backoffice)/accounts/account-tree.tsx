@@ -101,6 +101,12 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
   const [openSec, setOpenSec] = useState<Set<string>>(() => new Set(allSec));
   const [openGrp, setOpenGrp] = useState<Set<string>>(() => new Set(allGrp));
 
+  // Чеклээд сонгосон хэсэг/бүлэг/данс (нээх/хаах үйлдэлд).
+  const [selSec, setSelSec] = useState<Set<string>>(() => new Set());
+  const [selGrp, setSelGrp] = useState<Set<string>>(() => new Set());
+  const [selAcc, setSelAcc] = useState<Set<string>>(() => new Set());
+  const selCount = selSec.size + selGrp.size + selAcc.size;
+
   const toggle = (set: Set<string>, k: string, setter: (s: Set<string>) => void) => {
     const next = new Set(set);
     next.has(k) ? next.delete(k) : next.add(k);
@@ -116,9 +122,71 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
     setOpenGrp(new Set());
   };
 
+  // Сонгосныг нээх — чеклэсэн хэсэг/бүлэг/дансыг дэлгэж харагдуулна
+  // (данс/бүлгийн эх хэсэг, бүлгийг автоматаар нээнэ).
+  const openSelected = () => {
+    const ns = new Set(openSec);
+    const ng = new Set(openGrp);
+    for (const s of selSec) ns.add(s);
+    for (const g of selGrp) {
+      ng.add(g);
+      ns.add(g.slice(0, 1)); // эх хэсгийг нээнэ — бүлэг харагдахын тулд
+    }
+    for (const code of selAcc) {
+      ns.add(code.slice(0, 1)); // эх хэсэг
+      ng.add(code.slice(0, 2)); // эх бүлэг — данс харагдахын тулд
+    }
+    setOpenSec(ns);
+    setOpenGrp(ng);
+  };
+  // Сонгосныг хаах — чеклэсэн хэсэг/бүлэг (болон сонгосон дансны бүлэг)-ийг хумина.
+  const closeSelected = () => {
+    const ns = new Set(openSec);
+    const ng = new Set(openGrp);
+    for (const s of selSec) ns.delete(s);
+    for (const g of selGrp) ng.delete(g);
+    for (const code of selAcc) ng.delete(code.slice(0, 2));
+    setOpenSec(ns);
+    setOpenGrp(ng);
+  };
+  const clearSel = () => {
+    setSelSec(new Set());
+    setSelGrp(new Set());
+    setSelAcc(new Set());
+  };
+
   return (
     <div>
-      <div className="mb-2 flex justify-end gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        {selCount > 0 && (
+          <>
+            <span className="mr-auto text-xs text-zinc-500">
+              Сонгосон: <span className="font-medium text-zinc-700">{selCount}</span>
+            </span>
+            <button
+              type="button"
+              onClick={openSelected}
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+            >
+              Сонгосныг нээх
+            </button>
+            <button
+              type="button"
+              onClick={closeSelected}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+            >
+              Сонгосныг хаах
+            </button>
+            <button
+              type="button"
+              onClick={clearSel}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 hover:bg-zinc-50"
+            >
+              Цэвэрлэх
+            </button>
+            <span className="mx-1 h-4 w-px bg-zinc-200" />
+          </>
+        )}
         <button
           type="button"
           onClick={expandAll}
@@ -140,17 +208,26 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
         return (
           <div key={sec.key} className="border-b border-zinc-100 last:border-0">
             {/* Хэсэг */}
-            <button
-              type="button"
-              onClick={() => toggle(openSec, sec.key, setOpenSec)}
-              className="flex w-full items-center gap-2 bg-zinc-100/70 px-4 py-2.5 text-left text-sm font-bold text-zinc-900 hover:bg-zinc-100"
-            >
-              <Chevron open={secOpen} />
-              {SECTION_LABELS[sec.key] ?? `${sec.key}xxxxx`}
-              <span className="ml-auto rounded-lg bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">
-                {sec.count}
-              </span>
-            </button>
+            <div className="flex w-full items-center bg-zinc-100/70 hover:bg-zinc-100">
+              <input
+                type="checkbox"
+                aria-label={`${SECTION_LABELS[sec.key] ?? sec.key} сонгох`}
+                checked={selSec.has(sec.key)}
+                onChange={() => toggle(selSec, sec.key, setSelSec)}
+                className="ml-4 h-4 w-4 cursor-pointer accent-zinc-900"
+              />
+              <button
+                type="button"
+                onClick={() => toggle(openSec, sec.key, setOpenSec)}
+                className="flex flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm font-bold text-zinc-900"
+              >
+                <Chevron open={secOpen} />
+                {SECTION_LABELS[sec.key] ?? `${sec.key}xxxxx`}
+                <span className="ml-auto rounded-lg bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">
+                  {sec.count}
+                </span>
+              </button>
+            </div>
 
             {secOpen &&
               sec.groups.map((grp) => {
@@ -158,20 +235,29 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
                 return (
                   <div key={grp.prefix}>
                     {/* Бүлэг */}
-                    <button
-                      type="button"
-                      onClick={() => toggle(openGrp, grp.prefix, setOpenGrp)}
-                      className="flex w-full items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-4 py-2 pl-8 text-left text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
-                    >
-                      <Chevron open={grpOpen} />
-                      <span className="font-mono text-xs text-zinc-400">
-                        {grp.prefix}
-                      </span>
-                      {GROUP_LABELS[grp.prefix] ?? "—"}
-                      <span className="ml-auto rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">
-                        {grp.accounts.length}
-                      </span>
-                    </button>
+                    <div className="flex w-full items-center border-t border-zinc-100 bg-zinc-50/60 hover:bg-zinc-50">
+                      <input
+                        type="checkbox"
+                        aria-label={`${GROUP_LABELS[grp.prefix] ?? grp.prefix} сонгох`}
+                        checked={selGrp.has(grp.prefix)}
+                        onChange={() => toggle(selGrp, grp.prefix, setSelGrp)}
+                        className="ml-8 h-4 w-4 cursor-pointer accent-zinc-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggle(openGrp, grp.prefix, setOpenGrp)}
+                        className="flex flex-1 items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-zinc-700"
+                      >
+                        <Chevron open={grpOpen} />
+                        <span className="font-mono text-xs text-zinc-400">
+                          {grp.prefix}
+                        </span>
+                        {GROUP_LABELS[grp.prefix] ?? "—"}
+                        <span className="ml-auto rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">
+                          {grp.accounts.length}
+                        </span>
+                      </button>
+                    </div>
 
                     {grpOpen && (
                       <div className="overflow-x-auto">
@@ -181,8 +267,19 @@ export function AccountTree({ accounts }: { accounts: AccountRow[] }) {
                             const badge = TYPE_BADGE[a.type];
                             return (
                               <tr key={a.id} className="hover:bg-zinc-50">
-                                <td className="whitespace-nowrap py-1.5 pl-14 pr-3 font-mono text-xs text-rose-600">
-                                  {a.code}
+                                <td className="whitespace-nowrap py-1.5 pl-10 pr-3">
+                                  <span className="inline-flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`${a.code} сонгох`}
+                                      checked={selAcc.has(a.code)}
+                                      onChange={() => toggle(selAcc, a.code, setSelAcc)}
+                                      className="h-3.5 w-3.5 cursor-pointer accent-zinc-900"
+                                    />
+                                    <span className="font-mono text-xs text-rose-600">
+                                      {a.code}
+                                    </span>
+                                  </span>
                                 </td>
                                 <td className="px-3 py-1.5 text-zinc-800">
                                   {a.name}
