@@ -51,4 +51,20 @@ body {
   tr {
     break-inside: avoid;
   }
+
+  /* Хэвлэхэд хүрээтэй цэвэр хүснэгт (.print-table класстай хүснэгтэд) */
+  .print-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  .print-table th,
+  .print-table td {
+    border: 1px solid #d4d4d8 !important;
+    padding: 4px 8px !important;
+  }
+  .print-table thead {
+    background: #f4f4f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

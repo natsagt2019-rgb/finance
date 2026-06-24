@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PrintButton } from "@/components/print-button";
 import { RowActions } from "./row-actions";
 import { EmployeesImport } from "./employees-import";
 import type { EmployeeRow } from "./types";
@@ -20,10 +21,17 @@ export function EmployeesTab({
     0,
   );
 
+  // Хэвлэх толгойд: огноо + (бүх ажилтан нэг компанийнх бол) компанийн нэр.
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Ulaanbaatar",
+  });
+  const companies = [...new Set(employees.map((e) => e.company).filter(Boolean))];
+  const orgName = companies.length === 1 ? companies[0] : "Бүх компани";
+
   return (
     <div>
       {/* Нэгтгэлийн картууд */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="no-print grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
           <p className="text-xs font-medium uppercase tracking-wide text-blue-600">
             Нийт ажилтан
@@ -57,18 +65,34 @@ export function EmployeesTab({
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-3">
+      <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-3">
         <EmployeesImport />
+        {employees.length > 0 && <PrintButton />}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-zinc-200 bg-white">
+      {/* Хэвлэхэд гарах толгой (дэлгэц дээр нуугдана) */}
+      {employees.length > 0 && (
+        <div className="hidden text-center print:mb-3 print:block">
+          <p className="text-sm text-zinc-600">
+            Байгууллага: <span className="font-semibold text-zinc-900">{orgName}</span>
+          </p>
+          <h1 className="mt-1 text-lg font-bold tracking-wide text-zinc-900">
+            АЖИЛТНЫ НЭРС
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            Тайлант огноо: {today} · Нийт {employees.length} ажилтан
+          </p>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-2xl border border-zinc-200 bg-white print:mt-0 print:rounded-none print:border-0">
         {employees.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-zinc-500">
             Ажилтан бүртгэгдээгүй байна. Дээрх «Excel загвар татах»-аар бөөнөөр оруулж болно.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="print-table w-full text-sm">
               <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
                 <tr>
                   <th className="px-4 py-2">№</th>
