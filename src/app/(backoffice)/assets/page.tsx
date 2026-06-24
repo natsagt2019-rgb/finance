@@ -83,6 +83,9 @@ export default async function AssetsPage({
   const assets = company
     ? allAssets.filter((a) => a.company === company)
     : allAssets;
+  // Нэгтгэл/элэгдэлд зөвхөн идэвхтэй (хасагдаагүй) хөрөнгө — хасагдсаныг тооцохгүй.
+  // Жагсаалт нь хасагдсаныг «Актласан» тэмдэгтэйгээр харуулсаар байна.
+  const activeAssets = assets.filter((a) => a.status === "active");
 
   const buildHref = (over: Partial<SearchParams>) => {
     const p = new URLSearchParams();
@@ -227,7 +230,7 @@ export default async function AssetsPage({
         {tab === "depreciation" && (
           <DepreciationTab
             key={`${year}-${month}-${company}`}
-            assets={assets}
+            assets={activeAssets}
             categories={categories}
             year={year}
             month={month}
@@ -235,7 +238,7 @@ export default async function AssetsPage({
         )}
         {tab === "summary" && (
           <SummaryTab
-            assets={assets}
+            assets={activeAssets}
             categories={categories}
             year={year}
             month={month}

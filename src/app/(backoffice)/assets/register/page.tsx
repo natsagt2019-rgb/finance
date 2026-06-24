@@ -49,6 +49,7 @@ export default async function AssetRegisterPage({
       .from("assets")
       .select(ASSET_SELECT)
       .eq("is_active", true)
+      .eq("status", "active") // хасагдсан хөрөнгийг бүртгэлд оруулахгүй
       .order("name", { ascending: true })
       .limit(5000),
   ]);
