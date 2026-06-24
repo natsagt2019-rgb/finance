@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadRegistry, displayMap } from "@/lib/bank-registry";
 import {
-  loadRegistry,
-  displayMap,
-  companyList,
-  accountsForCompany,
-} from "@/lib/bank-registry";
-import { buildBankSummary, type BankSummaryTxn, type BankBlock } from "@/lib/bank-summary";
+  buildBankSummary,
+  buildBlock,
+  combineBlocks,
+  type BankSummaryTxn,
+  type BankBlock,
+} from "@/lib/bank-summary";
 import { PrintButton } from "@/components/print-button";
 
 type SearchParams = { year?: string; company?: string };
@@ -33,20 +34,10 @@ export default async function BankSummaryPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  // Бүртгэлтэй банкны дансууд + компаниар бүлэглэх (Тохиргоо → Банкны данс).
+  // Бүртгэлтэй бүх банкны данс (Тохиргоо → Банкны данс). Нэг байгууллага тул
+  // компаниар бүлэглэхгүй — бүх данс ба касс нэгтгэгдэнэ.
   const registry = await loadRegistry(supabase);
-  const companies = companyList(registry);
-  // company param: компанийн нэр, эсвэл "" = Бүгд. Эхний ачаалалд анхдагчаар
-  // эхний компани (компани бүртгэгдсэн бол), эс бөгөөс бүх данс.
-  const selCompany =
-    sp.company !== undefined
-      ? companies.includes(sp.company)
-        ? sp.company
-        : ""
-      : companies[0] ?? "";
-  const groupAccounts = accountsForCompany(registry, selCompany || null);
-  const groupAccountIds = groupAccounts.map((a) => a.accountNo);
-  const groupLabel = selCompany || "Бүгд";
+  const groupAccountIds = registry.map((a) => a.accountNo);
   // PostgREST .in() хоосон массивт буруу ажиллах тул хамгаалалт.
   const inIds = groupAccountIds.length ? groupAccountIds : ["__none__"];
   const bankNames = displayMap(registry);
@@ -94,6 +85,63 @@ export default async function BankSummaryPage({
     bankNames,
   );
 
+  // ── Касс (бэлэн мөнгө) — cash_registers + cash_entries ──────────────────────
+  // Банкнаас тусдаа хүснэгтэд хадгалагддаг тул нэгтгэлд гараар нэмнэ.
+  // Нээлтийн үлдэгдэл = оны эхнээс өмнөх бүх баримтын (in−out) цэвэр дүн.
+  const { data: regRows } = await supabase
+    .from("cash_registers")
+    .select("id,name,currency,company")
+    .eq("is_active", true);
+  const registers =
+    (regRows as { id: number; name: string; currency: string; company: string | null }[] | null) ?? [];
+
+  const cashBlocks: BankBlock[] = [];
+  if (registers.length) {
+    const regIds = registers.map((r) => r.id);
+    // 1000-ийн хязгаараас сэргийлж хуудаслана.
+    type CE = { register_id: number; type: string; amount_mnt: number; month: number; year: number };
+    async function pageEntries(scope: (q: any) => any): Promise<CE[]> {
+      const out: CE[] = [];
+      for (let off = 0; off < 500000; off += 1000) {
+        const { data } = await scope(
+          supabase.from("cash_entries").select("register_id,type,amount_mnt,month,year").in("register_id", regIds),
+        ).range(off, off + 999);
+        const page = (data as CE[] | null) ?? [];
+        out.push(...page);
+        if (page.length < 1000) break;
+      }
+      return out;
+    }
+    const curEntries = await pageEntries((q) => q.eq("year", selYear));
+    const priorEntries = await pageEntries((q) => q.lt("year", selYear));
+
+    const incByReg: Record<number, number[]> = {};
+    const expByReg: Record<number, number[]> = {};
+    const openByReg: Record<number, number> = {};
+    for (const r of registers) {
+      incByReg[r.id] = new Array(12).fill(0);
+      expByReg[r.id] = new Array(12).fill(0);
+      openByReg[r.id] = 0;
+    }
+    for (const e of curEntries) {
+      const m = (e.month ?? 0) - 1;
+      if (m < 0 || m > 11) continue;
+      if (e.type === "in") incByReg[e.register_id][m] += Number(e.amount_mnt);
+      else expByReg[e.register_id][m] += Number(e.amount_mnt);
+    }
+    for (const e of priorEntries) {
+      openByReg[e.register_id] += (e.type === "in" ? 1 : -1) * Number(e.amount_mnt);
+    }
+    for (const r of registers) {
+      const label = r.currency && r.currency !== "MNT" ? `${r.name} (${r.currency})` : r.name;
+      cashBlocks.push(buildBlock("КАСС", label, incByReg[r.id], expByReg[r.id], openByReg[r.id]));
+    }
+  }
+
+  // Банк + касс нэгтгэл (нийт мөнгөн хөрөнгө).
+  const allBlocks = [...summary.banks, ...cashBlocks];
+  const grandTotal = combineBlocks(allBlocks, "ALL", "Нийт мөнгөн хөрөнгө");
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -102,7 +150,7 @@ export default async function BankSummaryPage({
             Мөнгөн хөрөнгийн нэгтгэл — {selYear} он
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Банк тус бүрийн сарын мөнгөн хөдөлгөөн ба үлдэгдэл · {groupLabel} · MNT
+            Банк ба касс тус бүрийн сарын мөнгөн хөдөлгөөн ба үлдэгдэл · MNT
           </p>
         </div>
         <div className="no-print">
@@ -112,21 +160,6 @@ export default async function BankSummaryPage({
 
       {/* Шүүлт */}
       <form className="mt-6 flex flex-wrap items-end gap-3 no-print" method="get">
-        <label className="flex flex-col gap-1 text-xs text-zinc-500">
-          Компани
-          <select
-            name="company"
-            defaultValue={selCompany}
-            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
-          >
-            {companies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            <option value="">Бүгд</option>
-          </select>
-        </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-500">
           Он
           <select
@@ -155,10 +188,10 @@ export default async function BankSummaryPage({
         </div>
       ) : (
         <div className="mt-6 space-y-5">
-          {summary.banks.map((b) => (
-            <BankCard key={b.accountId} block={b} highlight={false} />
+          {allBlocks.map((b, i) => (
+            <BankCard key={`${b.accountId}-${i}`} block={b} highlight={false} />
           ))}
-          <BankCard block={summary.total} highlight />
+          <BankCard block={grandTotal} highlight />
         </div>
       )}
     </div>

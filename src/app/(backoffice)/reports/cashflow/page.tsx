@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { loadRegistry, companyList, accountsForCompany } from "@/lib/bank-registry";
+import { loadRegistry } from "@/lib/bank-registry";
 import { buildInternalCashflow, type CodeMonthly } from "@/lib/cashflow";
 import { PrintButton } from "@/components/print-button";
 
@@ -24,19 +24,10 @@ export default async function CashflowPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  // Бүртгэлтэй банкны дансууд + компаниар бүлэглэх (Тохиргоо → Банкны данс).
+  // Бүртгэлтэй бүх банкны данс (Тохиргоо → Банкны данс). Нэг байгууллага тул
+  // компаниар бүлэглэхгүй — бүх данс нэгтгэгдэнэ.
   const registry = await loadRegistry(supabase);
-  const companies = companyList(registry);
-  const selCompany =
-    sp.company !== undefined
-      ? companies.includes(sp.company)
-        ? sp.company
-        : ""
-      : companies[0] ?? "";
-  const groupAccountIds = accountsForCompany(registry, selCompany || null).map(
-    (a) => a.accountNo,
-  );
-  const groupLabel = selCompany || "Бүгд (нэгтгэл)";
+  const groupAccountIds = registry.map((a) => a.accountNo);
   const inIds = groupAccountIds.length ? groupAccountIds : ["__none__"];
 
   // Боломжит онууд (transactions-аас, байхгүй бол энэ он).
@@ -83,7 +74,7 @@ export default async function CashflowPage({
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Мөнгөн урсгалын тайлан</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Дотоод тайлан (шууд арга) · {groupLabel} · {selYear} он · MNT
+            Дотоод тайлан (шууд арга) · {selYear} он · MNT
           </p>
         </div>
         <div className="no-print">
@@ -94,21 +85,6 @@ export default async function CashflowPage({
       {/* Шүүлт */}
       <form className="mt-6 flex flex-wrap items-end gap-3 no-print" method="get">
         <input type="hidden" name="mode" value="internal" />
-        <label className="flex flex-col gap-1 text-xs text-zinc-500">
-          Компани
-          <select
-            name="company"
-            defaultValue={selCompany}
-            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800"
-          >
-            {companies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            <option value="">Бүгд (нэгтгэл)</option>
-          </select>
-        </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-500">
           Он
           <select
