@@ -154,6 +154,17 @@ export const navEntries: NavEntry[] = [
       { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
     ],
   },
+  {
+    title: "Туслах",
+    icon: "📖",
+    items: [
+      {
+        href: "/help/opening-balances",
+        label: "Эхний үлдэгдэл оруулах заавар",
+        icon: "◔",
+      },
+    ],
+  },
 ];
 
 // Бүх замыг (дан цэс + бүлгийн цэс + дэд цэс) хавтгайруулсан жагсаалт —
