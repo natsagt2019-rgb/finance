@@ -156,6 +156,13 @@ export const navEntries: NavEntry[] = [
       { href: "/users", label: "Хэрэглэгчид", icon: "👤" },
     ],
   },
+  {
+    title: "Тусламж",
+    icon: "❓",
+    items: [
+      { href: "/help/inventory", label: "Бараа материал — заавар", icon: "📦" },
+    ],
+  },
 ];
 
 // Бүх замыг (дан цэс + бүлгийн цэс + дэд цэс) хавтгайруулсан жагсаалт —
