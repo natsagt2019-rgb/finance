@@ -27,46 +27,39 @@ export default async function NewMovePage({
     timeZone: "Asia/Ulaanbaatar",
   });
 
-  const [{ data: itemData }, { data: accData }, { data: partData }, { data: moveData }, { data: locData }] =
-    await Promise.all([
-      supabase
-        .from("inv_items")
-        .select(ITEM_SELECT)
-        .eq("is_active", true)
-        .order("name", { ascending: true })
-        .limit(5000),
-      supabase
-        .from("accounts")
-        .select("id, code, name")
-        .eq("is_active", true)
-        .order("code", { ascending: true })
-        .limit(3000),
-      supabase
-        .from("partners")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name", { ascending: true })
-        .limit(3000),
-      supabase
-        .from("inv_moves")
-        .select("id, date, type, qty, unit_cost, item_id")
-        .limit(20000),
-      supabase
-        .from("inv_locations")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name", { ascending: true })
-        .limit(2000),
-    ]);
+  // PostgREST 1000-cap-ийг тойрч бүх мөрийг хуудаслаж татна (1000+ бараа/хөдөлгөөн).
+  async function fetchAll<T>(
+    build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  ): Promise<T[]> {
+    const PAGE = 1000;
+    const rows: T[] = [];
+    for (let offset = 0; offset < 500000; offset += PAGE) {
+      const { data, error } = await build(offset, offset + PAGE - 1);
+      if (error) break;
+      const page = (data as T[] | null) ?? [];
+      rows.push(...page);
+      if (page.length < PAGE) break;
+    }
+    return rows;
+  }
 
-  const items = (itemData as ItemRow[] | null) ?? [];
-  const accounts = (accData as AccountOption[] | null) ?? [];
-  const partners = (partData as PartnerOption[] | null) ?? [];
-  const locations = (locData as { id: number; name: string }[] | null) ?? [];
+  const [items, accData, partData, moveRows, locData] = await Promise.all([
+    fetchAll<ItemRow>((f, t) =>
+      supabase.from("inv_items").select(ITEM_SELECT).eq("is_active", true).order("name", { ascending: true }).range(f, t)),
+    supabase.from("accounts").select("id, code, name").eq("is_active", true).order("code", { ascending: true }).limit(3000),
+    supabase.from("partners").select("id, name").eq("is_active", true).order("name", { ascending: true }).limit(3000),
+    fetchAll<MoveLite & { item_id: number }>((f, t) =>
+      supabase.from("inv_moves").select("id, date, type, qty, unit_cost, item_id").range(f, t)),
+    supabase.from("inv_locations").select("id, name").eq("is_active", true).order("name", { ascending: true }).limit(2000),
+  ]);
+
+  const accounts = (accData.data as AccountOption[] | null) ?? [];
+  const partners = (partData.data as PartnerOption[] | null) ?? [];
+  const locations = (locData.data as { id: number; name: string }[] | null) ?? [];
 
   // Бараа бүрийн одоогийн үлдэгдэл (форм дээр харуулна).
   const byItem = new Map<number, MoveLite[]>();
-  for (const m of (moveData as (MoveLite & { item_id: number })[] | null) ?? []) {
+  for (const m of moveRows) {
     const arr = byItem.get(m.item_id) ?? [];
     arr.push({ id: m.id, date: m.date, type: m.type, qty: m.qty, unit_cost: m.unit_cost });
     byItem.set(m.item_id, arr);

@@ -103,12 +103,13 @@ export type InvSettings = {
   staff_receivable_account_id: number | null;
   salary_payable_account_id: number | null;
   auto_journal: boolean;
+  cost_method?: string; // 'fifo' | 'average'
 };
 
 export const SETTINGS_SELECT =
   "id, category_accounts, ap_account_id, vat_account_id, cash_account_id, " +
   "bank_account_id, shortage_expense_account_id, staff_receivable_account_id, " +
-  "salary_payable_account_id, auto_journal";
+  "salary_payable_account_id, auto_journal, cost_method";
 
 // ── Туслах (dropdown-д) ──────────────────────────────────────────────────────
 export type AccountOption = { id: number; code: string; name: string };

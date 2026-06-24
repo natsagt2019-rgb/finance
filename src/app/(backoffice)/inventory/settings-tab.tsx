@@ -120,6 +120,21 @@ export function SettingsTab({
         </div>
       </div>
 
+      <div className="rounded-lg border border-zinc-200 p-3">
+        <div className="mb-2 text-sm font-medium text-zinc-700">Зарлагын өртөг бодох арга</div>
+        <div className="flex flex-wrap gap-4 text-sm text-zinc-700">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="cost_method" value="fifo" defaultChecked={settings?.cost_method !== "average"} className="h-4 w-4 border-zinc-300" />
+            FIFO (эхэлж орсон эхэлж гарах)
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="cost_method" value="average" defaultChecked={settings?.cost_method === "average"} className="h-4 w-4 border-zinc-300" />
+            Дундаж өртөг (жигнэсэн дундаж)
+          </label>
+        </div>
+        <p className="mt-1.5 text-xs text-zinc-400">Зарлага/устгал хийхэд барааны өртгийг энэ аргаар тооцно.</p>
+      </div>
+
       <div className="flex items-center gap-2">
         <input
           type="checkbox"

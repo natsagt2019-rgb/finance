@@ -92,19 +92,32 @@ export const navEntries: NavEntry[] = [
     ],
   },
 
-  // Цалин, Үндсэн хөрөнгө, Бараа — тус тусдаа дангаар.
+  // Цалин, Үндсэн хөрөнгө — тус тусдаа дангаар.
   { href: "/salary", label: "Цалин", icon: "💰" },
   { href: "/assets", label: "Үндсэн хөрөнгө", icon: "🏗" },
   {
-    href: "/inventory",
-    label: "Бараа материал",
+    title: "Бараа материал",
     icon: "📦",
-    children: [
+    items: [
+      { href: "/inventory", label: "Бараа материал", icon: "📦" },
+      // Мастер дата / процесс
       { href: "/inventory/prices", label: "Барааны үнэ", icon: "💲" },
       { href: "/inventory/locations", label: "Байршил (агуулах)", icon: "📍" },
       { href: "/inventory/recipes", label: "Хөрвүүлэлт (орц)", icon: "⚗" },
       { href: "/inventory/transfer", label: "Дотоод шилжүүлэг", icon: "⇄" },
       { href: "/inventory/to-asset", label: "Үндсэн хөрөнгө рүү шилжүүлэх", icon: "🏗" },
+      // Тайлан
+      { href: "/reports/inventory-summary", label: "Товчоо тайлан", icon: "📦" },
+      { href: "/reports/inventory", label: "Бараа материалын тайлан", icon: "📦" },
+      { href: "/reports/inventory-cost", label: "Барааны өртгийн тайлан", icon: "📦" },
+      { href: "/reports/inventory-aging", label: "Насжилтын тайлан", icon: "📦" },
+      { href: "/reports/inventory-moves", label: "Хөдөлгөөний журнал", icon: "📋" },
+      { href: "/reports/inventory-count", label: "Тооллогын тооцооны хуудас", icon: "📋" },
+      { href: "/reports/inventory-trade", label: "Худалдан авалт, борлуулалтын тайлан", icon: "🛒" },
+      { href: "/reports/inventory-prices", label: "Барааны үнийн тайлан", icon: "💲" },
+      { href: "/reports/inventory-by-location", label: "Үлдэгдэл байршлаар", icon: "📍" },
+      { href: "/reports/inventory-conversions", label: "Хөрвүүлэлтийн товчоо тайлан", icon: "⚗" },
+      { href: "/reports/inventory-expiry", label: "Дуусах хугацааны тайлан", icon: "⏳" },
     ],
   },
 
@@ -129,17 +142,6 @@ export const navEntries: NavEntry[] = [
       { href: "/reports/equity-changes", label: "Өмчийн өөрчлөлтийн тайлан", icon: "🔄" },
       { href: "/reports/notes", label: "Санхүүгийн тодруулга", icon: "📝" },
       { href: "/reports/cash-flow", label: "Мөнгөн гүйлгээний тайлан", icon: "💵" },
-      { href: "/reports/inventory-summary", label: "Бараа материалын товчоо тайлан", icon: "📦" },
-      { href: "/reports/inventory", label: "Бараа материалын тайлан", icon: "📦" },
-      { href: "/reports/inventory-moves", label: "Бараа материалын хөдөлгөөний журнал", icon: "📋" },
-      { href: "/reports/inventory-count", label: "Тооллогын тооцооны хуудас", icon: "📋" },
-      { href: "/reports/inventory-cost", label: "Барааны өртгийн тайлан", icon: "📦" },
-      { href: "/reports/inventory-aging", label: "Бараа материалын насжилтын тайлан", icon: "📦" },
-      { href: "/reports/inventory-trade", label: "Худалдан авалт, борлуулалтын тайлан", icon: "🛒" },
-      { href: "/reports/inventory-prices", label: "Барааны үнийн тайлан", icon: "💲" },
-      { href: "/reports/inventory-by-location", label: "Үлдэгдэл байршлаар", icon: "📍" },
-      { href: "/reports/inventory-conversions", label: "Хөрвүүлэлтийн товчоо тайлан", icon: "⚗" },
-      { href: "/reports/inventory-expiry", label: "Дуусах хугацааны тайлан", icon: "⏳" },
       { href: "/reports/fx-revaluation", label: "Ханшийн тэгшитгэл", icon: "💱" },
       { href: "/reports/worksheet", label: "Ажлын хүснэгт", icon: "🧮" },
     ],
@@ -155,14 +157,11 @@ export const navEntries: NavEntry[] = [
     ],
   },
   {
-    title: "Туслах",
-    icon: "📖",
+    title: "Тусламж",
+    icon: "❓",
     items: [
-      {
-        href: "/help/opening-balances",
-        label: "Эхний үлдэгдэл оруулах заавар",
-        icon: "◔",
-      },
+      { href: "/help/inventory", label: "Бараа материал — заавар", icon: "📦" },
+      { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
     ],
   },
 ];

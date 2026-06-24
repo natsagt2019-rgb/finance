@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   computeFifo,
   fifoIssueCost,
+  averageIssueCost,
   isInbound,
   type MoveLite,
 } from "@/lib/inventory-calc";
@@ -112,7 +113,7 @@ async function loadSettings(supabase: Supa): Promise<InvSettings | null> {
     .select(
       "id, category_accounts, ap_account_id, vat_account_id, cash_account_id, " +
         "bank_account_id, shortage_expense_account_id, staff_receivable_account_id, " +
-        "salary_payable_account_id, auto_journal",
+        "salary_payable_account_id, auto_journal, cost_method",
     )
     .eq("id", 1)
     .maybeSingle();
@@ -138,6 +139,16 @@ async function fifoLayers(supabase: Supa, itemId: number) {
     .limit(10000);
   const moves = (data as MoveLite[] | null) ?? [];
   return computeFifo(moves);
+}
+
+// Тухайн барааны бүх хөдөлгөөн (FIFO/дундаж аль алинд).
+async function loadItemMoves(supabase: Supa, itemId: number): Promise<MoveLite[]> {
+  const { data } = await supabase
+    .from("inv_moves")
+    .select("id, date, type, qty, unit_cost")
+    .eq("item_id", itemId)
+    .limit(10000);
+  return (data as MoveLite[] | null) ?? [];
 }
 
 // ── Хөдөлгөөн үүсгэх (орлого/зарлага/буцаалт/устгал) ────────────────────────
@@ -174,21 +185,30 @@ export async function createMove(input: MoveInput): Promise<ActionResult> {
   if (itemErr || !item)
     return { ok: false, error: "Бараа олдсонгүй." };
 
-  // Өртөг тооцох: орлого бол оруулсан үнэ, гарлага бол FIFO.
+  // Тохиргоо (өртгийн арга + журналын данс) — эхэнд нэг удаа.
+  const settings = await loadSettings(supabase);
+  const costMethod = settings?.cost_method === "average" ? "average" : "fifo";
+
+  // Өртөг тооцох: орлого бол оруулсан үнэ; гарлага бол FIFO эсвэл дундаж өртөг.
   let unitCost = Number(input.unit_cost) || 0;
   let totalCost: number;
   if (isInbound(input.type)) {
     totalCost = r2(qty * unitCost);
   } else {
-    const { layers } = await fifoLayers(supabase, input.item_id);
-    const f = fifoIssueCost(layers, qty);
-    if (f.shortage > 1e-6)
-      return {
-        ok: false,
-        error: `Үлдэгдэл хүрэлцэхгүй: ${qty} гаргахад ${r2(f.shortage)} дутна.`,
-      };
-    unitCost = r2(f.unitCost);
-    totalCost = r2(f.totalCost);
+    const moves = await loadItemMoves(supabase, input.item_id);
+    if (costMethod === "average") {
+      const a = averageIssueCost(moves, qty);
+      if (a.shortage > 1e-6)
+        return { ok: false, error: `Үлдэгдэл хүрэлцэхгүй: ${qty} гаргахад ${r2(a.shortage)} дутна.` };
+      unitCost = r2(a.unitCost);
+      totalCost = r2(a.totalCost);
+    } else {
+      const f = fifoIssueCost(computeFifo(moves).layers, qty);
+      if (f.shortage > 1e-6)
+        return { ok: false, error: `Үлдэгдэл хүрэлцэхгүй: ${qty} гаргахад ${r2(f.shortage)} дутна.` };
+      unitCost = r2(f.unitCost);
+      totalCost = r2(f.totalCost);
+    }
   }
 
   const vat = r2(input.vat_amount);
@@ -218,8 +238,7 @@ export async function createMove(input: MoveInput): Promise<ActionResult> {
   if (mvErr) return { ok: false, error: mvErr.message };
   const moveId = mv.id as number;
 
-  // 2) Журнал (auto_journal асаалттай бол).
-  const settings = await loadSettings(supabase);
+  // 2) Журнал (auto_journal асаалттай бол) — settings эхэнд ачаалсан.
   if (settings?.auto_journal !== false && totalCost > 0) {
     const moveForJournal: MoveForJournal = {
       type: input.type,
@@ -473,6 +492,7 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
       staff_receivable_account_id: accId("staff_receivable_account_id"),
       salary_payable_account_id: accId("salary_payable_account_id"),
       auto_journal: formData.get("auto_journal") === "on",
+      cost_method: formData.get("cost_method") === "average" ? "average" : "fifo",
     },
     { onConflict: "id" },
   );

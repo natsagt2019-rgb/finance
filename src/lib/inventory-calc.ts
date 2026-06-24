@@ -123,3 +123,43 @@ export function fifoIssueCost(
   const unitCost = issued > 0 ? totalCost / issued : 0;
   return { totalCost, unitCost, layersAfter: work, shortage: remaining };
 }
+
+// ── Дундаж өртгийн арга (moving weighted average) ─────────────────────────────
+// Орлого болгонд дундаж шинэчлэгдэнэ; гаргалт тухайн үеийн дундаж өртгөөр.
+// Бүх хөдөлгөөнийг дарааллаар боловсруулж эцсийн үлдэгдэл/дунджийг буцаана.
+export function computeAverage(moves: MoveLite[]): {
+  qtyRemaining: number;
+  valueRemaining: number;
+  unitCost: number; // одоогийн дундаж нэгж өртөг
+} {
+  const sorted = [...moves].sort(chrono);
+  let qty = 0;
+  let value = 0;
+  for (const m of sorted) {
+    const mq = Number(m.qty) || 0;
+    if (mq <= 0) continue;
+    if (isInbound(m.type)) {
+      qty += mq;
+      value += mq * (Number(m.unit_cost) || 0);
+    } else {
+      const avg = qty > 0 ? value / qty : 0;
+      const take = Math.min(mq, qty);
+      value -= take * avg;
+      qty -= take;
+    }
+  }
+  const unitCost = qty > 0 ? value / qty : 0;
+  return { qtyRemaining: qty, valueRemaining: value, unitCost };
+}
+
+// Дундаж өртгөөр qty гаргахад нийт өртөг + дундаж нэгж өртөг + дутагдал.
+export function averageIssueCost(
+  moves: MoveLite[],
+  qty: number,
+): { totalCost: number; unitCost: number; shortage: number } {
+  const { qtyRemaining, unitCost } = computeAverage(moves);
+  const want = Number(qty) || 0;
+  const shortage = Math.max(0, want - qtyRemaining);
+  const issued = want - shortage;
+  return { totalCost: issued * unitCost, unitCost, shortage };
+}
