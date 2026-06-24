@@ -47,6 +47,7 @@ function readEmployee(formData: FormData) {
     first_name: firstName || null,
     name: [lastName, firstName].filter(Boolean).join(" "), // "Овог Нэр" нийлмэл
     company: get("company") || null,
+    department: get("department") || null,
     position: get("position") || null,
     salary_type: normalizeSalaryType(get("salary_type")),
     base_salary: num(formData.get("base_salary")),
@@ -158,6 +159,7 @@ export async function importEmployeesExcel(
     last: find("овог"),
     first: find("нэр"),
     company: find("компани"),
+    department: find("хэлтэс", "тасаг"),
     position: find("тушаал"),
     hired: find("огноо"),
     exp: find("туршлага"),
@@ -210,6 +212,7 @@ export async function importEmployeesExcel(
       first_name: firstName,
       name,
       company: at(row, idx.company) || null,
+      department: at(row, idx.department) || null,
       position: at(row, idx.position) || null,
       hired_date: idx.hired >= 0 ? cellISO(row[idx.hired]) : null,
       experience_years: idx.exp >= 0 ? cellNum(row[idx.exp]) : 0,
@@ -238,6 +241,7 @@ export type SalaryInputRow = {
   employee_id: number;
   employee_name: string;
   company: string | null;
+  department: string | null;
   salary_type: SalaryType;
   base_salary: number;
   worked_hours: number;
@@ -384,6 +388,7 @@ export async function saveSalary(
       month,
       employee_name: r.employee_name,
       company: r.company,
+      department: r.department,
       salary_type: salaryType,
       base_salary: r.base_salary,
       worked_hours: r.worked_hours,

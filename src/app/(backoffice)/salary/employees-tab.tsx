@@ -74,6 +74,7 @@ export function EmployeesTab({
                   <th className="px-4 py-2">№</th>
                   <th className="px-4 py-2">Овог Нэр</th>
                   <th className="px-4 py-2">Компани</th>
+                  <th className="px-4 py-2">Хэлтэс</th>
                   <th className="px-4 py-2">Албан тушаал</th>
                   <th className="px-4 py-2 text-right">Үндсэн цалин</th>
                   <th className="px-4 py-2">ДД / Регистр</th>
@@ -88,6 +89,9 @@ export function EmployeesTab({
                     <td className="px-4 py-2 font-medium text-zinc-800">{e.name}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                       {e.company || "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
+                      {e.department || "—"}
                     </td>
                     <td className="px-4 py-2 text-zinc-500">{e.position || "—"}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-zinc-800">

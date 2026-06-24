@@ -26,6 +26,7 @@ type EditRow = {
   employee_id: number;
   employee_name: string;
   company: string | null;
+  department: string | null;
   salary_type: SalaryType;
   base_salary: number;
   worked_hours: number;
@@ -96,6 +97,7 @@ export function CalcTab({
         employee_id: e.id,
         employee_name: e.name,
         company: e.company,
+        department: e.department,
         salary_type: salaryType,
         base_salary: rec ? Number(rec.base_salary) : Number(e.base_salary) || 0,
         worked_hours: rec
@@ -250,6 +252,7 @@ export function CalcTab({
       employee_id: r.employee_id,
       employee_name: r.employee_name,
       company: r.company,
+      department: r.department,
       salary_type: r.salary_type,
       base_salary: r.base_salary,
       worked_hours: r.worked_hours,
@@ -363,7 +366,7 @@ export function CalcTab({
                         </span>
                       )}
                       <div className="ml-6 text-xs text-zinc-400">
-                        {r.company || "—"}
+                        {[r.company, r.department].filter(Boolean).join(" · ") || "—"}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-zinc-800">

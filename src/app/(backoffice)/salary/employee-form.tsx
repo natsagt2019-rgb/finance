@@ -92,6 +92,17 @@ export function EmployeeForm({ mode, employee }: Props) {
         </div>
 
         <div>
+          <label className={labelCls}>Хэлтэс тасаг</label>
+          <input
+            type="text"
+            name="department"
+            defaultValue={employee?.department ?? ""}
+            placeholder="Санхүүгийн хэлтэс"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
           <label className={labelCls}>Албан тушаал</label>
           <input
             type="text"

@@ -20,6 +20,7 @@ import { SettingsTab } from "./settings-tab";
 type SearchParams = {
   tab?: string;
   company?: string;
+  department?: string;
   year?: string;
   month?: string;
 };
@@ -43,6 +44,7 @@ export default async function SalaryPage({
     ? (sp.tab as Tab)
     : "employees";
   const company = (sp.company ?? "").trim();
+  const department = (sp.department ?? "").trim();
   const today = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Ulaanbaatar",
   });
@@ -60,9 +62,19 @@ export default async function SalaryPage({
     .order("name", { ascending: true })
     .limit(2000);
   const allEmployees = (empData as EmployeeRow[] | null) ?? [];
-  const employees = company
-    ? allEmployees.filter((e) => e.company === company)
-    : allEmployees;
+  // Шүүлтийн сонголтод харуулах хэлтсүүд (давхардалгүй).
+  const departments = [
+    ...new Set(
+      allEmployees
+        .map((e) => (e.department ?? "").trim())
+        .filter((d): d is string => d.length > 0),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  const employees = allEmployees.filter(
+    (e) =>
+      (!company || e.company === company) &&
+      (!department || (e.department ?? "") === department),
+  );
 
   // Сонгосон оны тохиргоо
   const { data: setData } = await supabase
@@ -103,10 +115,12 @@ export default async function SalaryPage({
     const p = new URLSearchParams();
     const t = over.tab ?? tab;
     const c = over.company ?? company;
+    const d = over.department ?? department;
     const y = over.year ?? String(year);
     const m = over.month ?? String(month);
     if (t) p.set("tab", t);
     if (c) p.set("company", c);
+    if (d) p.set("department", d);
     if (y) p.set("year", y);
     if (m) p.set("month", m);
     return `/salary?${p.toString()}`;
@@ -239,11 +253,33 @@ export default async function SalaryPage({
         </div>
       )}
 
+      {/* Хэлтэс тасгийн шүүлт (динамик — бүртгэлтэй хэлтсүүдээс) */}
+      {showCompanyFilter && departments.length > 0 && (
+        <div className="no-print mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-zinc-400">Хэлтэс:</span>
+          <Link
+            href={buildHref({ department: "" })}
+            className={chipCls(!department)}
+          >
+            Бүх хэлтэс
+          </Link>
+          {departments.map((d) => (
+            <Link
+              key={d}
+              href={buildHref({ department: d })}
+              className={chipCls(department === d)}
+            >
+              {d}
+            </Link>
+          ))}
+        </div>
+      )}
+
       <div className="mt-5">
         {tab === "employees" && <EmployeesTab employees={employees} year={year} />}
         {tab === "calc" && (
           <CalcTab
-            key={`${year}-${month}-${company}`}
+            key={`${year}-${month}-${company}-${department}`}
             employees={employees}
             records={records.filter((r) => r.month === month)}
             year={year}
@@ -255,9 +291,11 @@ export default async function SalaryPage({
         )}
         {tab === "summary" && (
           <SummaryTab
-            records={
-              company ? records.filter((r) => r.company === company) : records
-            }
+            records={records.filter(
+              (r) =>
+                (!company || r.company === company) &&
+                (!department || (r.department ?? "") === department),
+            )}
             year={year}
           />
         )}
