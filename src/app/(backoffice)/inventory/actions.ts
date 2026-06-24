@@ -121,8 +121,15 @@ async function loadSettings(supabase: Supa): Promise<InvSettings | null> {
 }
 
 function toJournalSettings(s: InvSettings | null): InvJournalSettings {
+  // JSONB-д дансны id заримдаа string болж хадгалагдсан байж болзошгүй
+  // (импорт/seed-ээс). mirrorToLedger тоон id шаарддаг тул Number()-ээр баталгаажуулна.
+  const rawCat = (s?.category_accounts as Record<string, number | string | null>) ?? {};
+  const categoryAccounts: Record<string, number | null> = {};
+  for (const [code, v] of Object.entries(rawCat)) {
+    categoryAccounts[code] = v != null && v !== "" ? Number(v) : null;
+  }
   return {
-    categoryAccounts: (s?.category_accounts as Record<string, number | null>) ?? {},
+    categoryAccounts,
     apAccountId: s?.ap_account_id ?? null,
     vatAccountId: s?.vat_account_id ?? null,
     shortageExpenseAccountId: s?.shortage_expense_account_id ?? null,

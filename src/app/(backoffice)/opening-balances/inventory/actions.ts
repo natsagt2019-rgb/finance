@@ -223,7 +223,10 @@ export async function syncInventoryOpening(year: number): Promise<SyncResult> {
     const { valueRemaining } = computeFifo(moves);
     if (valueRemaining < 0.005) continue;
     const catCode = catOfItem.get(itemId);
-    const acctId = catCode ? catAccounts[catCode] : undefined;
+    // category_accounts-д id заримдаа string болж хадгалагдсан байж болзошгүй
+    // тул Number()-ээр баталгаажуулна (codeById нь тоон id-аар түлхүүрлэгдсэн).
+    const rawAcct = catCode ? catAccounts[catCode] : undefined;
+    const acctId = rawAcct != null ? Number(rawAcct) : undefined;
     const code = acctId != null ? codeById.get(acctId) : undefined;
     if (!code) {
       unmapped++;
