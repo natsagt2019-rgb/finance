@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { ACCOUNT_TYPES, type AccountType } from "./types";
+import { ACCOUNT_TYPES, type AccountType, type TaxClass } from "./types";
+
+const TAX_CLASSES: TaxClass[] = ["non_deductible", "exempt_income", "temp_diff"];
 
 export type ActionResult =
   | { ok: true; id: number; name: string }
@@ -25,7 +27,10 @@ function readForm(formData: FormData) {
   const type: AccountType = ACCOUNT_TYPES.includes(typeRaw) ? typeRaw : "asset";
   const parentRaw = get("parent_id");
   const tempPct = Number(get("temp_percent"));
+  const taxRaw = get("tax_class") as TaxClass;
+  const tax_class = TAX_CLASSES.includes(taxRaw) ? taxRaw : null;
   return {
+    tax_class,
     code: get("code"),
     name: get("name"),
     name_en: get("name_en") || null,

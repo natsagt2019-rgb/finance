@@ -138,6 +138,8 @@ export const navEntries: NavEntry[] = [
     items: [
       { href: "/vat", label: "НӨАТ бүртгэл", icon: "🧾" },
       { href: "/reports/vat-settlement", label: "НӨАТ тооцооны тайлан", icon: "🧮" },
+      { href: "/reports/corporate-tax", label: "ААНОАТ тайлан (зөрүүгийн тулгалт)", icon: "🏛" },
+      { href: "/reports/personal-income-tax", label: "ХХОАТ тайлан (цалингаас)", icon: "🧑" },
     ],
   },
   {
@@ -171,6 +173,7 @@ export const navEntries: NavEntry[] = [
     title: "Тусламж",
     icon: "❓",
     items: [
+      { href: "/help/accounts", label: "Дансны төлөвлөгөө — заавар", icon: "📋" },
       { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
       { href: "/help/journals", label: "Журнал — заавар", icon: "📒" },
       { href: "/help/bank", label: "Харилцах данс — заавар", icon: "🏦" },

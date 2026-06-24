@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { createAccount, updateAccount } from "./actions";
-import type { AccountRow } from "./types";
+import { TAX_CLASS_OPTIONS, type AccountRow } from "./types";
 
 export type ParentOption = { id: number; code: string; name: string };
 
@@ -273,6 +273,29 @@ export function AccountForm({ mode, account, parents }: Props) {
           placeholder="Жнь: ББТ 1.1 Мөнгө ба түүнтэй адилтгах хөрөнгө"
           className={inputCls}
         />
+      </div>
+
+      {/* ААНОАТ зөрүүгийн ангилал — орлого/зардлын дансанд */}
+      <div>
+        <label className={labelCls}>
+          ААНОАТ зөрүүгийн ангилал (А/144)
+        </label>
+        <select
+          name="tax_class"
+          defaultValue={account?.tax_class ?? ""}
+          className={inputCls}
+        >
+          <option value="">Энгийн — зөрүүгүй (татварт хүлээн зөвшөөрнө)</option>
+          {TAX_CLASS_OPTIONS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-zinc-500">
+          Зөвхөн орлого/зардлын дансанд хэрэглэнэ. Татвар төлөхийн өмнөх ашгийг
+          татвар ногдох орлого руу хөрвүүлэх зөрүүг энэ ангиллаар тооцно.
+        </p>
       </div>
 
       <div>
