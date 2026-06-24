@@ -92,14 +92,14 @@ export const navEntries: NavEntry[] = [
     ],
   },
 
-  // Цалин, Үндсэн хөрөнгө, Бараа — тус тусдаа дангаар.
+  // Цалин, Үндсэн хөрөнгө — тус тусдаа дангаар.
   { href: "/salary", label: "Цалин", icon: "💰" },
   { href: "/assets", label: "Үндсэн хөрөнгө", icon: "🏗" },
   {
-    href: "/inventory",
-    label: "Бараа материал",
+    title: "Бараа материал",
     icon: "📦",
-    children: [
+    items: [
+      { href: "/inventory", label: "Бараа материал", icon: "📦" },
       // Мастер дата / процесс
       { href: "/inventory/prices", label: "Барааны үнэ", icon: "💲" },
       { href: "/inventory/locations", label: "Байршил (агуулах)", icon: "📍" },
