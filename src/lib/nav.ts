@@ -92,9 +92,20 @@ export const navEntries: NavEntry[] = [
     ],
   },
 
-  // Цалин, Үндсэн хөрөнгө — тус тусдаа дангаар.
+  // Цалин — дангаар.
   { href: "/salary", label: "Цалин", icon: "💰" },
-  { href: "/assets", label: "Үндсэн хөрөнгө", icon: "🏗" },
+  {
+    title: "Үндсэн хөрөнгө",
+    icon: "🏗",
+    items: [
+      { href: "/assets", label: "Хөрөнгийн бүртгэл", icon: "🏗" },
+      { href: "/assets/transfer", label: "Олноор шилжүүлэх", icon: "🔀" },
+      { href: "/reports/assets-depreciation", label: "Элэгдлийн тайлан", icon: "📉" },
+      { href: "/reports/assets-movements", label: "Хөдөлгөөний тайлан", icon: "🔀" },
+      { href: "/reports/assets-disposals", label: "Хасалт/борлуулалтын тайлан", icon: "❌" },
+      { href: "/assets/register", label: "Дэлгэрэнгүй бүртгэл", icon: "📋" },
+    ],
+  },
   {
     title: "Бараа материал",
     icon: "📦",
