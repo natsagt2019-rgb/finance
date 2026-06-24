@@ -825,3 +825,60 @@ export async function moveAsset(
   revalidatePath(`/assets/${assetId}`);
   return { ok: true, id: assetId };
 }
+
+// Олон хөрөнгийг нэг дор шилжүүлэх — бүгдэд нэг зорилтот хариуцагч/байршил.
+export async function moveAssetsBulk(
+  assetIds: number[],
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const ids = [...new Set(assetIds.filter((n) => Number.isFinite(n) && n > 0))];
+  if (ids.length === 0) return { ok: false, error: "Хөрөнгө сонгоогүй байна." };
+
+  const moveType = get("move_type") === "internal" ? "internal" : "custody";
+  const movedDate = get("moved_date");
+  if (!movedDate) return { ok: false, error: "Хөдөлгөөний огноо заавал шаардлагатай." };
+  const note = get("note") || null;
+  const toResponsible = get("to_responsible") || null;
+  const toLocRaw = num(formData.get("to_location_id"));
+  const toLocationId = toLocRaw > 0 ? toLocRaw : null;
+
+  if (moveType === "custody" && !toResponsible)
+    return { ok: false, error: "Шинэ эд хариуцагч оруулна уу." };
+  if (moveType === "internal" && toLocationId == null)
+    return { ok: false, error: "Шинэ байршил сонгоно уу." };
+
+  // Сонгосон хөрөнгүүдийн одоогийн утга.
+  const { data: rows, error: re } = await supabase
+    .from("assets")
+    .select("id, responsible, location_id")
+    .in("id", ids);
+  if (re) return { ok: false, error: re.message };
+  const cur =
+    (rows as { id: number; responsible: string | null; location_id: number | null }[] | null) ?? [];
+
+  // Хөдөлгөөний түүх (мөр бүрт хуучин утгаар).
+  const movements = cur.map((a) => ({
+    asset_id: a.id,
+    moved_date: movedDate,
+    move_type: moveType,
+    from_responsible: a.responsible,
+    to_responsible: moveType === "custody" ? toResponsible : a.responsible,
+    from_location_id: a.location_id,
+    to_location_id: moveType === "internal" ? toLocationId : a.location_id,
+    note,
+  }));
+  const { error: me } = await supabase.from("asset_movements").insert(movements);
+  if (me) return { ok: false, error: me.message };
+
+  // Зорилтот талбарыг бүгдэд нэг дор шинэчилнэ.
+  const patch =
+    moveType === "custody" ? { responsible: toResponsible } : { location_id: toLocationId };
+  const { error: ue } = await supabase.from("assets").update(patch).in("id", ids);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  return { ok: true, id: ids.length };
+}
