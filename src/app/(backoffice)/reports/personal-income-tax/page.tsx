@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { loadCompany } from "@/lib/company";
 import { buildPitReport, pitReportYears } from "@/lib/pit-report";
 
 type SearchParams = { year?: string; period?: string };
@@ -39,6 +40,32 @@ const PERIOD_OPTIONS: { value: string; label: string }[] = [
   })),
 ];
 
+function FormHead() {
+  return (
+    <div className="text-right text-[11px] leading-4 text-zinc-500">
+      Хувь хүний орлогын
+      <br />
+      албан татварын тухай хууль (2019)
+      <br />
+      <span className="font-medium text-zinc-700">Суутган төлөгчийн тайлан</span>
+    </div>
+  );
+}
+
+function SignatureCell({ role, name }: { role: string; name: string }) {
+  return (
+    <div>
+      <p>{role}:</p>
+      <div className="mt-6 text-center">
+        <p className="border-b border-zinc-500 pb-1">
+          {name ? <span className="font-medium text-zinc-800">{name}</span> : <>&nbsp;</>}
+        </p>
+        <p className="mt-1 text-[11px] text-zinc-500">/ гарын үсэг, тэмдэг /</p>
+      </div>
+    </div>
+  );
+}
+
 export default async function PersonalIncomeTaxPage({
   searchParams,
 }: {
@@ -47,7 +74,10 @@ export default async function PersonalIncomeTaxPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const years = await pitReportYears(supabase);
+  const [years, company] = await Promise.all([
+    pitReportYears(supabase),
+    loadCompany(),
+  ]);
   if (years.length === 0) years.push(new Date().getFullYear());
   const selYear =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
@@ -58,45 +88,29 @@ export default async function PersonalIncomeTaxPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
+      {/* Удирдлагын мөр — хэвлэхэд харагдахгүй */}
+      <div className="no-print mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">
+          <h1 className="text-xl font-semibold text-zinc-900">
             ХХОАТ-ын тайлан — цалингаас суутгасан
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            ХХОАТ хууль 2019.03.22 — {selYear} он, {r.monthLabel}. Суутган
-            төлөгчийн (ажил олгогч) тайлан. Хувь: {(r.pitRate * 100).toFixed(0)}%
-            (шатлалт хасагдуулгатай).
+            Албан ёсны маягтын хэлбэр. Хэвлэх товчоор PDF/цаасаар гаргана.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <form method="get" className="flex items-center gap-2">
-            <select
-              name="year"
-              defaultValue={String(selYear)}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            >
+            <select name="year" defaultValue={String(selYear)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm">
               {years.map((y) => (
-                <option key={y} value={y}>
-                  {y} он
-                </option>
+                <option key={y} value={y}>{y} он</option>
               ))}
             </select>
-            <select
-              name="period"
-              defaultValue={period}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            >
+            <select name="period" defaultValue={period} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm">
               {PERIOD_OPTIONS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            <button
-              type="submit"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
+            <button type="submit" className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700">
               Шинэчлэх
             </button>
           </form>
@@ -104,86 +118,83 @@ export default async function PersonalIncomeTaxPage({
         </div>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-200 bg-white print:border-0">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs font-medium text-zinc-500">
-            <tr>
-              <th className="px-3 py-2 text-left">№</th>
-              <th className="px-3 py-2 text-left">Регистр (ДД)</th>
-              <th className="px-3 py-2 text-left">Ажилтны нэр</th>
-              <th className="px-3 py-2 text-right">Нийт орлого</th>
-              <th className="px-3 py-2 text-right">ЭМНДШ</th>
-              <th className="px-3 py-2 text-right">Татвар ногдох орлого</th>
-              <th className="px-3 py-2 text-right">Хөнгөлөлт</th>
-              <th className="px-3 py-2 text-right">Ногдуулсан ХХОАТ</th>
+      {/* ── Албан ёсны маягт ── */}
+      <div className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-8 text-sm leading-6 text-zinc-800 print:max-w-none print:rounded-none print:border-0 print:p-0">
+        <FormHead />
+        <h2 className="mt-2 text-center text-base font-bold uppercase text-zinc-900">
+          Хувь хүний орлогын албан татварын тайлан
+        </h2>
+        <p className="text-center text-xs text-zinc-500">
+          /Ажил олгогчоос цалин хөлснөөс суутган тооцсон — суутган төлөгчийн тайлан/
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-1 text-[13px]">
+          <div>Суутган төлөгч: <b>{company.name || "—"}</b></div>
+          <div>Тайлант үе: <b>{selYear} он, {r.monthLabel}</b></div>
+          <div>Татвар төлөгчийн дугаар (ТТД): <b>{company.register || "—"}</b></div>
+          <div>Татварын хувь: <b>{(r.pitRate * 100).toFixed(0)}% /шатлалт хасагдуулгатай/</b></div>
+        </div>
+
+        <table className="mt-4 w-full border-collapse text-[12px]">
+          <thead>
+            <tr className="bg-zinc-100 text-center text-zinc-600">
+              <th className="w-8 border border-zinc-300 px-2 py-1.5">№</th>
+              <th className="w-28 border border-zinc-300 px-2 py-1.5">Регистр (ДД)</th>
+              <th className="border border-zinc-300 px-2 py-1.5 text-left">Овог, нэр</th>
+              <th className="w-28 border border-zinc-300 px-2 py-1.5 text-right">Нийт орлого</th>
+              <th className="w-24 border border-zinc-300 px-2 py-1.5 text-right">ЭМНДШ</th>
+              <th className="w-28 border border-zinc-300 px-2 py-1.5 text-right">Татвар ногдох орлого</th>
+              <th className="w-24 border border-zinc-300 px-2 py-1.5 text-right">Хөнгөлөлт</th>
+              <th className="w-28 border border-zinc-300 px-2 py-1.5 text-right">Ногдуулсан ХХОАТ</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody>
             {r.rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-zinc-500">
+                <td colSpan={8} className="border border-zinc-300 px-2 py-4 text-center text-zinc-400">
                   Энэ хугацаанд цалингийн бүртгэл алга.
                 </td>
               </tr>
             ) : (
               r.rows.map((row, i) => (
-                <tr key={row.employeeId ?? `n${i}`}>
-                  <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
-                  <td className="px-3 py-1.5 tabular-nums text-zinc-600">
-                    {row.register || "—"}
-                  </td>
-                  <td className="px-3 py-1.5 text-zinc-700">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-zinc-600">
-                    {fmt(row.gross)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-zinc-600">
-                    {fmt(row.shInsurance)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-zinc-600">
-                    {fmt(row.taxable)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-zinc-600">
-                    {fmt(row.reliefApplied)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums font-medium text-zinc-900">
-                    {fmt(row.pit)}
-                  </td>
+                <tr key={row.employeeId ?? `n${i}`} className="text-center">
+                  <td className="border border-zinc-300 px-2 py-1 text-zinc-500">{i + 1}</td>
+                  <td className="border border-zinc-300 px-2 py-1 tabular-nums">{row.register || "—"}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-left">{row.name}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.gross)}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.shInsurance)}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.taxable)}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.reliefApplied)}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums font-medium">{fmt(row.pit)}</td>
                 </tr>
               ))
             )}
           </tbody>
           {r.rows.length > 0 && (
             <tfoot>
-              <tr className="border-t-2 border-zinc-300 bg-zinc-50 font-semibold">
-                <td className="px-3 py-2" colSpan={3}>
-                  Нийт ({r.rows.length} ажилтан)
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {fmt(r.total.gross)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {fmt(r.total.shInsurance)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {fmt(r.total.taxable)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {fmt(r.total.reliefApplied)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-zinc-900">
-                  {fmt(r.total.pit)}
-                </td>
+              <tr className="bg-zinc-50 text-center font-semibold">
+                <td className="border border-zinc-300 px-2 py-1.5" colSpan={3}>Нийт ({r.rows.length} ажилтан)</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(r.total.gross)}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(r.total.shInsurance)}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(r.total.taxable)}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(r.total.reliefApplied)}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(r.total.pit)}</td>
               </tr>
             </tfoot>
           )}
         </table>
-      </div>
 
-      <p className="mt-2 text-xs text-zinc-500">
-        Татвар ногдох орлого = Нийт орлого − ЭМНДШ. Ногдуулсан ХХОАТ нь Арт.23.1
-        шатлалт хасагдуулгыг тооцсон цэвэр дүн. Эх өгөгдөл: цалингийн модуль
-        (320300 ХХОАТ-ын суутгалын өглөг данстай тулгана).
-      </p>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Татвар ногдох орлого = Нийт орлого − ЭМНДШ. Ногдуулсан ХХОАТ нь
+          Арт.23.1 шатлалт хасагдуулгыг тооцсон цэвэр дүн.
+        </p>
+
+        {/* Гарын үсэг */}
+        <div className="mt-10 grid grid-cols-2 gap-12">
+          <SignatureCell role="Захирал" name={company.director} />
+          <SignatureCell role="Ерөнхий нягтлан бодогч" name={company.accountant} />
+        </div>
+      </div>
     </div>
   );
 }
