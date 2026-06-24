@@ -53,6 +53,12 @@ export function OpeningTabs({
       {/* Tab холбоосууд */}
       <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5">
         {TABS.map((t) => tab(t.href, t.label))}
+        <Link
+          href="/help/opening-balances"
+          className="whitespace-nowrap rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
+        >
+          📖 Заавар
+        </Link>
         <form method="get" className="ml-auto flex items-center gap-2 px-2">
           <label className="text-xs text-zinc-500">Тайлант он</label>
           <select

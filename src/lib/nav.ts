@@ -160,6 +160,7 @@ export const navEntries: NavEntry[] = [
     title: "Тусламж",
     icon: "❓",
     items: [
+      { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
       { href: "/help/inventory", label: "Бараа материал — заавар", icon: "📦" },
     ],
   },
