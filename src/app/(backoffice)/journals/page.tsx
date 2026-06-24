@@ -69,10 +69,10 @@ export default async function JournalsPage({
       partnerName.set(p.id, p.name);
   }
 
-  // Журнал бүрийн харьцсан данс (Дт / Кт) — journal_lines-аас.
+  // Журнал бүрийн харьцсан данс ба данс тус бүрийн дүн — journal_lines-аас.
+  type JLine = { side: "Дт" | "Кт"; code: string; amount: number };
   const journalIds = journals.map((j) => j.id);
-  const dtByJournal = new Map<number, Set<string>>();
-  const ktByJournal = new Map<number, Set<string>>();
+  const linesByJournal = new Map<number, JLine[]>();
   const acctName = new Map<string, string>();
   if (journalIds.length > 0) {
     const { data: lineData } = await supabase
@@ -100,16 +100,33 @@ export default async function JournalsPage({
       }
     }
 
+    // Ижил данс+талыг нэгтгэнэ (нэг данс = нэг мөр, дүнг нэмж).
+    const agg = new Map<number, Map<string, JLine>>();
     for (const l of lines) {
       const code = l.account_id != null ? codeById.get(l.account_id) : null;
       if (!code) continue;
-      const target = (Number(l.debit) || 0) > 0 ? dtByJournal : ktByJournal;
-      if (!target.has(l.journal_id)) target.set(l.journal_id, new Set());
-      target.get(l.journal_id)!.add(code);
+      const debit = Number(l.debit) || 0;
+      const credit = Number(l.credit) || 0;
+      if (!agg.has(l.journal_id)) agg.set(l.journal_id, new Map());
+      const m = agg.get(l.journal_id)!;
+      const add = (side: "Дт" | "Кт", amount: number) => {
+        if (amount <= 0) return;
+        const key = `${side}|${code}`;
+        const cur = m.get(key);
+        if (cur) cur.amount += amount;
+        else m.set(key, { side, code, amount });
+      };
+      add("Дт", debit);
+      add("Кт", credit);
+    }
+    // Дт мөрүүдийг эхэнд эрэмбэлнэ.
+    for (const [jid, m] of agg) {
+      const arr = [...m.values()].sort((a, b) =>
+        a.side === b.side ? 0 : a.side === "Дт" ? -1 : 1,
+      );
+      linesByJournal.set(jid, arr);
     }
   }
-  const codes = (s: Set<string> | undefined) =>
-    s ? [...s].sort() : [];
 
   return (
     <div>
@@ -192,26 +209,37 @@ export default async function JournalsPage({
                       ) : null}
                     </td>
                     <td className="px-4 py-2 text-xs">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-zinc-700">
-                          <span className="mr-1 font-semibold text-emerald-600">Дт</span>
-                          {codes(dtByJournal.get(j.id)).map((c) => (
-                            <span key={`d${c}`} className="mr-1 font-mono" title={acctName.get(c) ?? ""}>
-                              {c}
-                            </span>
+                      {(linesByJournal.get(j.id) ?? []).length === 0 ? (
+                        <span className="text-zinc-400">—</span>
+                      ) : (
+                        <div className="min-w-[180px] space-y-0.5">
+                          {(linesByJournal.get(j.id) ?? []).map((ln, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between gap-4"
+                            >
+                              <span className="whitespace-nowrap">
+                                <span
+                                  className={`mr-1 font-semibold ${
+                                    ln.side === "Дт" ? "text-emerald-600" : "text-rose-600"
+                                  }`}
+                                >
+                                  {ln.side}
+                                </span>
+                                <span
+                                  className="font-mono text-zinc-700"
+                                  title={acctName.get(ln.code) ?? ""}
+                                >
+                                  {ln.code}
+                                </span>
+                              </span>
+                              <span className="tabular-nums text-zinc-600">
+                                {fmt(ln.amount)}
+                              </span>
+                            </div>
                           ))}
-                          {codes(dtByJournal.get(j.id)).length === 0 ? "—" : null}
-                        </span>
-                        <span className="text-zinc-700">
-                          <span className="mr-1 font-semibold text-rose-600">Кт</span>
-                          {codes(ktByJournal.get(j.id)).map((c) => (
-                            <span key={`c${c}`} className="mr-1 font-mono" title={acctName.get(c) ?? ""}>
-                              {c}
-                            </span>
-                          ))}
-                          {codes(ktByJournal.get(j.id)).length === 0 ? "—" : null}
-                        </span>
-                      </div>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-zinc-500">
                       {j.partner_id ? partnerName.get(j.partner_id) ?? "—" : "—"}
