@@ -3,8 +3,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { JOURNAL_SELECT, type JournalRow } from "./types";
 import { DeleteJournalButton } from "./delete-button";
+import { JournalsFilter } from "./journals-filter";
 
 const ROW_LIMIT = 300;
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-US");
@@ -16,12 +18,36 @@ const SOURCE_LABEL: Record<string, string> = {
   bank: "Банк",
 };
 
-export default async function JournalsPage() {
-  const supabase = await createClient();
+type SearchParams = { q?: string; from?: string; to?: string };
 
-  const { data, error, count } = await supabase
+export default async function JournalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const supabase = await createClient();
+  const sp = await searchParams;
+
+  const q = (sp.q ?? "").trim();
+  const from = sp.from && ISO.test(sp.from) ? sp.from : "";
+  const to = sp.to && ISO.test(sp.to) ? sp.to : "";
+
+  let query = supabase
     .from("journals")
-    .select(JOURNAL_SELECT, { count: "exact" })
+    .select(JOURNAL_SELECT, { count: "exact" });
+
+  if (from) query = query.gte("date", from);
+  if (to) query = query.lte("date", to);
+  if (q) {
+    // PostgREST or()-д тусгай тэмдэгт асуудал үүсгэхээс сэргийлж цэвэрлэнэ.
+    const safe = q.replace(/[,()*]/g, " ").trim();
+    if (safe)
+      query = query.or(
+        `description.ilike.*${safe}*,number.ilike.*${safe}*,reference.ilike.*${safe}*`,
+      );
+  }
+
+  const { data, error, count } = await query
     .order("date", { ascending: false })
     .order("id", { ascending: false })
     .limit(ROW_LIMIT);
@@ -102,7 +128,11 @@ export default async function JournalsPage() {
         </Link>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
+      <div className="mt-5">
+        <JournalsFilter q={q} from={from} to={to} />
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-zinc-200 bg-white">
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3">
           <span className="text-sm font-semibold text-zinc-700">
             Журналын жагсаалт
