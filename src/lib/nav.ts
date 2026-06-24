@@ -172,8 +172,11 @@ export const navEntries: NavEntry[] = [
     icon: "❓",
     items: [
       { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
+      { href: "/help/bank", label: "Харилцах данс — заавар", icon: "🏦" },
+      { href: "/help/cash", label: "Касс — заавар", icon: "🪙" },
       { href: "/help/inventory", label: "Бараа материал — заавар", icon: "📦" },
       { href: "/help/assets", label: "Үндсэн хөрөнгө — заавар", icon: "🏗" },
+      { href: "/help/salary", label: "Цалин — заавар", icon: "💰" },
     ],
   },
 ];
