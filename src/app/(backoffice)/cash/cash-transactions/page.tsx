@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { PrintButton } from "@/components/print-button";
+import { CashTxnToolbar, type CashExportRow } from "./cash-txn-toolbar";
 import { ENTRY_SELECT, REGISTER_SELECT, type EntryRow, type RegisterRow } from "../types";
 
 type SearchParams = { reg?: string; from?: string; to?: string };
@@ -97,6 +97,20 @@ export default async function CashTransactionsPage({
   const closing = opening + totalIn - totalOut;
   const closingMnt = openingMnt + totalInMnt - totalOutMnt;
 
+  // Excel татах мөрүүд.
+  const exportRows: CashExportRow[] = rows.map(({ e, inc, exp, incMnt, expMnt, balance, balanceMnt }) => ({
+    docNo: e.doc_no || "",
+    date: e.date,
+    desc: e.description || "",
+    partner: e.partner_name || "",
+    income: inc,
+    expense: exp,
+    balance,
+    incomeMnt: incMnt,
+    expenseMnt: expMnt,
+    balanceMnt,
+  }));
+
   const qs = (over: Partial<SearchParams>) => {
     const p = new URLSearchParams();
     if (over.reg ?? regId) p.set("reg", String(over.reg ?? regId));
@@ -123,7 +137,18 @@ export default async function CashTransactionsPage({
               Харах
             </button>
           </form>
-          <PrintButton />
+          <CashTxnToolbar
+            rows={exportRows}
+            fileLabel={`${reg?.name ?? "касс"}_${from}_${to}`}
+            regName={reg?.name ?? ""}
+            period={`${from} → ${to} · ${ccy}`}
+            ccy={ccy}
+            isForeign={isForeign}
+            opening={opening}
+            closing={closing}
+            openingMnt={openingMnt}
+            closingMnt={closingMnt}
+          />
         </div>
       </div>
 
