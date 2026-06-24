@@ -1,5 +1,6 @@
 import { resolveUsefulLife } from "@/lib/asset-calc";
 import { RowActions } from "./row-actions";
+import { AssetsListToolbar, type AssetExportRow } from "./assets-list-toolbar";
 import type { AssetRow, CategoryRow, LocationRow } from "./types";
 
 function fmtMoney(n: number): string {
@@ -21,8 +22,32 @@ export function AssetsTab({
   const totalCost = assets.reduce((s, a) => s + (Number(a.cost) || 0), 0);
   const activeCount = assets.filter((a) => a.status === "active").length;
 
+  // Excel export-д бэлдэх (унших боломжтой утгуудаар).
+  const exportRows: AssetExportRow[] = assets.map((a) => {
+    const cat = a.category_id ? catById.get(a.category_id) : null;
+    const loc = a.location_id != null ? locById.get(a.location_id) : null;
+    return {
+      name: a.name,
+      code: a.code ?? "",
+      barcode: a.barcode ?? "",
+      category: cat?.name ?? "",
+      company: a.company ?? "",
+      acquired: a.acquired_date ?? "",
+      cost: Number(a.cost) || 0,
+      salvage: Number(a.salvage_value) || 0,
+      life: Number(resolveUsefulLife(a.useful_life_years, cat?.useful_life_years)) || 0,
+      location: loc?.name ?? a.location ?? "",
+      responsible: a.responsible ?? "",
+      status: a.status === "active" ? "Идэвхтэй" : "Актласан",
+    };
+  });
+
   return (
     <div>
+      <div className="mb-4">
+        <AssetsListToolbar rows={exportRows} />
+      </div>
+
       {/* Нэгтгэлийн картууд */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
