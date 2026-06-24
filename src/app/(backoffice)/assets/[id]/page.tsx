@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { loadCompany } from "@/lib/company";
 import { AssetForm } from "../asset-form";
 import { AcquirePanel } from "../acquire-panel";
+import { RevisePanel } from "../revise-panel";
 import { DisposePanel } from "../dispose-panel";
 import { MovePanel } from "../move-panel";
 import {
@@ -92,6 +93,7 @@ export default async function EditAssetPage({
 
       <div className="mt-6 max-w-2xl space-y-6">
         <AcquirePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
+        <RevisePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
         <MovePanel asset={asset} locations={locations} movements={movements} />
         <DisposePanel asset={asset} category={category} isVatPayer={company.isVatPayer} />
       </div>

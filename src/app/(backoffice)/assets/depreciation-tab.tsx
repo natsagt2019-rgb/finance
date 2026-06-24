@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import { saveDepreciation, type DepreciationInputRow } from "./actions";
 import type { AssetRow, CategoryRow } from "./types";
 
@@ -49,6 +49,7 @@ export function DepreciationTab({
           acquiredDate: a.acquired_date,
           openingDate: a.opening_date,
           openingAccumDepreciation: Number(a.opening_accum_depreciation) || 0,
+          ...revisionInput(a),
         },
         year,
         month,
@@ -80,6 +81,10 @@ export function DepreciationTab({
       acquired_date: asset.acquired_date,
       opening_date: asset.opening_date,
       opening_accum_depreciation: Number(asset.opening_accum_depreciation) || 0,
+      revision_date: asset.revision_date,
+      revision_cost: asset.revision_cost,
+      revision_accum: asset.revision_accum,
+      revision_life_months: asset.revision_life_months,
     }));
     startTransition(async () => {
       const res = await saveDepreciation(year, month, payload);

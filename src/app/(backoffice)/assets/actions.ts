@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import { buildDisposalJournal, type DisposalType } from "@/lib/asset-disposal";
 import { buildAcquisitionJournal } from "@/lib/asset-acquisition";
+import { buildRevaluationJournal } from "@/lib/asset-revision";
 import { VAT_RATE, loadCompany } from "@/lib/company";
 import { postJournal } from "@/lib/post-journal";
 
@@ -234,6 +235,10 @@ export type DepreciationInputRow = {
   acquired_date: string | null;
   opening_date: string | null;
   opening_accum_depreciation: number;
+  revision_date?: string | null;
+  revision_cost?: number | null;
+  revision_accum?: number | null;
+  revision_life_months?: number | null;
 };
 
 export async function saveDepreciation(
@@ -253,6 +258,7 @@ export async function saveDepreciation(
         acquiredDate: r.acquired_date,
         openingDate: r.opening_date,
         openingAccumDepreciation: r.opening_accum_depreciation,
+        ...revisionInput(r),
       },
       year,
       month,
@@ -344,7 +350,8 @@ export async function disposeAsset(
     .from("assets")
     .select(
       "id, cost, salvage_value, useful_life_years, acquired_date, opening_date, " +
-        "opening_accum_depreciation, category_id, disposal_journal_id",
+        "opening_accum_depreciation, category_id, disposal_journal_id, " +
+        "revision_date, revision_cost, revision_accum, revision_life_months",
     )
     .eq("id", assetId)
     .single();
@@ -359,6 +366,10 @@ export async function disposeAsset(
     opening_accum_depreciation: number;
     category_id: number | null;
     disposal_journal_id: number | null;
+    revision_date: string | null;
+    revision_cost: number | null;
+    revision_accum: number | null;
+    revision_life_months: number | null;
   };
 
   const catRes = aData.category_id
@@ -396,6 +407,7 @@ export async function disposeAsset(
       acquiredDate: aData.acquired_date as string | null,
       openingDate: aData.opening_date as string | null,
       openingAccumDepreciation: Number(aData.opening_accum_depreciation) || 0,
+      ...revisionInput(aData),
     },
     ym.year,
     ym.month,
@@ -881,4 +893,219 @@ export async function moveAssetsBulk(
 
   revalidatePath("/assets");
   return { ok: true, id: ids.length };
+}
+
+// ── Revision: засвар / дахин үнэлгээ / ашиглах хугацаа өөрчлөх ───────────────
+const ACC_SURPLUS = "520100"; // дахин үнэлгээний нөөц
+const ACC_REVAL_LOSS = "820900"; // дахин үнэлгээний гарз (бууралт)
+
+function prevMonth(year: number, month: number): { year: number; month: number } {
+  return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+}
+
+// Хөрөнгийн элэгдлийн суурийг R огнооноос проспектив өөрчилнө. Идемпотент биш —
+// аль хэдийн revision байгаа бол эхлээд буцаах шаардлагатай.
+export async function applyRevision(
+  assetId: number,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const kind = get("revision_kind");
+  if (!["repair", "revaluation", "life"].includes(kind))
+    return { ok: false, error: "Revision төрөл буруу." };
+  const date = get("revision_date");
+  const ym = ymOf(date);
+  if (!ym) return { ok: false, error: "Хүчинтэй болох огноо буруу." };
+  const lifeMonths = num(formData.get("life_months"));
+  if (lifeMonths <= 0) return { ok: false, error: "Үлдэх хугацаа (сар) оруулна уу." };
+  const note = get("note") || null;
+
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select(
+      "id, cost, salvage_value, useful_life_years, acquired_date, opening_date, " +
+        "opening_accum_depreciation, category_id, revision_date",
+    )
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const a = aRaw as unknown as {
+    cost: number;
+    salvage_value: number;
+    useful_life_years: number | null;
+    acquired_date: string | null;
+    opening_date: string | null;
+    opening_accum_depreciation: number;
+    category_id: number | null;
+    revision_date: string | null;
+  };
+  if (a.revision_date)
+    return {
+      ok: false,
+      error: "Энэ хөрөнгөд аль хэдийн засвар/үнэлгээ бүртгэгдсэн. Эхлээд буцаана уу.",
+    };
+
+  const catRes = a.category_id
+    ? await supabase
+        .from("asset_categories")
+        .select("account_code, accum_account_code, useful_life_years")
+        .eq("id", a.category_id)
+        .single()
+    : { data: null };
+  const cat = catRes.data as unknown as {
+    account_code: string | null;
+    accum_account_code: string | null;
+    useful_life_years: number | null;
+  } | null;
+
+  // R-ийн ӨМНӨХ сар хүртэлх хуримтлагдсан элэгдэл (анхны хуваариар).
+  const life = resolveUsefulLife(a.useful_life_years, cat?.useful_life_years);
+  const pm = prevMonth(ym.year, ym.month);
+  const cost = Number(a.cost) || 0;
+  const accumBefore = computeAsset(
+    {
+      cost,
+      salvageValue: Number(a.salvage_value) || 0,
+      usefulLifeYears: life,
+      acquiredDate: a.acquired_date,
+      openingDate: a.opening_date,
+      openingAccumDepreciation: Number(a.opening_accum_depreciation) || 0,
+    },
+    pm.year,
+    pm.month,
+  ).accumulatedDepreciation;
+
+  let revCost: number;
+  let revAccum: number;
+  let journalLines:
+    | { code: string; debit: number; credit: number; description: string }[]
+    | null = null;
+
+  if (kind === "life") {
+    revCost = cost;
+    revAccum = accumBefore;
+  } else if (kind === "repair") {
+    const repairNet = num(formData.get("repair_amount"));
+    if (repairNet <= 0) return { ok: false, error: "Засварын дүн оруулна уу." };
+    if (!cat?.account_code)
+      return { ok: false, error: "Ангилалд хөрөнгийн данс тохируулна уу." };
+    const settlement = get("settlement_code") || "310100";
+    const noVat = get("no_vat") === "1";
+    const company = await loadCompany();
+    const vat = !noVat && company.isVatPayer ? Math.round(repairNet * VAT_RATE * 100) / 100 : 0;
+    const built = buildAcquisitionJournal({
+      cost: repairNet,
+      vat,
+      accounts: { asset: cat.account_code, inputVat: ACC_INPUT_VAT, settlement },
+    });
+    if (!built.ok) return { ok: false, error: built.error };
+    journalLines = built.lines;
+    revCost = cost + repairNet;
+    revAccum = accumBefore;
+  } else {
+    // revaluation (elimination)
+    const fairValue = num(formData.get("fair_value"));
+    if (fairValue <= 0) return { ok: false, error: "Шинэ үнэ цэнэ оруулна уу." };
+    if (!cat?.account_code || !cat?.accum_account_code)
+      return { ok: false, error: "Ангилалд хөрөнгө/элэгдлийн данс тохируулна уу." };
+    const built = buildRevaluationJournal({
+      cost,
+      accumulated: accumBefore,
+      fairValue,
+      accounts: {
+        asset: cat.account_code,
+        accum: cat.accum_account_code,
+        surplus: ACC_SURPLUS,
+        loss: ACC_REVAL_LOSS,
+      },
+    });
+    if (!built.ok) return { ok: false, error: built.error };
+    journalLines = built.lines;
+    revCost = fairValue;
+    revAccum = 0;
+  }
+
+  // Журнал бичих (засвар/дахин үнэлгээ).
+  let journalId: number | null = null;
+  if (journalLines) {
+    const codes = [...new Set(journalLines.map((l) => l.code))];
+    const { data: accs } = await supabase.from("accounts").select("id, code").in("code", codes);
+    const idByCode = new Map<string, number>();
+    for (const x of (accs as { id: number; code: string }[] | null) ?? [])
+      idByCode.set(x.code, x.id);
+    const lines = journalLines.map((l) => ({
+      account_id: idByCode.get(l.code),
+      debit: l.debit,
+      credit: l.credit,
+      description: l.description,
+    }));
+    if (lines.some((l) => l.account_id == null)) {
+      const code = journalLines.find((l) => idByCode.get(l.code) == null)?.code;
+      return { ok: false, error: `Дансны код олдсонгүй: ${code}.` };
+    }
+    const label = kind === "repair" ? "Үндсэн хөрөнгө засвар" : "Үндсэн хөрөнгө дахин үнэлгээ";
+    const res = await postJournal(supabase, {
+      date,
+      description: `${label}${note ? ` — ${note}` : ""}`,
+      reference: `REV-${assetId}`,
+      partner_id: null,
+      source: "asset_revision",
+      lines: lines as { account_id: number; debit: number; credit: number; description: string }[],
+    });
+    if (!res.ok) return { ok: false, error: `Журнал: ${res.error}` };
+    journalId = res.id;
+  }
+
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({
+      revision_kind: kind,
+      revision_date: date,
+      revision_cost: revCost,
+      revision_accum: revAccum,
+      revision_life_months: lifeMonths,
+      revision_note: note,
+      revision_journal_id: journalId,
+    })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: assetId };
+}
+
+// Revision-ыг буцаах: журналыг устгаж, талбаруудыг цэвэрлэнэ (анхны хуваарь руу).
+export async function reverseRevision(assetId: number): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select("id, revision_journal_id")
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const jid = (aRaw as unknown as { revision_journal_id: number | null }).revision_journal_id;
+  if (jid) await deleteJournalFull(supabase, jid);
+
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({
+      revision_kind: null,
+      revision_date: null,
+      revision_cost: null,
+      revision_accum: null,
+      revision_life_months: null,
+      revision_note: null,
+      revision_journal_id: null,
+    })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: assetId };
 }

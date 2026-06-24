@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import { buildDisposalJournal } from "@/lib/asset-disposal";
 import { disposeAsset, reverseDisposal } from "./actions";
 import type { AssetRow, CategoryRow } from "./types";
@@ -74,6 +74,7 @@ export function DisposePanel({
         acquiredDate: asset.acquired_date,
         openingDate: asset.opening_date,
         openingAccumDepreciation: Number(asset.opening_accum_depreciation) || 0,
+        ...revisionInput(asset),
       },
       Number(ym[1]),
       Number(ym[2]),

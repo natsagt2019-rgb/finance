@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import {
   ASSET_SELECT,
   CATEGORY_SELECT,
@@ -180,6 +180,7 @@ export default async function AssetRegisterPage({
                   openingDate: a.opening_date,
                   openingAccumDepreciation:
                     Number(a.opening_accum_depreciation) || 0,
+                  ...revisionInput(a),
                 },
                 year,
                 month,

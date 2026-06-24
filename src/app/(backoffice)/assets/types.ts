@@ -62,6 +62,13 @@ export type AssetRow = {
   opening_accum_depreciation: number; // тэр огноо дахь хуримтлагдсан элэгдэл
   acquisition_vat: number;
   acquisition_journal_id: number | null;
+  revision_kind: "repair" | "revaluation" | "life" | null;
+  revision_date: string | null;
+  revision_cost: number | null;
+  revision_accum: number | null;
+  revision_life_months: number | null;
+  revision_note: string | null;
+  revision_journal_id: number | null;
   status: AssetStatus;
   disposed_date: string | null;
   disposal_note: string | null;
@@ -76,6 +83,8 @@ export const ASSET_SELECT =
   "id, name, code, category_id, company, acquired_date, cost, salvage_value, " +
   "useful_life_years, location, location_id, barcode, responsible, opening_date, " +
   "opening_accum_depreciation, acquisition_vat, acquisition_journal_id, " +
+  "revision_kind, revision_date, revision_cost, revision_accum, " +
+  "revision_life_months, revision_note, revision_journal_id, " +
   "status, disposed_date, " +
   "disposal_note, disposal_type, disposal_proceeds, disposal_vat, " +
   "disposal_journal_id, is_active";

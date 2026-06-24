@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import {
   ASSET_SELECT,
   CATEGORY_SELECT,
@@ -119,6 +119,7 @@ export default async function AssetDocumentPage({
       acquiredDate: asset.acquired_date,
       openingDate: asset.opening_date,
       openingAccumDepreciation: Number(asset.opening_accum_depreciation) || 0,
+      ...revisionInput(asset),
     },
     Number(ry),
     Number(rm),

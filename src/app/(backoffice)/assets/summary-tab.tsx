@@ -1,4 +1,4 @@
-import { computeAsset, resolveUsefulLife } from "@/lib/asset-calc";
+import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
 import { AssetsToolbar, type SummaryExportRow } from "./assets-toolbar";
 import type { AssetRow, CategoryRow } from "./types";
 
@@ -48,6 +48,7 @@ export function SummaryTab({
         acquiredDate: a.acquired_date,
         openingDate: a.opening_date,
         openingAccumDepreciation: Number(a.opening_accum_depreciation) || 0,
+        ...revisionInput(a),
       },
       year,
       month,
