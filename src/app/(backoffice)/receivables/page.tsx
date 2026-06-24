@@ -10,7 +10,6 @@ import {
   type ReceivableItem,
 } from "@/lib/receivables-calc";
 
-const ENTRY_LIMIT = 100000;
 const INVOICE_LIMIT = 5000;
 const NO_PARTNER = "Тодорхойгүй (партнергүй)";
 
@@ -39,6 +38,23 @@ type InvRow = {
   paid_amount: number;
 };
 
+// PostgREST нэг хүсэлтэд 1000 мөр л буцаадаг (server max-rows). Авлагын Дт/Кт
+// бичилт 1000-аас олон бол .limit() хүрэлцэхгүй, үлдэгдэл буруу гарна. .range()-
+// ээр бүрэн хуудаслаж татна.
+async function fetchAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const PAGE = 1000;
+  const rows: T[] = [];
+  for (let offset = 0; offset < 1000000; offset += PAGE) {
+    const { data } = await build(offset, offset + PAGE - 1);
+    const page = (data as T[] | null) ?? [];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return rows;
+}
+
 export default async function ReceivablesPage() {
   const supabase = await createClient();
 
@@ -64,29 +80,31 @@ export default async function ReceivablesPage() {
   const displayName = new Map<string, string>(); // key → дэлгэцийн нэр
 
   if (recvCodes.length > 0) {
-    const [{ data: dr }, { data: cr }] = await Promise.all([
-      supabase
-        .from("journal_entries")
-        .select("txn_date, partner_name, amount")
-        .in("debit_code", recvCodes)
-        .lte("txn_date", today)
-        .limit(ENTRY_LIMIT),
-      supabase
-        .from("journal_entries")
-        .select("partner_name, amount")
-        .in("credit_code", recvCodes)
-        .lte("txn_date", today)
-        .limit(ENTRY_LIMIT),
+    const [dr, cr] = await Promise.all([
+      fetchAll<EntryRow>((from, to) =>
+        supabase
+          .from("journal_entries")
+          .select("txn_date, partner_name, amount")
+          .in("debit_code", recvCodes)
+          .lte("txn_date", today)
+          .range(from, to)),
+      fetchAll<{ partner_name: string | null; amount: number }>((from, to) =>
+        supabase
+          .from("journal_entries")
+          .select("partner_name, amount")
+          .in("credit_code", recvCodes)
+          .lte("txn_date", today)
+          .range(from, to)),
     ]);
 
-    for (const e of (dr as EntryRow[] | null) ?? []) {
+    for (const e of dr) {
       const key = normalizePartner(e.partner_name);
       if (key && !displayName.has(key)) displayName.set(key, e.partner_name!.trim());
       const arr = jDebits.get(key) ?? [];
       arr.push({ date: e.txn_date, amount: Number(e.amount) || 0 });
       jDebits.set(key, arr);
     }
-    for (const e of (cr as { partner_name: string | null; amount: number }[] | null) ?? []) {
+    for (const e of cr) {
       const key = normalizePartner(e.partner_name);
       jCredit.set(key, (jCredit.get(key) ?? 0) + (Number(e.amount) || 0));
     }

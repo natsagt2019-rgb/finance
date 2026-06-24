@@ -20,6 +20,23 @@ function r2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+// Журналын толгойн partner_id-г GL-д (journal_entries.partner_name) тусгахын
+// тулд харилцагчийн нэрээр хөрвүүлнэ. Авлага/өглөгийн хуудас нь зөвхөн
+// partner_name-ээр бүлэглэдэг тул толгой дахь partner_id-г GL рүү дамжуулахгүй
+// бол гар/кассын журнал харилцагчаар тусахгүй.
+export async function partnerNameById(
+  supabase: Supa,
+  id: number | null,
+): Promise<string | null> {
+  if (id == null) return null;
+  const { data } = await supabase
+    .from("partners")
+    .select("name")
+    .eq("id", id)
+    .maybeSingle();
+  return ((data as { name: string } | null)?.name ?? null);
+}
+
 // Тусгах мөрийн хөнгөн хэлбэр (description заавал биш).
 type LedgerLine = { account_id: number | null; debit: number; credit: number };
 
@@ -189,6 +206,7 @@ export async function postJournal(
     const mir = await mirrorToLedger(supabase, {
       date: input.date,
       description: input.description || null,
+      partner_name: await partnerNameById(supabase, input.partner_id),
       source: input.source,
       journalId,
       lines,

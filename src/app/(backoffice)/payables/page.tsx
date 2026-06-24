@@ -10,7 +10,6 @@ import {
   type ReceivableItem,
 } from "@/lib/receivables-calc";
 
-const ENTRY_LIMIT = 100000;
 const NO_PARTNER = "Тодорхойгүй (партнергүй)";
 
 function fmt(n: number): string {
@@ -19,6 +18,22 @@ function fmt(n: number): string {
 
 type AccRow = { code: string; name: string; type: string | null; fs_line: string | null };
 type EntryRow = { txn_date: string; partner_name: string | null; amount: number };
+
+// PostgREST нэг хүсэлтэд 1000 мөр л буцаадаг. Өглөгийн бичилт олон бол .range()-
+// ээр бүрэн хуудаслаж татна (эс бөгөөс үлдэгдэл буруу гарна).
+async function fetchAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const PAGE = 1000;
+  const rows: T[] = [];
+  for (let offset = 0; offset < 1000000; offset += PAGE) {
+    const { data } = await build(offset, offset + PAGE - 1);
+    const page = (data as T[] | null) ?? [];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return rows;
+}
 
 export default async function PayablesPage() {
   const supabase = await createClient();
@@ -40,22 +55,24 @@ export default async function PayablesPage() {
   const displayName = new Map<string, string>();
 
   if (payCodes.length > 0) {
-    const [{ data: cr }, { data: dr }] = await Promise.all([
-      supabase
-        .from("journal_entries")
-        .select("txn_date, partner_name, amount")
-        .in("credit_code", payCodes)
-        .lte("txn_date", today)
-        .limit(ENTRY_LIMIT),
-      supabase
-        .from("journal_entries")
-        .select("partner_name, amount")
-        .in("debit_code", payCodes)
-        .lte("txn_date", today)
-        .limit(ENTRY_LIMIT),
+    const [cr, dr] = await Promise.all([
+      fetchAll<EntryRow>((from, to) =>
+        supabase
+          .from("journal_entries")
+          .select("txn_date, partner_name, amount")
+          .in("credit_code", payCodes)
+          .lte("txn_date", today)
+          .range(from, to)),
+      fetchAll<{ partner_name: string | null; amount: number }>((from, to) =>
+        supabase
+          .from("journal_entries")
+          .select("partner_name, amount")
+          .in("debit_code", payCodes)
+          .lte("txn_date", today)
+          .range(from, to)),
     ]);
 
-    for (const e of (cr as EntryRow[] | null) ?? []) {
+    for (const e of cr) {
       const key = normalizePartner(e.partner_name);
       if (key && !displayName.has(key) && e.partner_name)
         displayName.set(key, e.partner_name.trim());
@@ -63,7 +80,7 @@ export default async function PayablesPage() {
       arr.push({ date: e.txn_date, amount: Number(e.amount) || 0 });
       jCreated.set(key, arr);
     }
-    for (const e of (dr as { partner_name: string | null; amount: number }[] | null) ?? []) {
+    for (const e of dr) {
       const key = normalizePartner(e.partner_name);
       jPaid.set(key, (jPaid.get(key) ?? 0) + (Number(e.amount) || 0));
     }

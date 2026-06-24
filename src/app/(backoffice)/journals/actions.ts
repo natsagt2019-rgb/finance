@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { mirrorToLedger } from "@/lib/post-journal";
+import { mirrorToLedger, partnerNameById } from "@/lib/post-journal";
 import type { LineInput } from "./types";
 
 export type ActionResult =
@@ -125,6 +125,7 @@ export async function createJournal(input: {
     const mir = await mirrorToLedger(supabase, {
       date: input.date,
       description: input.description.trim() || null,
+      partner_name: await partnerNameById(supabase, input.partner_id),
       source: "manual",
       journalId,
       lines,
@@ -244,6 +245,7 @@ export async function updateJournal(
     const mir = await mirrorToLedger(supabase, {
       date: input.date,
       description: input.description.trim() || null,
+      partner_name: await partnerNameById(supabase, input.partner_id),
       source: "manual",
       journalId: id,
       lines: prep.lines,
