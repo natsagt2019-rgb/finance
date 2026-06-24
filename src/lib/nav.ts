@@ -162,6 +162,7 @@ export const navEntries: NavEntry[] = [
     items: [
       { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
       { href: "/help/inventory", label: "Бараа материал — заавар", icon: "📦" },
+      { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
     ],
   },
 ];

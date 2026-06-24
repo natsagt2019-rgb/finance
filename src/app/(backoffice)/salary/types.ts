@@ -37,9 +37,21 @@ export type SalaryRow = {
   base_salary: number;
   worked_hours: number;
   month_hours: number;
+  // Цагийн үзүүлэлт
+  overtime_hours: number; // илүү цаг
+  holiday_overtime_hours: number; // баярын өдрийн илүү цаг
+  late_minutes: number; // хоцорсон минут
+  // Нэмэгдэл
   phone_allowance: number;
   bonus: number;
   vacation_amount: number;
+  transport_allowance: number; // унаа
+  meal_allowance: number; // хоол
+  fuel_allowance: number; // түлээ, нүүрс
+  tenure_allowance: number; // удаан жилийн
+  overtime_pay: number; // илүү цагийн мөнгө
+  holiday_overtime_pay: number; // баярын өдрийн илүү цагийн мөнгө
+  // Суутгал
   late_deduction: number; // хоцролт
   savings_deduction: number; // хуримтлал
   discipline_deduction: number; // сахилгын шийтгэл
@@ -55,7 +67,9 @@ export type SalaryRow = {
 
 export const SALARY_SELECT =
   "id, employee_id, year, month, employee_name, company, salary_type, base_salary, " +
-  "worked_hours, month_hours, phone_allowance, bonus, vacation_amount, " +
+  "worked_hours, month_hours, overtime_hours, holiday_overtime_hours, late_minutes, " +
+  "phone_allowance, bonus, vacation_amount, transport_allowance, meal_allowance, " +
+  "fuel_allowance, tenure_allowance, overtime_pay, holiday_overtime_pay, " +
   "late_deduction, savings_deduction, discipline_deduction, other_deduction, " +
   "computed_salary, gross, sh_insurance, pit, advance, net, is_active";
 

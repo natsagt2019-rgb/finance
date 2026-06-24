@@ -137,9 +137,16 @@ export type SalaryInput = {
   workedHours: number;
   salaryType?: SalaryType; // анхдагч "fixed"
   manualAmount?: number; // "manual" төрөлд бодогдсон цалинг шууд авна
-  phoneAllowance?: number;
-  bonus?: number;
-  vacationAmount?: number;
+  // Нэмэгдлүүд (бүгд нийт цалинд орно)
+  phoneAllowance?: number; // утасны нэмэгдэл
+  bonus?: number; // шагнал, урамшуулал
+  vacationAmount?: number; // ЭА (ээлжийн амралт)
+  transportAllowance?: number; // унааны мөнгө
+  mealAllowance?: number; // хоолны мөнгө
+  fuelAllowance?: number; // түлээ, нүүрсний нэмэгдэл
+  tenureAllowance?: number; // удаан жилийн нэмэгдэл
+  overtimePay?: number; // илүү цагийн мөнгө
+  holidayOvertimePay?: number; // баярын өдрийн илүү цагийн мөнгө
   // Суутгалууд (бүгд цэвэр цалингаас хасагдана)
   lateDeduction?: number; // хоцролт
   savingsDeduction?: number; // хуримтлал
@@ -164,9 +171,17 @@ export function computeRow(
   params: SalaryParams = DEFAULT_PARAMS,
 ): SalaryComputed {
   const type = input.salaryType ?? "fixed";
-  const phone = input.phoneAllowance ?? 0;
-  const bonus = input.bonus ?? 0;
-  const vacation = input.vacationAmount ?? 0;
+  // Бүх нэмэгдэл (нийт цалинд орно).
+  const allowances =
+    (input.phoneAllowance ?? 0) +
+    (input.bonus ?? 0) +
+    (input.vacationAmount ?? 0) +
+    (input.transportAllowance ?? 0) +
+    (input.mealAllowance ?? 0) +
+    (input.fuelAllowance ?? 0) +
+    (input.tenureAllowance ?? 0) +
+    (input.overtimePay ?? 0) +
+    (input.holidayOvertimePay ?? 0);
   // Бүх нэмэлт суутгал (урьдчилгаанаас гадна).
   const deductions =
     (input.lateDeduction ?? 0) +
@@ -181,7 +196,7 @@ export function computeRow(
     input.workedHours,
     input.manualAmount ?? 0,
   );
-  const gross = round(computed + phone + bonus + vacation);
+  const gross = round(computed + allowances);
   const sh = shInsurance(gross, params);
   const tax = pit(gross, sh, params);
   // Урьдчилгаа (үндсэн × хувь) зөвхөн тогтмол цалинд утгатай.

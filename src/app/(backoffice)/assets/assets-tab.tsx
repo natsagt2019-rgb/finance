@@ -1,6 +1,6 @@
 import { resolveUsefulLife } from "@/lib/asset-calc";
 import { RowActions } from "./row-actions";
-import type { AssetRow, CategoryRow } from "./types";
+import type { AssetRow, CategoryRow, LocationRow } from "./types";
 
 function fmtMoney(n: number): string {
   return Math.round(Number(n) || 0).toLocaleString("en-US");
@@ -9,11 +9,14 @@ function fmtMoney(n: number): string {
 export function AssetsTab({
   assets,
   categories,
+  locations,
 }: {
   assets: AssetRow[];
   categories: CategoryRow[];
+  locations: LocationRow[];
 }) {
   const catById = new Map(categories.map((c) => [c.id, c]));
+  const locById = new Map(locations.map((l) => [l.id, l]));
 
   const totalCost = assets.reduce((s, a) => s + (Number(a.cost) || 0), 0);
   const activeCount = assets.filter((a) => a.status === "active").length;
@@ -63,6 +66,7 @@ export function AssetsTab({
                   <th className="px-4 py-2">Нэр / код</th>
                   <th className="px-4 py-2">Ангилал</th>
                   <th className="px-4 py-2">Компани</th>
+                  <th className="px-4 py-2">Байршил</th>
                   <th className="px-4 py-2">Эд хариуцагч</th>
                   <th className="px-4 py-2">Орсон огноо</th>
                   <th className="px-4 py-2 text-right">Анхны өртөг</th>
@@ -92,6 +96,11 @@ export function AssetsTab({
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                         {a.company || "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
+                        {(a.location_id != null && locById.get(a.location_id)?.name) ||
+                          a.location ||
+                          "—"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                         {a.responsible || "—"}

@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { createAsset, updateAsset } from "./actions";
-import { COMPANIES, type AssetRow, type CategoryRow } from "./types";
+import { COMPANIES, type AssetRow, type CategoryRow, type LocationRow } from "./types";
 
 type Props = {
   categories: CategoryRow[];
+  locations: LocationRow[];
 } & (
   | { mode: "create"; asset?: undefined }
   | { mode: "edit"; asset: AssetRow }
@@ -18,7 +19,7 @@ const inputCls =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900";
 const labelCls = "mb-1 block text-xs font-medium text-zinc-600";
 
-export function AssetForm({ mode, asset, categories }: Props) {
+export function AssetForm({ mode, asset, categories, locations }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>(asset?.status ?? "active");
@@ -74,6 +75,17 @@ export function AssetForm({ mode, asset, categories }: Props) {
             name="code"
             defaultValue={asset?.code ?? ""}
             placeholder="ҮХ-0001"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Баар код</label>
+          <input
+            type="text"
+            name="barcode"
+            defaultValue={asset?.barcode ?? ""}
+            placeholder="Сканердсан / гар оруулга"
             className={inputCls}
           />
         </div>
@@ -190,13 +202,19 @@ export function AssetForm({ mode, asset, categories }: Props) {
 
         <div>
           <label className={labelCls}>Байршил</label>
-          <input
-            type="text"
-            name="location"
-            defaultValue={asset?.location ?? ""}
-            placeholder="Төв оффис"
+          <select
+            name="location_id"
+            defaultValue={asset?.location_id ? String(asset.location_id) : ""}
             className={inputCls}
-          />
+          >
+            <option value="">— сонгох —</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.code ? `${l.code} — ` : ""}
+                {l.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
