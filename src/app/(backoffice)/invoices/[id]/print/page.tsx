@@ -65,10 +65,11 @@ export default async function InvoicePrintPage({
 
   // inv.amount = НӨАТ-тай нийт дүн (форм "Нийт дүн"; төлөв нь paid_amount-ийг
   // үүнтэй харьцуулдаг). НӨАТ-ыг нийт дүнгээс ЗАДЛАН гаргана — дээр нь нэмэхгүй.
-  // Байгууллага НӨАТ төлөгч бол нийт дүнгээс НӨАТ-ыг задлан гаргана; төлөгч
-  // биш бол НӨАТ байхгүй (net = нийт дүн).
+  // Энэ нэхэмжлэл НӨАТ-тай (байгууллага төлөгч БА нэхэмжлэл НӨАТ-тай) бол
+  // нийт дүнгээс НӨАТ-ыг задлан гаргана; үгүй бол НӨАТ байхгүй (net = нийт дүн).
+  const invHasVat = company.isVatPayer && inv.has_vat;
   const grand = Number(inv.amount) || 0;
-  const net = company.isVatPayer ? Math.round(grand / (1 + VAT_RATE)) : grand;
+  const net = invHasVat ? Math.round(grand / (1 + VAT_RATE)) : grand;
   const noat = grand - net;
   const remaining = grand - (Number(inv.paid_amount) || 0);
 
@@ -256,7 +257,7 @@ export default async function InvoicePrintPage({
           </div>
 
           <div className="min-w-[240px]">
-            {company.isVatPayer && (
+            {invHasVat && (
               <>
                 <div className="flex justify-between border-b border-zinc-100 py-1.5 text-[13px]">
                   <span className="text-[11px] text-zinc-400">Дүн (НӨАТ-гүй)</span>

@@ -33,10 +33,15 @@ type LineState = { description: string; qty: string; unit_price: string };
 
 export function InvoiceForm({ mode, invoice, partners, initialLines, vatPayer }: Props) {
   const router = useRouter();
-  const vatRate = vatPayer ? VAT_RATE : 0; // НӨАТ төлөгч биш бол НӨАТ тооцохгүй
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const printAfterRef = useRef(false);
+  // Энэ нэхэмжлэл НӨАТ-тай эсэх (засахад хадгалсан утга, шинэд анхдагч = байгууллага
+  // НӨАТ төлөгч эсэх). НӨАТ зөвхөн байгууллага төлөгч БА энэ нэхэмжлэл НӨАТ-тай үед.
+  const [hasVat, setHasVat] = useState<boolean>(
+    invoice ? invoice.has_vat : vatPayer,
+  );
+  const vatRate = vatPayer && hasVat ? VAT_RATE : 0;
 
   const [lines, setLines] = useState<LineState[]>(() =>
     (initialLines ?? []).map((l) => ({
@@ -89,6 +94,7 @@ export function InvoiceForm({ mode, invoice, partners, initialLines, vatPayer }:
       }))
       .filter((l) => l.description || l.qty || l.unit_price);
     formData.set("lines", JSON.stringify(payload));
+    formData.set("has_vat", vatPayer && hasVat ? "1" : "");
     const printAfter = printAfterRef.current;
     printAfterRef.current = false;
 
@@ -202,6 +208,22 @@ export function InvoiceForm({ mode, invoice, partners, initialLines, vatPayer }:
           />
         </div>
       </div>
+
+      {/* НӨАТ-тай эсэх — зөвхөн байгууллага НӨАТ төлөгч үед сонгуулна */}
+      {vatPayer && (
+        <label className="flex items-center gap-2 text-sm text-zinc-700">
+          <input
+            type="checkbox"
+            checked={hasVat}
+            onChange={(e) => setHasVat(e.target.checked)}
+            className="h-4 w-4 rounded border-zinc-300"
+          />
+          Энэ нэхэмжлэл НӨАТ-тай (10%)
+          <span className="text-xs text-zinc-400">
+            — чөлөөлөгдөх/НӨАТ-гүй борлуулалт бол тэмдэглэгээг авна
+          </span>
+        </label>
+      )}
 
       {/* ── Мөрүүд (line items) ─────────────────────────────────────── */}
       <div className="rounded-xl border border-zinc-200">

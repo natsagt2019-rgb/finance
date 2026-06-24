@@ -16,12 +16,13 @@ export type InvoiceRow = {
   paid_amount: number;
   status: InvoiceStatus;
   currency: string | null;
+  has_vat: boolean; // НӨАТ-тай нэхэмжлэл эсэх (амжилт = net × 1.1)
   is_active: boolean;
 };
 
 export const INVOICE_SELECT =
   "id, invoice_no, inv_date, due_date, partner_id, partner_name, " +
-  "responsible, description, amount, paid_amount, status, currency, is_active";
+  "responsible, description, amount, paid_amount, status, currency, has_vat, is_active";
 
 // Нэхэмжлэлийн мөр (line item). amount = qty × unit_price (НӨАТ-гүй).
 export type InvoiceLine = {

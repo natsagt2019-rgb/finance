@@ -74,7 +74,9 @@ async function readForm(formData: FormData) {
   // НӨАТ хувь нь байгууллага НӨАТ төлөгч эсэхээс хамаарна (төлөгч биш бол 0).
   // Мөргүй бол гар оруулсан "Нийт дүн"-г ашиглана (хуучин нэхэмжлэлтэй нийцнэ).
   const company = await loadCompany();
-  const rate = company.isVatPayer ? VAT_RATE : 0;
+  // НӨАТ зөвхөн байгууллага НӨАТ төлөгч БА энэ нэхэмжлэл НӨАТ-тай тэмдэглэгдсэн үед.
+  const hasVat = company.isVatPayer && formData.get("has_vat") === "1";
+  const rate = hasVat ? VAT_RATE : 0;
   const lineNet = lines.reduce((s, l) => s + l.amount, 0);
   const amount = lines.length > 0 ? r2(lineNet * (1 + rate)) : num(formData.get("amount"));
   const paid = num(formData.get("paid_amount"));
@@ -92,6 +94,7 @@ async function readForm(formData: FormData) {
       paid_amount: paid,
       status: deriveStatus(amount, paid),
       currency: get("currency") || "MNT",
+      has_vat: hasVat,
     },
     lines,
   };

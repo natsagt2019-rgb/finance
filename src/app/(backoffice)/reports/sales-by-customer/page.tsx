@@ -17,7 +17,9 @@ type Group = {
   code: string;
   name: string;
   count: number;
-  gross: number; // invoices.amount = НӨАТ-тай нийт дүн
+  gross: number; // invoices.amount нийлбэр (нийт дүн)
+  net: number; // НӨАТ-гүй дүн (НӨАТ-тай нэхэмжлэлд amount/1.1, бусдад amount)
+  vat: number; // НӨАТ (gross − net)
 };
 
 export default async function SalesByCustomerPage({
@@ -40,7 +42,7 @@ export default async function SalesByCustomerPage({
   const [{ data: invRows, error }, { data: partnerRows }] = await Promise.all([
     supabase
       .from("invoices")
-      .select("amount, partner_id, partner_name")
+      .select("amount, partner_id, partner_name, has_vat")
       .eq("is_active", true)
       .gte("inv_date", dFrom)
       .lte("inv_date", dTo)
@@ -58,19 +60,29 @@ export default async function SalesByCustomerPage({
     partnerById.set(p.id, { code: p.code, name: p.name });
   }
 
-  // Харилцагчаар бүлэглэх
+  // Харилцагчаар бүлэглэх. НӨАТ-ыг нэхэмжлэх тус бүрийн has_vat-аар тооцно
+  // (НӨАТ-гүй/чөлөөлөгдөх борлуулалтад худал НӨАТ зохиохгүй).
   const groups = new Map<string, Group>();
   for (const r of (invRows as
-    | { amount: number | null; partner_id: number | null; partner_name: string | null }[]
+    | {
+        amount: number | null;
+        partner_id: number | null;
+        partner_name: string | null;
+        has_vat: boolean | null;
+      }[]
     | null) ?? []) {
     const p = r.partner_id != null ? partnerById.get(r.partner_id) : undefined;
     const name = p?.name || r.partner_name || "(тодорхойгүй)";
     const code = p?.code || "";
     const key = r.partner_id != null ? `id:${r.partner_id}` : `nm:${name}`;
+    const gross = Number(r.amount) || 0;
+    const net = r.has_vat ? Math.round(gross / (1 + VAT_RATE)) : gross;
     const g =
-      groups.get(key) ?? { key, code, name, count: 0, gross: 0 };
+      groups.get(key) ?? { key, code, name, count: 0, gross: 0, net: 0, vat: 0 };
     g.count += 1;
-    g.gross += Number(r.amount) || 0;
+    g.gross += gross;
+    g.net += net;
+    g.vat += gross - net;
     groups.set(key, g);
   }
 
@@ -86,8 +98,8 @@ export default async function SalesByCustomerPage({
   list.sort((a, b) => b.gross - a.gross);
 
   const totalGross = list.reduce((s, g) => s + g.gross, 0);
-  const totalNet = Math.round(totalGross / (1 + VAT_RATE));
-  const totalVat = totalGross - totalNet;
+  const totalNet = list.reduce((s, g) => s + g.net, 0);
+  const totalVat = list.reduce((s, g) => s + g.vat, 0);
   const totalCount = list.reduce((s, g) => s + g.count, 0);
 
   const inputCls =
@@ -162,8 +174,8 @@ export default async function SalesByCustomerPage({
             <tbody className="divide-y divide-zinc-100">
               {list.map((g, i) => {
                 const total = g.gross;
-                const net = Math.round(g.gross / (1 + VAT_RATE));
-                const vat = g.gross - net;
+                const net = g.net;
+                const vat = g.vat;
                 const pct = totalGross ? (g.gross / totalGross) * 100 : 0;
                 return (
                   <tr key={g.key}>
@@ -214,8 +226,9 @@ export default async function SalesByCustomerPage({
       )}
 
       <p className="mt-3 text-xs text-zinc-400 print:hidden">
-        НӨАТ-гүй дүн = нэхэмжилсэн дүн · НӨАТ = 10% · Нийт дүн = НӨАТ-тай. Өртөг/ашиг
-        тооцоход барааны өртгийн мэдээлэл шаардлагатай тул энэ хувилбарт ороогүй.
+        НӨАТ-ыг нэхэмжлэх бүрийн «НӨАТ-тай эсэх»-ээс хамаарч задална (НӨАТ-гүй/
+        чөлөөлөгдөх борлуулалтад НӨАТ тооцохгүй). Өртөг/ашиг тооцоход барааны
+        өртгийн мэдээлэл шаардлагатай тул энэ хувилбарт ороогүй.
       </p>
     </div>
   );
