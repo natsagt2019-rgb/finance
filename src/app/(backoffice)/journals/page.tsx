@@ -43,6 +43,48 @@ export default async function JournalsPage() {
       partnerName.set(p.id, p.name);
   }
 
+  // Журнал бүрийн харьцсан данс (Дт / Кт) — journal_lines-аас.
+  const journalIds = journals.map((j) => j.id);
+  const dtByJournal = new Map<number, Set<string>>();
+  const ktByJournal = new Map<number, Set<string>>();
+  const acctName = new Map<string, string>();
+  if (journalIds.length > 0) {
+    const { data: lineData } = await supabase
+      .from("journal_lines")
+      .select("journal_id, account_id, debit, credit")
+      .in("journal_id", journalIds)
+      .limit(20000);
+    const lines =
+      (lineData as
+        | { journal_id: number; account_id: number | null; debit: number; credit: number }[]
+        | null) ?? [];
+
+    const acctIds = [
+      ...new Set(lines.map((l) => l.account_id).filter((x): x is number => x != null)),
+    ];
+    const codeById = new Map<number, string>();
+    if (acctIds.length > 0) {
+      const { data: acctData } = await supabase
+        .from("accounts")
+        .select("id, code, name")
+        .in("id", acctIds);
+      for (const a of (acctData as { id: number; code: string; name: string }[] | null) ?? []) {
+        codeById.set(a.id, a.code);
+        acctName.set(a.code, a.name);
+      }
+    }
+
+    for (const l of lines) {
+      const code = l.account_id != null ? codeById.get(l.account_id) : null;
+      if (!code) continue;
+      const target = (Number(l.debit) || 0) > 0 ? dtByJournal : ktByJournal;
+      if (!target.has(l.journal_id)) target.set(l.journal_id, new Set());
+      target.get(l.journal_id)!.add(code);
+    }
+  }
+  const codes = (s: Set<string> | undefined) =>
+    s ? [...s].sort() : [];
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -94,6 +136,7 @@ export default async function JournalsPage() {
                   <th className="px-4 py-2">Огноо</th>
                   <th className="px-4 py-2">Дугаар</th>
                   <th className="px-4 py-2">Утга</th>
+                  <th className="px-4 py-2">Дт / Кт данс</th>
                   <th className="px-4 py-2">Харилцагч</th>
                   <th className="px-4 py-2 text-right">Дүн</th>
                   <th className="px-4 py-2">Эх</th>
@@ -117,6 +160,28 @@ export default async function JournalsPage() {
                           {j.reference}
                         </span>
                       ) : null}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-zinc-700">
+                          <span className="mr-1 font-semibold text-emerald-600">Дт</span>
+                          {codes(dtByJournal.get(j.id)).map((c) => (
+                            <span key={`d${c}`} className="mr-1 font-mono" title={acctName.get(c) ?? ""}>
+                              {c}
+                            </span>
+                          ))}
+                          {codes(dtByJournal.get(j.id)).length === 0 ? "—" : null}
+                        </span>
+                        <span className="text-zinc-700">
+                          <span className="mr-1 font-semibold text-rose-600">Кт</span>
+                          {codes(ktByJournal.get(j.id)).map((c) => (
+                            <span key={`c${c}`} className="mr-1 font-mono" title={acctName.get(c) ?? ""}>
+                              {c}
+                            </span>
+                          ))}
+                          {codes(ktByJournal.get(j.id)).length === 0 ? "—" : null}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-zinc-500">
                       {j.partner_id ? partnerName.get(j.partner_id) ?? "—" : "—"}
