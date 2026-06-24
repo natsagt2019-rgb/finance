@@ -761,3 +761,67 @@ export async function deleteLocation(id: number): Promise<ActionResult> {
   revalidatePath("/assets");
   return { ok: true, id: data.id as number };
 }
+
+// ── Хөдөлгөөн: эзэмшил шилжүүлэх / дотоод хөдөлгөөн ──────────────────────────
+// Журналгүй — зөвхөн бүртгэл. Хөдөлгөөнийг asset_movements-д түүх болгон бичээд
+// хөрөнгийн одоогийн хариуцагч/байршлыг шинэчилнэ.
+export async function moveAsset(
+  assetId: number,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const moveType = get("move_type") === "internal" ? "internal" : "custody";
+  const movedDate = get("moved_date");
+  if (!movedDate) return { ok: false, error: "Хөдөлгөөний огноо заавал шаардлагатай." };
+  const note = get("note") || null;
+  const toResponsibleRaw = get("to_responsible");
+  const toLocRaw = num(formData.get("to_location_id"));
+  const toLocationId = toLocRaw > 0 ? toLocRaw : null;
+
+  // Хөрөнгийн одоогийн утга.
+  const { data: aRaw, error: ae } = await supabase
+    .from("assets")
+    .select("id, responsible, location_id")
+    .eq("id", assetId)
+    .single();
+  if (ae || !aRaw) return { ok: false, error: ae?.message ?? "Хөрөнгө олдсонгүй." };
+  const cur = aRaw as unknown as {
+    responsible: string | null;
+    location_id: number | null;
+  };
+
+  // Шинэ утгууд (хоосон бол хэвээр).
+  const toResponsible = toResponsibleRaw || cur.responsible;
+  const newLocationId = toLocationId ?? cur.location_id;
+
+  const noResponsibleChange = (toResponsible ?? null) === (cur.responsible ?? null);
+  const noLocationChange = newLocationId === cur.location_id;
+  if (noResponsibleChange && noLocationChange)
+    return { ok: false, error: "Өөрчлөлт алга — хариуцагч эсвэл байршлыг солино уу." };
+
+  // Хөдөлгөөний түүх.
+  const { error: me } = await supabase.from("asset_movements").insert({
+    asset_id: assetId,
+    moved_date: movedDate,
+    move_type: moveType,
+    from_responsible: cur.responsible,
+    to_responsible: toResponsible,
+    from_location_id: cur.location_id,
+    to_location_id: newLocationId,
+    note,
+  });
+  if (me) return { ok: false, error: me.message };
+
+  // Хөрөнгийн одоогийн хариуцагч/байршлыг шинэчилнэ.
+  const { error: ue } = await supabase
+    .from("assets")
+    .update({ responsible: toResponsible, location_id: newLocationId })
+    .eq("id", assetId);
+  if (ue) return { ok: false, error: ue.message };
+
+  revalidatePath("/assets");
+  revalidatePath(`/assets/${assetId}`);
+  return { ok: true, id: assetId };
+}

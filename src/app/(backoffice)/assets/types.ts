@@ -24,6 +24,23 @@ export type LocationRow = {
 
 export const LOCATION_SELECT = "id, code, name, is_active";
 
+// ── Хөдөлгөөн (эзэмшил шилжүүлэх / дотоод) ───────────────────────────────────
+export type MovementRow = {
+  id: number;
+  asset_id: number;
+  moved_date: string;
+  move_type: "custody" | "internal";
+  from_responsible: string | null;
+  to_responsible: string | null;
+  from_location_id: number | null;
+  to_location_id: number | null;
+  note: string | null;
+};
+
+export const MOVEMENT_SELECT =
+  "id, asset_id, moved_date, move_type, from_responsible, to_responsible, " +
+  "from_location_id, to_location_id, note";
+
 // ── Хөрөнгийн карт ───────────────────────────────────────────────────────────
 export type AssetStatus = "active" | "disposed";
 
