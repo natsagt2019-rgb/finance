@@ -11,6 +11,11 @@ function fmt(n: number, ccy = "MNT"): string {
   const d = ccy === "MNT" ? 0 : 2;
   return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
+// Төгрөгийн дүйцэл (гадаад валютын касс дээр давхар харуулна — журнал MNT-ээр).
+function fmtMnt(n: number): string {
+  if (!n) return "";
+  return `${Math.round(n).toLocaleString("en-US")}₮`;
+}
 
 export default async function CashTransactionsPage({
   searchParams,
@@ -39,6 +44,7 @@ export default async function CashTransactionsPage({
       : registers[0]?.id ?? null;
   const reg = registers.find((r) => r.id === regId) ?? null;
   const ccy = reg?.currency ?? "MNT";
+  const isForeign = ccy !== "MNT";
 
   // Сонгосон кассын бүх баримт (to хүртэл).
   let entries: EntryRow[] = [];
@@ -56,25 +62,40 @@ export default async function CashTransactionsPage({
     entries = (data as EntryRow[] | null) ?? [];
   }
 
-  // Эхний үлдэгдэл (мужийн өмнөх) + мужийн running balance.
+  // Эхний үлдэгдэл (мужийн өмнөх) + мужийн running balance. Кассын валютаар (amount)
+  // ба төгрөгөөр (amount_mnt) зэрэг — гадаад валютын касс дээр давхар харуулна.
   let opening = 0;
+  let openingMnt = 0;
   for (const e of entries) {
-    if (e.date < from) opening += (e.type === "in" ? 1 : -1) * Number(e.amount);
+    if (e.date < from) {
+      const s = e.type === "in" ? 1 : -1;
+      opening += s * Number(e.amount);
+      openingMnt += s * Number(e.amount_mnt);
+    }
   }
   let balance = opening;
+  let balanceMnt = openingMnt;
   let totalIn = 0;
   let totalOut = 0;
-  const rows: { e: EntryRow; inc: number; exp: number; balance: number }[] = [];
+  let totalInMnt = 0;
+  let totalOutMnt = 0;
+  const rows: { e: EntryRow; inc: number; exp: number; incMnt: number; expMnt: number; balance: number; balanceMnt: number }[] = [];
   for (const e of entries) {
     if (e.date < from || e.date > to) continue;
     const inc = e.type === "in" ? Number(e.amount) : 0;
     const exp = e.type === "out" ? Number(e.amount) : 0;
+    const incMnt = e.type === "in" ? Number(e.amount_mnt) : 0;
+    const expMnt = e.type === "out" ? Number(e.amount_mnt) : 0;
     balance += inc - exp;
+    balanceMnt += incMnt - expMnt;
     totalIn += inc;
     totalOut += exp;
-    rows.push({ e, inc, exp, balance });
+    totalInMnt += incMnt;
+    totalOutMnt += expMnt;
+    rows.push({ e, inc, exp, incMnt, expMnt, balance, balanceMnt });
   }
   const closing = opening + totalIn - totalOut;
+  const closingMnt = openingMnt + totalInMnt - totalOutMnt;
 
   const qs = (over: Partial<SearchParams>) => {
     const p = new URLSearchParams();
@@ -141,8 +162,10 @@ export default async function CashTransactionsPage({
             <span className="font-semibold text-zinc-900">{reg?.name}</span>
             <div className="text-xs text-zinc-500">
               Эхний үлдэгдэл: <span className="font-medium text-zinc-700">{fmt(opening, ccy)}</span>
+              {isForeign && <span className="text-zinc-400"> ({fmtMnt(openingMnt)})</span>}
               {"  ·  "}
               Эцсийн үлдэгдэл: <span className="font-medium text-zinc-700">{fmt(closing, ccy)}</span>
+              {isForeign && <span className="text-zinc-400"> ({fmtMnt(closingMnt)})</span>}
             </div>
           </div>
 
@@ -174,7 +197,7 @@ export default async function CashTransactionsPage({
                     </td>
                   </tr>
                 ) : (
-                  rows.map(({ e, inc, exp, balance }, i) => (
+                  rows.map(({ e, inc, exp, incMnt, expMnt, balance, balanceMnt }, i) => (
                     <tr key={e.id} className="hover:bg-zinc-50">
                       <td className="border border-zinc-200 px-3 py-1.5 text-zinc-400">{e.doc_no || i + 1}</td>
                       <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-600">{e.date}</td>
@@ -182,17 +205,35 @@ export default async function CashTransactionsPage({
                       <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-500">
                         {e.partner_name || "—"}
                       </td>
-                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">{inc ? fmt(inc, ccy) : "—"}</td>
-                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">{exp ? fmt(exp, ccy) : "—"}</td>
-                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums font-medium text-zinc-900">{fmt(balance, ccy)}</td>
+                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-green-700">
+                        {inc ? fmt(inc, ccy) : "—"}
+                        {isForeign && inc ? <div className="text-[10px] text-zinc-400">{fmtMnt(incMnt)}</div> : null}
+                      </td>
+                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-red-600">
+                        {exp ? fmt(exp, ccy) : "—"}
+                        {isForeign && exp ? <div className="text-[10px] text-zinc-400">{fmtMnt(expMnt)}</div> : null}
+                      </td>
+                      <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums font-medium text-zinc-900">
+                        {fmt(balance, ccy)}
+                        {isForeign && <div className="text-[10px] font-normal text-zinc-400">{fmtMnt(balanceMnt)}</div>}
+                      </td>
                     </tr>
                   ))
                 )}
                 <tr className="bg-zinc-50 font-semibold text-zinc-900">
                   <td colSpan={4} className="border border-zinc-200 px-3 py-2">Дансны дүн</td>
-                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-green-700">{fmt(totalIn, ccy)}</td>
-                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-red-600">{fmt(totalOut, ccy)}</td>
-                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums">{fmt(closing, ccy)}</td>
+                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-green-700">
+                    {fmt(totalIn, ccy)}
+                    {isForeign && totalInMnt ? <div className="text-[10px] font-normal text-zinc-400">{fmtMnt(totalInMnt)}</div> : null}
+                  </td>
+                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums text-red-600">
+                    {fmt(totalOut, ccy)}
+                    {isForeign && totalOutMnt ? <div className="text-[10px] font-normal text-zinc-400">{fmtMnt(totalOutMnt)}</div> : null}
+                  </td>
+                  <td className="border border-zinc-200 px-3 py-2 text-right tabular-nums">
+                    {fmt(closing, ccy)}
+                    {isForeign && <div className="text-[10px] font-normal text-zinc-400">{fmtMnt(closingMnt)}</div>}
+                  </td>
                 </tr>
               </tbody>
             </table>

@@ -310,8 +310,13 @@ export async function deleteMove(id: number): Promise<ActionResult> {
   if (recs?.length)
     await supabase.from("staff_receivables").delete().eq("source_move_id", id);
 
-  if (mv.journal_id)
+  // Холбоотой журналыг бүрэн устгана. journal_entries (GL тусгал) нь FK-гүй тул
+  // гараар устгана — эс бөгөөс гүйлгээ балансад орфан үлдэж дэд бүртгэлтэй зөрнө.
+  if (mv.journal_id) {
+    await supabase.from("journal_entries").delete().eq("journal_id", mv.journal_id);
+    await supabase.from("journal_lines").delete().eq("journal_id", mv.journal_id);
     await supabase.from("journals").delete().eq("id", mv.journal_id);
+  }
 
   const { error } = await supabase.from("inv_moves").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
