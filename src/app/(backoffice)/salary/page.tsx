@@ -202,54 +202,33 @@ export default async function SalaryPage({
         </div>
       )}
 
-      {/* Шүүлтийн мөр: он/сар + компани */}
-      {(showCompanyFilter || showPeriod) && (
-        <div className="no-print mt-5 flex flex-wrap items-center gap-3">
-          {showPeriod && (
-            <div className="flex items-center gap-2">
-              {[2025, 2026].map((y) => (
-                <Link
-                  key={y}
-                  href={buildHref({ year: String(y) })}
-                  className={chipCls(year === y)}
-                >
-                  {y}
-                </Link>
-              ))}
-              <div className="flex flex-wrap gap-1">
-                {MONTHS.map((m) => (
-                  <Link
-                    key={m}
-                    href={buildHref({ month: String(m) })}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                      month === m
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
-                    }`}
-                  >
-                    {m}-р сар
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {showCompanyFilter && (
-            <div className="ml-auto flex items-center gap-2">
-              <Link href={buildHref({ company: "" })} className={chipCls(!company)}>
-                Бүх компани
+      {/* Шүүлтийн мөр: он/сар */}
+      {showPeriod && (
+        <div className="no-print mt-5 flex flex-wrap items-center gap-2">
+          {[2025, 2026].map((y) => (
+            <Link
+              key={y}
+              href={buildHref({ year: String(y) })}
+              className={chipCls(year === y)}
+            >
+              {y}
+            </Link>
+          ))}
+          <div className="flex flex-wrap gap-1">
+            {MONTHS.map((m) => (
+              <Link
+                key={m}
+                href={buildHref({ month: String(m) })}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  month === m
+                    ? "bg-zinc-900 text-white"
+                    : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {m}-р сар
               </Link>
-              {(["ТҮМЭН РЕСУРС", "ТҮМЭН ТЭЭХ"] as const).map((c) => (
-                <Link
-                  key={c}
-                  href={buildHref({ company: c })}
-                  className={chipCls(company === c)}
-                >
-                  {c}
-                </Link>
-              ))}
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
 
