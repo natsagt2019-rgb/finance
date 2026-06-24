@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { createJournal } from "./actions";
+import { createJournal, updateJournal } from "./actions";
 import type { AccountOption, LineInput } from "./types";
 
 type Row = {
@@ -14,6 +14,16 @@ type Row = {
 };
 
 const EMPTY_ROW: Row = { account_id: "", debit: "", credit: "", description: "" };
+
+// Засвар горимд анхны утга дамжуулна.
+export type JournalInitial = {
+  date: string;
+  description: string;
+  reference: string;
+  partner_id: number | null;
+  status: "draft" | "posted";
+  rows: Row[];
+};
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -28,23 +38,31 @@ export function JournalForm({
   accounts,
   partners,
   today,
+  journalId,
+  initial,
 }: {
   accounts: AccountOption[];
   partners: { id: number; name: string }[];
   today: string;
+  journalId?: number;
+  initial?: JournalInitial;
 }) {
   const router = useRouter();
+  const isEdit = journalId != null;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [date, setDate] = useState(today);
-  const [description, setDescription] = useState("");
-  const [reference, setReference] = useState("");
-  const [partnerId, setPartnerId] = useState("");
-  const [rows, setRows] = useState<Row[]>([
-    { ...EMPTY_ROW },
-    { ...EMPTY_ROW },
-  ]);
+  const [date, setDate] = useState(initial?.date ?? today);
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [reference, setReference] = useState(initial?.reference ?? "");
+  const [partnerId, setPartnerId] = useState(
+    initial?.partner_id != null ? String(initial.partner_id) : "",
+  );
+  const [rows, setRows] = useState<Row[]>(
+    initial?.rows && initial.rows.length >= 2
+      ? initial.rows
+      : [{ ...EMPTY_ROW }, { ...EMPTY_ROW }],
+  );
 
   const totals = useMemo(() => {
     const d = rows.reduce((s, r) => s + num(r.debit), 0);
@@ -82,14 +100,17 @@ export function JournalForm({
     }));
 
     startTransition(async () => {
-      const res = await createJournal({
+      const payload = {
         date,
         description,
         reference,
         partner_id: partnerId ? Number(partnerId) : null,
         status,
         lines,
-      });
+      };
+      const res = isEdit
+        ? await updateJournal(journalId!, payload)
+        : await createJournal(payload);
       if (res.ok) {
         router.push("/journals");
         router.refresh();
@@ -294,7 +315,7 @@ export function JournalForm({
           disabled={isPending || !balanced}
           className="rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
         >
-          {isPending ? "Хадгалж байна…" : "Батлаж хадгалах"}
+          {isPending ? "Хадгалж байна…" : isEdit ? "Засвар батлах" : "Батлаж хадгалах"}
         </button>
         <button
           type="button"

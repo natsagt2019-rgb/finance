@@ -140,6 +140,121 @@ export async function createJournal(input: {
   return { ok: true, id: journalId, number: jrn.number as string };
 }
 
+// Цэвэрлэгдсэн мөр (description нь null байж болно — journal_lines/GL-д хадгална).
+type PreparedLine = {
+  account_id: number | null;
+  debit: number;
+  credit: number;
+  description: string | null;
+};
+
+// Оролтын мөрүүдийг цэвэрлэж, баланс/валид шалгана.
+function prepareLines(
+  raw: LineInput[],
+): { ok: true; lines: PreparedLine[]; total: number } | { ok: false; error: string } {
+  const lines = raw
+    .map((l) => ({
+      account_id: l.account_id,
+      debit: round2(l.debit),
+      credit: round2(l.credit),
+      description: (l.description ?? "").trim() || null,
+    }))
+    .filter((l) => l.account_id != null && (l.debit !== 0 || l.credit !== 0));
+
+  if (lines.length < 2)
+    return { ok: false, error: "Дор хаяж 2 мөр (дебет, кредит) шаардлагатай." };
+  for (const l of lines) {
+    if (l.debit < 0 || l.credit < 0)
+      return { ok: false, error: "Дүн сөрөг байж болохгүй." };
+    if (l.debit !== 0 && l.credit !== 0)
+      return { ok: false, error: "Нэг мөрд зөвхөн дебет ЭСВЭЛ кредит бичнэ." };
+  }
+  const totalDebit = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const totalCredit = round2(lines.reduce((s, l) => s + l.credit, 0));
+  if (totalDebit !== totalCredit)
+    return {
+      ok: false,
+      error: `Баланслахгүй байна: дебет ${totalDebit.toLocaleString()} ≠ кредит ${totalCredit.toLocaleString()}.`,
+    };
+  if (totalDebit === 0) return { ok: false, error: "Нийт дүн 0 байж болохгүй." };
+  return { ok: true, lines, total: totalDebit };
+}
+
+// ── Гар журнал засах (зөвхөн source='manual') ───────────────────────────────
+export async function updateJournal(
+  id: number,
+  input: {
+    date: string;
+    description: string;
+    reference: string;
+    partner_id: number | null;
+    status: "draft" | "posted";
+    lines: LineInput[];
+  },
+): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  if (!input.date) return { ok: false, error: "Огноо заавал шаардлагатай." };
+
+  // Зөвхөн гараар үүсгэсэн журнал засагдана (автомат журналыг модуль удирдана).
+  const { data: existing, error: ge } = await supabase
+    .from("journals")
+    .select("id, number, source")
+    .eq("id", id)
+    .single();
+  if (ge || !existing) return { ok: false, error: "Журнал олдсонгүй." };
+  if (existing.source !== "manual")
+    return {
+      ok: false,
+      error: "Зөвхөн гар бичилт (manual) засагдана. Автомат журналыг эх модулиар нь засна.",
+    };
+
+  const prep = prepareLines(input.lines);
+  if (!prep.ok) return prep;
+
+  const { error: e1 } = await supabase
+    .from("journals")
+    .update({
+      date: input.date,
+      description: input.description.trim() || null,
+      reference: input.reference.trim() || null,
+      status: input.status,
+      partner_id: input.partner_id,
+      total_amount: prep.total,
+    })
+    .eq("id", id);
+  if (e1) return { ok: false, error: e1.message };
+
+  // Мөрүүдийг бүхэлд нь солино.
+  await supabase.from("journal_lines").delete().eq("journal_id", id);
+  const { error: e2 } = await supabase.from("journal_lines").insert(
+    prep.lines.map((l, i) => ({
+      journal_id: id,
+      account_id: l.account_id,
+      debit: l.debit,
+      credit: l.credit,
+      description: l.description,
+      line_no: i + 1,
+    })),
+  );
+  if (e2) return { ok: false, error: `Мөр хадгалахад алдаа: ${e2.message}` };
+
+  // Ерөнхий дэвтрийн тусгалыг дахин үүсгэнэ (хуучныг устгаад posted бол тусгана).
+  await supabase.from("journal_entries").delete().eq("journal_id", id);
+  if (input.status === "posted") {
+    const mir = await mirrorToLedger(supabase, {
+      date: input.date,
+      description: input.description.trim() || null,
+      source: "manual",
+      journalId: id,
+      lines: prep.lines,
+    });
+    if (!mir.ok) return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
+  }
+
+  revalidatePath("/journals");
+  return { ok: true, id, number: (existing.number as string) ?? "" };
+}
+
 // ── Журнал устгах (мөрүүд cascade-аар устана) ───────────────────────────────
 export async function deleteJournal(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
