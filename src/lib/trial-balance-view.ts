@@ -9,6 +9,10 @@ export type TbAccount = {
   name: string;
   opening: number; // net (debit-positive)
   closing: number; // net (debit-positive)
+  // Бохир гүйлгээ (журналаас). Байвал гүйлгээний баганад тэргийг харуулна;
+  // байхгүй бол (snapshot) цэвэр (closing-opening)-ээр тооцно.
+  turnDt?: number;
+  turnKt?: number;
 };
 
 export type TbCells = {
@@ -62,12 +66,15 @@ function addCells(a: TbCells, b: TbCells): void {
 }
 
 function cellsFor(acc: TbAccount): TbCells {
-  const turnover = acc.closing - acc.opening;
+  const net = acc.closing - acc.opening;
+  // Бохир Дт/Кт байвал (журналаас) тэргийг харуулна — орлого/зарлага тусдаа.
+  // Байхгүй бол (импортолсон snapshot) цэвэр гүйлгээг тэмдгээр хуваана.
+  const hasGross = acc.turnDt != null || acc.turnKt != null;
   return {
     obDt: dt(acc.opening),
     obKt: kt(acc.opening),
-    tnDt: dt(turnover),
-    tnKt: kt(turnover),
+    tnDt: hasGross ? acc.turnDt ?? 0 : dt(net),
+    tnKt: hasGross ? acc.turnKt ?? 0 : kt(net),
     clDt: dt(acc.closing),
     clKt: kt(acc.closing),
   };

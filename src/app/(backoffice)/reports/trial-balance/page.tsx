@@ -51,13 +51,15 @@ export default async function TrialBalancePage({
     });
     accounts = (
       (tbr as
-        | { code: string; name: string | null; opening: number | null; closing: number | null }[]
+        | { code: string; name: string | null; opening: number | null; turn_dt: number | null; turn_kt: number | null; closing: number | null }[]
         | null) ?? []
     ).map((r) => ({
       code: r.code,
       name: r.name ?? "",
       opening: Number(r.opening) || 0,
       closing: Number(r.closing) || 0,
+      turnDt: Number(r.turn_dt) || 0,
+      turnKt: Number(r.turn_kt) || 0,
     }));
     label = rangeMode ? `${from} → ${to}` : `${viewYear} он (журналаас)`;
   } else if (years.length > 0) {
