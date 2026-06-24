@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as xlsx from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
 import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
@@ -220,6 +221,108 @@ export async function deleteAsset(id: number): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
   revalidatePath("/assets");
   return { ok: true, id: data.id as number };
+}
+
+// ── Excel импорт: хөрөнгийг бөөнөөр оруулах ─────────────────────────────────
+// Загварын дагуу. Ангиллыг нэрээр, байршлыг нэрээр тааруулна. Ижил нэртэй
+// идэвхтэй хөрөнгө байвал алгасна (давхардлаас сэргийлж).
+function importToISO(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const m = String(v).trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
+}
+
+export type ImportResult =
+  | { ok: true; inserted: number; skipped: number }
+  | { ok: false; error: string };
+
+export async function importAssets(formData: FormData): Promise<ImportResult> {
+  const { supabase } = await requireAuth();
+  const file = formData.get("file");
+  if (!file || typeof file === "string")
+    return { ok: false, error: "Файл сонгоогүй байна." };
+
+  let grid: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = xlsx.read(buf, { type: "buffer", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+  } catch (e) {
+    return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
+  }
+
+  const headerRow = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const find = (...keys: string[]) =>
+    headerRow.findIndex((h) => keys.some((k) => h.includes(k)));
+  const idx = {
+    name: find("нэр"),
+    code: find("карт", "код"),
+    barcode: find("баар"),
+    cat: find("ангилал"),
+    company: find("компани"),
+    acquired: find("орсон огноо", "огноо"),
+    cost: find("анхны өртөг", "өртөг"),
+    salvage: find("үлдэгдэл өртөг"),
+    life: find("ашиглах", "хугацаа"),
+    location: find("байршил"),
+    resp: find("хариуцагч"),
+  };
+  if (idx.name < 0)
+    return { ok: false, error: "«Нэр» багана олдсонгүй. Загварыг ашиглана уу." };
+
+  const [{ data: catData }, { data: locData }, { data: existing }] = await Promise.all([
+    supabase.from("asset_categories").select("id, name").eq("is_active", true).limit(2000),
+    supabase.from("asset_locations").select("id, name").eq("is_active", true).limit(2000),
+    supabase.from("assets").select("name").eq("is_active", true).limit(20000),
+  ]);
+  const catByName = new Map<string, number>();
+  for (const c of (catData as { id: number; name: string }[] | null) ?? [])
+    catByName.set(c.name.trim().toLowerCase(), c.id);
+  const locByName = new Map<string, number>();
+  for (const l of (locData as { id: number; name: string }[] | null) ?? [])
+    locByName.set(l.name.trim().toLowerCase(), l.id);
+  const existingNames = new Set(
+    ((existing as { name: string }[] | null) ?? []).map((a) => a.name.trim().toLowerCase()),
+  );
+
+  const toInsert: Record<string, unknown>[] = [];
+  let skipped = 0;
+  for (let i = 1; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const name = String(row[idx.name] ?? "").trim();
+    if (!name) continue;
+    if (existingNames.has(name.toLowerCase())) { skipped++; continue; }
+    existingNames.add(name.toLowerCase());
+    const catName = idx.cat >= 0 ? String(row[idx.cat] ?? "").trim().toLowerCase() : "";
+    const locName = idx.location >= 0 ? String(row[idx.location] ?? "").trim() : "";
+    const locId = locByName.get(locName.toLowerCase()) ?? null;
+    const life = idx.life >= 0 ? num(String(row[idx.life] ?? "")) : 0;
+    toInsert.push({
+      name,
+      code: idx.code >= 0 ? String(row[idx.code] ?? "").trim() || null : null,
+      barcode: idx.barcode >= 0 ? String(row[idx.barcode] ?? "").trim() || null : null,
+      category_id: catByName.get(catName) ?? null,
+      company: idx.company >= 0 ? String(row[idx.company] ?? "").trim() || null : null,
+      acquired_date: idx.acquired >= 0 ? importToISO(row[idx.acquired]) : null,
+      cost: idx.cost >= 0 ? num(String(row[idx.cost] ?? "")) : 0,
+      salvage_value: idx.salvage >= 0 ? num(String(row[idx.salvage] ?? "")) : 0,
+      useful_life_years: life > 0 ? life : null,
+      location: locId ? null : locName || null,
+      location_id: locId,
+      responsible: idx.resp >= 0 ? String(row[idx.resp] ?? "").trim() || null : null,
+      status: "active",
+      is_active: true,
+    });
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("assets").insert(toInsert);
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/assets");
+  return { ok: true, inserted: toInsert.length, skipped };
 }
 
 // ── Элэгдэл тооцоо: тухайн сарын мөрүүдийг бодож хадгалах ────────────────────
