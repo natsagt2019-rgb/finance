@@ -86,6 +86,30 @@ export default async function PersonalIncomeTaxPage({
 
   const r = await buildPitReport(supabase, selYear, fromMonth, toMonth);
 
+  // Албан ёсны TT-11 нэгтгэлийн мөрүүд.
+  const count = r.rows.length;
+  const taxGross = Math.round(r.total.taxable * r.pitRate * 100) / 100;
+  const relief = Math.round((taxGross - r.total.pit) * 100) / 100;
+  type Tt11Row = {
+    no: string;
+    label: string;
+    count?: number;
+    value: number;
+    strong?: boolean;
+    indent?: boolean;
+  };
+  const tt11Rows: Tt11Row[] = [
+    { no: "1", label: "Цалин, хөдөлмөрийн хөлс, шагнал, урамшуулал болон тэдгээртэй адилтгах орлого", count, value: r.total.gross, strong: true },
+    { no: "2", label: "1.1. Хөдөлмөрийн гэрээгээр авч буй цалин, хөлс, нэмэгдэл, шагнал, амралтын олговор г.м.", count, value: r.total.gross, indent: true },
+    { no: "10", label: "Татвар ногдох орлого (1−9)", count, value: r.total.gross, strong: true },
+    { no: "11", label: "Эрүүл мэндийн болон нийгмийн даатгалын шимтгэл", value: r.total.shInsurance },
+    { no: "13", label: "Татвар ногдох орлогоос хасагдах НДШ (11−12)", value: r.total.shInsurance },
+    { no: "14", label: "Татвар ногдуулах орлого (10−13)", count, value: r.total.taxable, strong: true },
+    { no: "15", label: `Ногдуулсан албан татвар (14 × ${(r.pitRate * 100).toFixed(0)}%)`, value: taxGross },
+    { no: "16", label: "Хуулийн 23.1-д заасан татварын хөнгөлөлт", value: relief },
+    { no: "17", label: "Суутгасан зохих албан татвар (15−16)", value: r.total.pit, strong: true },
+  ];
+
   return (
     <div>
       {/* Удирдлагын мөр — хэвлэхэд харагдахгүй */}
@@ -135,7 +159,37 @@ export default async function PersonalIncomeTaxPage({
           <div>Татварын хувь: <b>{(r.pitRate * 100).toFixed(0)}% /шатлалт хасагдуулгатай/</b></div>
         </div>
 
-        <table className="mt-4 w-full border-collapse text-[12px]">
+        {/* TT-11 нэгтгэл (А. Шууд орлого) */}
+        <table className="mt-4 w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-zinc-100 text-center text-zinc-600">
+              <th className="border border-zinc-300 px-2 py-1.5 text-left">Үзүүлэлт</th>
+              <th className="w-12 border border-zinc-300 px-2 py-1.5">Мөр</th>
+              <th className="w-24 border border-zinc-300 px-2 py-1.5">Татвар төлөгчийн тоо</th>
+              <th className="w-40 border border-zinc-300 px-2 py-1.5 text-right">Дүн</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tt11Rows.map((row, i) => (
+              <tr key={i} className={row.strong ? "bg-zinc-50 font-semibold" : ""}>
+                <td className={`border border-zinc-300 px-2 py-1.5 ${row.indent ? "pl-6 text-zinc-600" : ""}`}>
+                  {row.label}
+                </td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-center text-zinc-500">{row.no}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-center tabular-nums">
+                  {row.count != null ? row.count : ""}
+                </td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Ажилтны дэлгэрэнгүй задаргаа */}
+        <h3 className="mt-6 text-[12px] font-semibold text-zinc-700">
+          Ажилтны дэлгэрэнгүй задаргаа
+        </h3>
+        <table className="mt-1 w-full border-collapse text-[12px]">
           <thead>
             <tr className="bg-zinc-100 text-center text-zinc-600">
               <th className="w-8 border border-zinc-300 px-2 py-1.5">№</th>

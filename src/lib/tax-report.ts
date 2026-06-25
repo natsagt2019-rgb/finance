@@ -104,6 +104,16 @@ export type TaxComputation = {
   lines: TaxReconLine[]; // зөрүүтэй дансдын тулгалт
   manualLines: TaxAdjustment[]; // гар нэмсэн мөрүүд (add/less)
   smallBusiness: boolean;
+  tt02: Tt02Lines; // албан ёсны TT-02 маягтын мөрүүд
+};
+
+// TT-02 маягтын мөрийн дүнгүүд (А + В хэсэг).
+export type Tt02Lines = {
+  row6: number; row8: number; row16: number; row1: number;
+  row18: number; row19: number; row20: number; row17: number;
+  row21: number; row22: number; row23: number; row24: number;
+  row27: number; row28: number; row29: number; row30: number; row31: number;
+  row51: number; row52: number; row54: number; row59: number;
 };
 
 // Татвар ногдох орлого дээр ногдох татвар (хувь шатлал).
@@ -143,10 +153,10 @@ export async function buildTaxReport(
     turnover.set(p.code, Number(p.turnover) || 0);
   }
 
-  // 2. Дансны мэдээлэл (татварын ангилал, fs_line).
+  // 2. Дансны мэдээлэл (татварын ангилал, fs_line, ББӨ эсэх).
   const { data: accRows } = await supabase
     .from("accounts")
-    .select("code, name, type, fs_line, tax_class")
+    .select("code, name, type, fs_line, tax_class, is_cogs")
     .eq("is_active", true)
     .limit(5000);
   const accounts =
@@ -157,6 +167,7 @@ export async function buildTaxReport(
           type: string;
           fs_line: string | null;
           tax_class: TaxReconLine["taxClass"] | null;
+          is_cogs: boolean | null;
         }[]
       | null) ?? [];
 
@@ -175,11 +186,31 @@ export async function buildTaxReport(
 
   // 3. Татвар төлөхийн өмнөх ашиг = −Σ(P&L эргэлт), орлогын татварын зардлыг хасна.
   // (turnover debit-positive: орлого сөрөг, зардал эерэг → ашиг = −нийлбэр.)
+  // Зэрэгцээд TT-02 маягтын орлого/зардлын задаргааг fs_line-аар бүлэглэнэ.
   let profitBeforeTax = 0;
+  let incSales = 0; // мөр 6 — борлуулалтын орлого (ОДТ 1)
+  let incRental = 0; // мөр 8 — түрээсийн орлого (ОДТ 4)
+  let incOther = 0; // мөр 16 — бусад орлого
+  let expCogs = 0; // мөр 18 — борлуулсан бүтээгдэхүүний өртөг
+  let expOperating = 0; // мөр 19 — удирдлага/борлуулалтын зардал (ОДТ 9, 10)
+  let expNonOp = 0; // мөр 20 — үндсэн бус үйл ажиллагааны зардал (ОДТ 11, 12, ...)
   for (const a of accounts) {
     if (a.type !== "income" && a.type !== "expense") continue;
     if (isIncomeTaxExpense(a.fs_line, a.code)) continue;
-    profitBeforeTax += -(turnover.get(a.code) ?? 0);
+    const t = turnover.get(a.code) ?? 0;
+    profitBeforeTax += -t;
+    const fs = a.fs_line ?? "";
+    if (a.type === "income") {
+      const amt = -t; // орлогын эерэг хэмжээ
+      if (/^ОДТ\s*1\s/.test(fs)) incSales += amt;
+      else if (/^ОДТ\s*4\b/.test(fs)) incRental += amt;
+      else incOther += amt;
+    } else {
+      const amt = t; // зардлын эерэг хэмжээ
+      if (a.is_cogs || /^ОДТ\s*2\b/.test(fs)) expCogs += amt;
+      else if (/^ОДТ\s*(9|10)\b/.test(fs)) expOperating += amt;
+      else expNonOp += amt;
+    }
   }
   profitBeforeTax = round2(profitBeforeTax);
 
@@ -188,6 +219,12 @@ export async function buildTaxReport(
   let permanentAdd = 0;
   let permanentLess = 0;
   let tempDiff = 0;
+  let increaseTotal = 0; // мөр 22 — нэмэгдүүлэх дүн (СТ-30)
+  let decreaseTotal = 0; // мөр 23 — бууруулах дүн (СТ-30)
+  const bump = (effect: number) => {
+    if (effect >= 0) increaseTotal += effect;
+    else decreaseTotal += -effect;
+  };
 
   for (const a of accounts) {
     if (a.type !== "income" && a.type !== "expense") continue;
@@ -213,13 +250,17 @@ export async function buildTaxReport(
 
     if (a.tax_class === "non_deductible") {
       permanentAdd += diff; // зардал: татвар ногдох орлогод НЭМНЭ
+      bump(diff);
     } else if (a.tax_class === "exempt_income") {
       permanentLess += diff; // орлого: татвар ногдох орлогоос ХАСНА
+      bump(-diff);
     } else {
       // Түр зөрүү — татварын орлогод үзүүлэх цэвэр нөлөө (тэмдэгтэй):
       //   зардал: санхүү − татвар (НББ зардал илүү бол нэмэгдэнэ)
       //   орлого: татвар − санхүү (НББ орлого илүү бол хасагдана)
-      tempDiff += a.type === "expense" ? diff : -diff;
+      const effect = a.type === "expense" ? diff : -diff;
+      tempDiff += effect;
+      bump(effect);
     }
 
     lines.push({
@@ -240,12 +281,16 @@ export async function buildTaxReport(
     if (m.kind === "add") manualAdd += m.amount;
     else manualLess += m.amount;
   }
+  increaseTotal += manualAdd;
+  decreaseTotal += manualLess;
 
   permanentAdd = round2(permanentAdd);
   permanentLess = round2(permanentLess);
   tempDiff = round2(tempDiff);
   manualAdd = round2(manualAdd);
   manualLess = round2(manualLess);
+  increaseTotal = round2(increaseTotal);
+  decreaseTotal = round2(decreaseTotal);
 
   // 5. Татвар ногдох орлого.
   const taxableBeforeLoss = round2(
@@ -265,6 +310,33 @@ export async function buildTaxReport(
 
   lines.sort((a, b) => a.code.localeCompare(b.code));
 
+  // 8. TT-02 маягтын мөрүүд (Сангийн сайдын маягт — А + В хэсэг).
+  const incTotal = round2(incSales + incRental + incOther);
+  const expTotal = round2(expCogs + expOperating + expNonOp);
+  const tt02 = {
+    row6: round2(incSales),
+    row8: round2(incRental),
+    row16: round2(incOther),
+    row1: incTotal, // = row5 (чөлөөлөгдөх/тусгай ангилахгүй тул нийт орлого)
+    row18: round2(expCogs),
+    row19: round2(expOperating),
+    row20: round2(expNonOp),
+    row17: expTotal,
+    row21: profitBeforeTax, // = row1 − row17
+    row22: increaseTotal,
+    row23: decreaseTotal,
+    row24: taxableBeforeLoss, // = 21 + 22 − 23
+    row27: lossUsed,
+    row28: taxableIncome, // = 24 − 27 (мөр 25,26 = 0)
+    row29: taxGross,
+    row30: 0, // хөнгөлөлт (загварт гараар)
+    row31: taxGross, // = 29 − 30
+    row51: 0, // Б хэсэг — тусгай хувь (одоо 0)
+    row52: round2(params.withholdingPaid), // суутгуулсан татвар
+    row54: taxPayable, // = 31 + 51 − 52 − 53
+    row59: taxPayable, // нийт төлбөл зохих
+  };
+
   return {
     profitBeforeTax,
     permanentAdd,
@@ -281,5 +353,6 @@ export async function buildTaxReport(
     lines,
     manualLines,
     smallBusiness: params.smallBusiness,
+    tt02,
   };
 }
