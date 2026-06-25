@@ -24,7 +24,7 @@ ALTER TABLE accounts
 ALTER TABLE accounts
   ADD CONSTRAINT accounts_tax_class_chk
     CHECK (tax_class IS NULL OR tax_class IN (
-      'non_deductible', 'exempt_income', 'temp_diff'
+      'non_deductible', 'exempt_income', 'temp_diff', 'temp_diff_unrealized'
     ));
 
 -- ── Анхны автомат ангилал (нэрээр таних — зөвхөн ангилаагүй дансыг) ──────────

@@ -37,6 +37,7 @@ const TAX_CLASS_KIND: Record<string, string> = {
   non_deductible: "Байнгын",
   exempt_income: "Байнгын",
   temp_diff: "Түр",
+  temp_diff_unrealized: "Түр (бодит бус)",
 };
 
 // Албан ёсны маягтын толгой (тушаалын лавлагаа).
@@ -110,7 +111,7 @@ export default async function CorporateTaxPage({
   }
   const tempLines = r.lines.filter((l) => l.taxClass === "temp_diff");
 
-  // Албан ёсны TT-02 маягтын мөрүүд (А + В хэсэг; Б тусгай хувь = 0).
+  // Албан ёсны TT-02 маягтын мөрүүд (А нийтлэг + Б тусгай хувь + В нэгтгэл).
   const t = r.tt02;
   type TtRow =
     | { section: string }
@@ -124,10 +125,10 @@ export default async function CorporateTaxPage({
   const ttRows: TtRow[] = [
     { section: "А. Нийтлэг хувь хэмжээгээр ногдуулах татварын тооцоолол" },
     { no: "1", label: "Нийт орлогын дүн (мөр 2+3+4+5)", value: t.row1, strong: true },
-    { no: "2", label: "1.1. Татвараас чөлөөлөгдөх орлогын дүн", value: 0, indent: true },
-    { no: "3", label: "1.2. Тусгай хувь хэмжээгээр татвар ногдох орлого", value: t.row51 ? t.row51 : 0, indent: true },
+    { no: "2", label: "1.1. Татвараас чөлөөлөгдөх орлогын дүн", value: t.row2, indent: true },
+    { no: "3", label: "1.2. Тусгай хувь хэмжээгээр татвар ногдох орлого", value: t.row3, indent: true },
     { no: "4", label: "1.3. Бусад орлого (ГВ ханшийн бодит бус олз)", value: 0, indent: true },
-    { no: "5", label: "1.4. Нийтлэг хувь хэмжээгээр татвар ногдох орлого (6+...+16)", value: t.row1, indent: true },
+    { no: "5", label: "1.4. Нийтлэг хувь хэмжээгээр татвар ногдох орлого (6+...+16)", value: t.row5, indent: true },
     { no: "6", label: "Бараа, ажил, үйлчилгээний борлуулалтын орлого", value: t.row6, indent: true },
     { no: "8", label: "Эд хөрөнгө ашиглуулсан, түрээслүүлсэн орлого", value: t.row8, indent: true },
     { no: "16", label: "Албан татвар ногдох бусад орлого", value: t.row16, indent: true },
@@ -145,7 +146,9 @@ export default async function CorporateTaxPage({
     { no: "30", label: "Хөнгөлөгдөх татвар", value: t.row30 },
     { no: "31", label: "Нийтлэг хувиар ногдуулсан төлбөл зохих татвар (29−30)", value: t.row31, strong: true },
     { section: "Б. Тусгай хувь хэмжээгээр ногдуулах татварын тооцоолол" },
-    { no: "51", label: "Тусгай хувиар ногдуулсан албан татвар (ногдол ашиг/хүү/эрхийн шимтгэл — гараар)", value: t.row51 },
+    { no: "42", label: "Хүү, ногдол ашиг, эрхийн шимтгэлийн орлого", value: t.row42, indent: true },
+    { no: "43", label: "Ногдуулсан татвар (×10%)", value: t.row43, indent: true },
+    { no: "51", label: "Тусгай хувиар ногдуулсан албан татвар", value: t.row51, strong: true },
     { section: "В. Албан татвар ногдуулах тооцоолол" },
     { no: "52", label: "Хуулийн дагуу суутгуулсан албан татвар", value: t.row52 },
     { no: "54", label: "Төлбөл зохих татварын дүн (31+51−52−53)", value: t.row54, strong: true },
@@ -154,7 +157,7 @@ export default async function CorporateTaxPage({
 
   // СТ-30 — Санхүү ↔ татвар зөрүүг зохицуулах тайлан (А/144 хавсралт).
   const st2 = r.permanentAdd + r.manualAdd; // мөр 2 — байнгын нэмэгдүүлэх
-  const st5 = r.permanentLess + r.manualLess; // мөр 5 — байнгын бууруулах
+  const st5 = r.permanentLess + r.manualLess + r.specialIncome; // мөр 5 — байнгын бууруулах (чөлөөлөх+тусгай+гар)
   const st9 = round2(t.row21 + st2 - st5); // мөр 9 — байнгынгаар зохицуулсан
   const st13 = round2(st9 + r.tempDiff); // мөр 13 — түрээр зохицуулсан
   const st30Rows: TtRow[] = [
@@ -165,7 +168,7 @@ export default async function CorporateTaxPage({
     { no: "4", label: "Бусад байнгын зөрүүгийн нэмэгдүүлэх дүн", value: r.manualAdd, indent: true },
     { no: "5", label: "Байнгын зөрүүгийн бууруулах дүн (6+7+8)", value: round2(st5), strong: true },
     { no: "6", label: "Татвараас чөлөөлөгдөх орлогын дүн", value: r.permanentLess, indent: true },
-    { no: "7", label: "Тусгай хувь хэмжээгээр татвар ногдох орлогын дүн", value: 0, indent: true },
+    { no: "7", label: "Тусгай хувь хэмжээгээр татвар ногдох орлогын дүн", value: r.specialIncome, indent: true },
     { no: "8", label: "Бусад байнгын зөрүүгийн бууруулах дүн", value: r.manualLess, indent: true },
     { no: "9", label: "Байнгын зөрүүгээр зохицуулагдсан (1+2−5)", value: st9, strong: true },
     { section: "Б. Түр зөрүүгээр зохицуулагдах дүн" },
@@ -177,7 +180,8 @@ export default async function CorporateTaxPage({
     { no: "19", label: "Байнгын болон түр зөрүүгээр зохицуулагдсан ашгийн дүн (13)", value: st13, strong: true },
     { no: "22", label: "Нийтлэг хувиар татвар ногдуулах орлого (19+20−21)", value: r.taxableIncome, strong: true },
     { no: "23", label: `Ногдуулсан татвар (22 × ${r.smallBusiness ? "1%" : "10%/25%"})`, value: r.taxGross },
-    { no: "27", label: "Тайлант үеийн татварын зардал (23−24+25+26)", value: r.taxGross, strong: true },
+    { no: "25", label: "Тусгай хувь хэмжээгээр төлбөл зохих татварын дүн", value: r.specialTax, indent: true },
+    { no: "27", label: "Тайлант үеийн татварын зардал (23−24+25+26)", value: round2(r.taxGross + r.specialTax), strong: true },
   ];
 
   return (

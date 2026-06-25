@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { ACCOUNT_TYPES, type AccountType, type TaxClass } from "./types";
 
-const TAX_CLASSES: TaxClass[] = ["non_deductible", "exempt_income", "temp_diff"];
+const TAX_CLASSES: TaxClass[] = [
+  "non_deductible",
+  "exempt_income",
+  "temp_diff",
+  "temp_diff_unrealized",
+];
 
 export type ActionResult =
   | { ok: true; id: number; name: string }

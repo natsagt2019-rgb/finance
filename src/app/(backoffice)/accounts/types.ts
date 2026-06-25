@@ -6,7 +6,11 @@ export type AccountType =
   | "expense";
 
 // ААНОАТ зөрүүгийн ангилал (А/144 журам). NULL = энгийн (зөрүүгүй).
-export type TaxClass = "non_deductible" | "exempt_income" | "temp_diff";
+export type TaxClass =
+  | "non_deductible"
+  | "exempt_income"
+  | "temp_diff"
+  | "temp_diff_unrealized";
 
 export const TAX_CLASS_OPTIONS: { value: TaxClass; label: string; hint: string }[] = [
   {
@@ -21,8 +25,13 @@ export const TAX_CLASS_OPTIONS: { value: TaxClass; label: string; hint: string }
   },
   {
     value: "temp_diff",
-    label: "Түр зөрүү",
+    label: "Түр зөрүү (татварын талыг гараар)",
     hint: "Элэгдлийн зөрүү, нөөцийн зардал — ААНОАТ хууль 13",
+  },
+  {
+    value: "temp_diff_unrealized",
+    label: "Түр зөрүү — бодит бус (татвар 0)",
+    hint: "Гадаад валютын ханшийн бодит бус олз/гарз — татвар хүлээн зөвшөөрөхгүй, дараа үед эргэнэ",
   },
 ];
 

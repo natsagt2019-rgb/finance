@@ -17,10 +17,11 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 // ── Хуулийн тогтмолууд (ААНОАТ хууль 20 дугаар зүйл) ────────────────────────
 export const CIT_BRACKET = 6_000_000_000; // 6 тэрбум ₮ — хувь шатлалын босго
-export const CIT_RATE_LOW = 0.1; // ≤ 6 тэрбум: 10%
-export const CIT_RATE_HIGH = 0.25; // > 6 тэрбум-ийн илүүд: 25%
-export const CIT_RATE_SMALL = 0.01; // жижиг ААН (орлого < 300 сая): 1%
-export const LOSS_OFFSET_CAP = 0.5; // алдагдлыг тайлант орлогын 50% хүртэл хасна
+export const CIT_RATE_LOW = 0.1; // ≤ 6 тэрбум: 10% (хууль 20.1)
+export const CIT_RATE_HIGH = 0.25; // > 6 тэрбум-ийн илүүд: 25% (хууль 20.1)
+export const CIT_RATE_SMALL = 0.01; // жижиг ААН (өмнөх оны орлого ≤300 сая): 1% НИЙТ ОРЛОГОД (хууль 20.2.7)
+export const CIT_RATE_SPECIAL = 0.1; // хүү/ногдол ашиг/эрхийн шимтгэл: 10% (хууль 20.2.1)
+export const LOSS_OFFSET_CAP = 0.5; // алдагдлыг тайлант орлогын 50% хүртэл хасна (хууль 19)
 
 export type TaxParams = {
   smallBusiness: boolean; // жижиг ААН 1% хувь
@@ -82,7 +83,7 @@ export type TaxReconLine = {
   code: string;
   name: string;
   type: "income" | "expense";
-  taxClass: "non_deductible" | "exempt_income" | "temp_diff";
+  taxClass: "non_deductible" | "exempt_income" | "temp_diff" | "temp_diff_unrealized";
   financial: number; // санхүүгийн дүн (эерэг хэмжээ)
   tax: number; // татварын дүн (татварт хүлээн зөвшөөрөх)
   diff: number; // зөрүү = financial − tax (зардалд + нэмэгдэл, орлогод − хасагдал)
@@ -95,6 +96,9 @@ export type TaxComputation = {
   tempDiff: number; // түр зөрүүний цэвэр нөлөө (±)
   manualAdd: number; // гар нэмэгдэл (+)
   manualLess: number; // гар хасагдал (−)
+  exemptIncome: number; // татвараас чөлөөлөгдөх орлого (хууль 21)
+  specialIncome: number; // тусгай хувиар татвар ногдох орлого (хууль 20.2.1)
+  specialTax: number; // тусгай хувиар ногдсон татвар (×10%)
   taxableBeforeLoss: number;
   lossUsed: number; // ашигласан өмнөх жилийн алдагдал (−)
   taxableIncome: number; // татвар ногдох орлого
@@ -109,11 +113,13 @@ export type TaxComputation = {
 
 // TT-02 маягтын мөрийн дүнгүүд (А + В хэсэг).
 export type Tt02Lines = {
-  row6: number; row8: number; row16: number; row1: number;
+  row1: number; row2: number; row3: number; row5: number;
+  row6: number; row8: number; row16: number;
   row18: number; row19: number; row20: number; row17: number;
   row21: number; row22: number; row23: number; row24: number;
   row27: number; row28: number; row29: number; row30: number; row31: number;
-  row51: number; row52: number; row54: number; row59: number;
+  row42: number; row43: number; row51: number;
+  row52: number; row54: number; row59: number;
 };
 
 // Татвар ногдох орлого дээр ногдох татвар (хувь шатлал).
@@ -190,7 +196,9 @@ export async function buildTaxReport(
   let profitBeforeTax = 0;
   let incSales = 0; // мөр 6 — борлуулалтын орлого (ОДТ 1)
   let incRental = 0; // мөр 8 — түрээсийн орлого (ОДТ 4)
-  let incOther = 0; // мөр 16 — бусад орлого
+  let incOther = 0; // мөр 16 — бусад нийтлэг орлого
+  let exemptIncome = 0; // мөр 2 — татвараас чөлөөлөгдөх орлого (хууль 21)
+  let specialIncome = 0; // мөр 3 — тусгай хувиар татвар ногдох орлого (хүү/ногдол ашиг/эрхийн шимтгэл)
   let expCogs = 0; // мөр 18 — борлуулсан бүтээгдэхүүний өртөг
   let expOperating = 0; // мөр 19 — удирдлага/борлуулалтын зардал (ОДТ 9, 10)
   let expNonOp = 0; // мөр 20 — үндсэн бус үйл ажиллагааны зардал (ОДТ 11, 12, ...)
@@ -202,7 +210,12 @@ export async function buildTaxReport(
     const fs = a.fs_line ?? "";
     if (a.type === "income") {
       const amt = -t; // орлогын эерэг хэмжээ
-      if (/^ОДТ\s*1\s/.test(fs)) incSales += amt;
+      // Татвараас чөлөөлөгдөх орлого (хууль 21) → мөр 2.
+      if (a.tax_class === "exempt_income") exemptIncome += amt;
+      // Тусгай хувиар татвар ногдох орлого (хууль 20.2.1): хүү (ОДТ 5),
+      // ногдол ашиг (ОДТ 6), эрхийн шимтгэл (ОДТ 7) → мөр 3.
+      else if (/^ОДТ\s*[567]\b/.test(fs)) specialIncome += amt;
+      else if (/^ОДТ\s*1\s/.test(fs)) incSales += amt;
       else if (/^ОДТ\s*4\b/.test(fs)) incRental += amt;
       else incOther += amt;
     } else {
@@ -213,6 +226,8 @@ export async function buildTaxReport(
     }
   }
   profitBeforeTax = round2(profitBeforeTax);
+  specialIncome = round2(specialIncome);
+  exemptIncome = round2(exemptIncome);
 
   // 4. Зөрүүтэй дансдыг тулгана.
   const lines: TaxReconLine[] = [];
@@ -241,6 +256,10 @@ export async function buildTaxReport(
     let tax = financial; // анхдагч: бүрэн хүлээн зөвшөөрнө
     if (a.tax_class === "non_deductible" || a.tax_class === "exempt_income") {
       tax = 0; // бүхэлдээ зөрүү (байнгын)
+    } else if (a.tax_class === "temp_diff_unrealized") {
+      // Бодит бус ханшийн зөрүү — татвар хүлээн зөвшөөрөхгүй (тал = 0); бүхэлдээ
+      // эргэх түр зөрүү. Гараар оруулах шаардлагагүй.
+      tax = 0;
     } else if (a.tax_class === "temp_diff") {
       // Татварын тал гараар (элэгдлийн зөрүү гэх мэт); оруулаагүй бол зөрүүгүй.
       tax = tempTaxByCode.get(a.code) ?? financial;
@@ -283,6 +302,8 @@ export async function buildTaxReport(
   }
   increaseTotal += manualAdd;
   decreaseTotal += manualLess;
+  // Тусгай хувиар татвар ногдох орлого нийтлэг татвараас хасагдана (СТ-30 мөр 7).
+  decreaseTotal += specialIncome;
 
   permanentAdd = round2(permanentAdd);
   permanentLess = round2(permanentLess);
@@ -292,9 +313,9 @@ export async function buildTaxReport(
   increaseTotal = round2(increaseTotal);
   decreaseTotal = round2(decreaseTotal);
 
-  // 5. Татвар ногдох орлого.
+  // 5. Нийтлэг хувиар татвар ногдох орлого (тусгай орлогыг хассан).
   const taxableBeforeLoss = round2(
-    profitBeforeTax + permanentAdd - permanentLess + tempDiff + manualAdd - manualLess,
+    profitBeforeTax + increaseTotal - decreaseTotal,
   );
 
   // 6. Алдагдал шилжүүлэлт (тайлант орлогын ≤50%; зөвхөн эерэг орлогод).
@@ -305,19 +326,31 @@ export async function buildTaxReport(
   const taxableIncome = round2(taxableBeforeLoss - lossUsed);
 
   // 7. Татвар.
-  const taxGross = citTax(taxableIncome, params.smallBusiness);
-  const taxPayable = round2(Math.max(0, taxGross - params.withholdingPaid));
+  const incomeTotal = round2(incSales + incRental + incOther + specialIncome);
+  // Тусгай хувиар ногдох татвар (хүү/ногдол ашиг/эрхийн шимтгэл × 10%; хууль 20.2.1).
+  const specialTax = params.smallBusiness ? 0 : round2(specialIncome * CIT_RATE_SPECIAL);
+  // Нийтлэг хувиар ногдох татвар. Жижиг ААН (20.2.7): 1% НИЙТ ОРЛОГОД.
+  const taxGross = params.smallBusiness
+    ? round2(incomeTotal * CIT_RATE_SMALL)
+    : citTax(taxableIncome, false);
+  const taxPayable = round2(
+    Math.max(0, taxGross + specialTax - params.withholdingPaid),
+  );
 
   lines.sort((a, b) => a.code.localeCompare(b.code));
 
-  // 8. TT-02 маягтын мөрүүд (Сангийн сайдын маягт — А + В хэсэг).
-  const incTotal = round2(incSales + incRental + incOther);
+  // 8. TT-02 маягтын мөрүүд (Сангийн сайдын маягт — А + Б + В хэсэг).
+  const incGeneral = round2(incSales + incRental + incOther); // мөр 5
+  const incRow1 = round2(incGeneral + specialIncome + exemptIncome); // мөр 1 (2+3+4+5)
   const expTotal = round2(expCogs + expOperating + expNonOp);
   const tt02 = {
     row6: round2(incSales),
     row8: round2(incRental),
     row16: round2(incOther),
-    row1: incTotal, // = row5 (чөлөөлөгдөх/тусгай ангилахгүй тул нийт орлого)
+    row1: incRow1, // нийт орлого = мөр 2+3+4+5
+    row2: exemptIncome, // татвараас чөлөөлөгдөх орлого
+    row3: specialIncome, // тусгай хувиар татвар ногдох орлого
+    row5: incGeneral, // нийтлэг хувиар татвар ногдох орлого
     row18: round2(expCogs),
     row19: round2(expOperating),
     row20: round2(expNonOp),
@@ -331,7 +364,9 @@ export async function buildTaxReport(
     row29: taxGross,
     row30: 0, // хөнгөлөлт (загварт гараар)
     row31: taxGross, // = 29 − 30
-    row51: 0, // Б хэсэг — тусгай хувь (одоо 0)
+    row42: round2(specialIncome), // Б — тусгай хувиар татвар ногдох орлого
+    row43: specialTax, // Б — тусгай орлогод ногдуулсан татвар (×10%)
+    row51: specialTax, // Б — тусгай хувиар ногдуулсан нийт татвар
     row52: round2(params.withholdingPaid), // суутгуулсан татвар
     row54: taxPayable, // = 31 + 51 − 52 − 53
     row59: taxPayable, // нийт төлбөл зохих
@@ -344,6 +379,9 @@ export async function buildTaxReport(
     tempDiff,
     manualAdd,
     manualLess,
+    exemptIncome,
+    specialIncome,
+    specialTax,
     taxableBeforeLoss,
     lossUsed,
     taxableIncome,

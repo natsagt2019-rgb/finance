@@ -58,6 +58,9 @@ async function nextNumber(supabase: SC): Promise<string> {
 // Олз/гарзын дансыг нэрээр олно (COA хувилбар бүрт код өөр тул hardcode хийхгүй).
 //   олз  → type=income,  нэр "ханш" + ("олз" | "ашиг")
 //   гарз → type=expense, нэр "ханш" + ("гарз" | "алдагдал")
+// Тэгшитгэл нь БОДИТ БУС (unrealized) олз/гарз тул, бодит/бодит бус данс тусдаа
+// байвал БОДИТ БУС-ыг сонгоно (tax_class='temp_diff_unrealized' эсвэл нэрэнд
+// "бодит бус"). Зөвхөн нэг л данс байвал түүнийг авна (хуучин COA-тай нийцэнэ).
 async function findFxAccounts(
   supabase: SC,
 ): Promise<
@@ -66,24 +69,36 @@ async function findFxAccounts(
 > {
   const { data } = await supabase
     .from("accounts")
-    .select("id, code, name, type")
+    .select("id, code, name, type, tax_class")
     .eq("is_active", true)
     .ilike("name", "%ханш%")
     .limit(200);
 
   const rows =
-    (data as { id: number; code: string; name: string; type: string }[] | null) ??
-    [];
+    (data as
+      | { id: number; code: string; name: string; type: string; tax_class: string | null }[]
+      | null) ?? [];
   const norm = (s: string) => s.toLowerCase();
-  const gain = rows.find(
-    (r) =>
-      r.type === "income" &&
-      (norm(r.name).includes("олз") || norm(r.name).includes("ашиг")),
+  const isUnrealized = (r: { name: string; tax_class: string | null }) =>
+    r.tax_class === "temp_diff_unrealized" || norm(r.name).includes("бодит бус");
+
+  // Тухайн тал дотроос бодит бусыг эхэнд, эс бөгөөс эхний тохирохыг сонгоно.
+  const pick = (cands: typeof rows) =>
+    cands.find(isUnrealized) ?? cands[0];
+
+  const gain = pick(
+    rows.filter(
+      (r) =>
+        r.type === "income" &&
+        (norm(r.name).includes("олз") || norm(r.name).includes("ашиг")),
+    ),
   );
-  const loss = rows.find(
-    (r) =>
-      r.type === "expense" &&
-      (norm(r.name).includes("гарз") || norm(r.name).includes("алдагдал")),
+  const loss = pick(
+    rows.filter(
+      (r) =>
+        r.type === "expense" &&
+        (norm(r.name).includes("гарз") || norm(r.name).includes("алдагдал")),
+    ),
   );
 
   if (!gain || !loss) {
