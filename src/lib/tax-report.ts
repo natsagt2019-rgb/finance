@@ -34,6 +34,49 @@ export const DEFAULT_TAX_PARAMS: TaxParams = {
   withholdingPaid: 0,
 };
 
+// Гар тохируулга (tax_adjustments хүснэгт).
+export type TaxAdjustment = {
+  id: number;
+  year: number;
+  kind: "temp_diff" | "add" | "less";
+  accountCode: string | null;
+  label: string;
+  amount: number;
+  note: string | null;
+};
+
+export async function loadTaxAdjustments(
+  supabase: SupabaseClient,
+  year: number,
+): Promise<TaxAdjustment[]> {
+  const { data } = await supabase
+    .from("tax_adjustments")
+    .select("id, year, kind, account_code, label, amount, note")
+    .eq("year", year)
+    .order("id", { ascending: true });
+  return (
+    (data as
+      | {
+          id: number;
+          year: number;
+          kind: TaxAdjustment["kind"];
+          account_code: string | null;
+          label: string;
+          amount: number | null;
+          note: string | null;
+        }[]
+      | null) ?? []
+  ).map((r) => ({
+    id: r.id,
+    year: r.year,
+    kind: r.kind,
+    accountCode: r.account_code,
+    label: r.label,
+    amount: Number(r.amount) || 0,
+    note: r.note,
+  }));
+}
+
 // Зөрүүгийн тайлангийн нэг мөр (нэг данс).
 export type TaxReconLine = {
   code: string;
@@ -50,6 +93,8 @@ export type TaxComputation = {
   permanentAdd: number; // хасагдахгүй зардлын нийт (+)
   permanentLess: number; // чөлөөлөгдөх орлогын нийт (−)
   tempDiff: number; // түр зөрүүний цэвэр нөлөө (±)
+  manualAdd: number; // гар нэмэгдэл (+)
+  manualLess: number; // гар хасагдал (−)
   taxableBeforeLoss: number;
   lossUsed: number; // ашигласан өмнөх жилийн алдагдал (−)
   taxableIncome: number; // татвар ногдох орлого
@@ -57,6 +102,7 @@ export type TaxComputation = {
   withholdingPaid: number; // суутгасан татвар (−)
   taxPayable: number; // төлбөл зохих татвар
   lines: TaxReconLine[]; // зөрүүтэй дансдын тулгалт
+  manualLines: TaxAdjustment[]; // гар нэмсэн мөрүүд (add/less)
   smallBusiness: boolean;
 };
 
@@ -114,6 +160,19 @@ export async function buildTaxReport(
         }[]
       | null) ?? [];
 
+  // 2b. Гар тохируулга (түр зөрүүний татварын тал + гар мөр) — жилээр.
+  const year = Number(from.slice(0, 4));
+  const adjustments = await loadTaxAdjustments(supabase, year);
+  const tempTaxByCode = new Map<string, number>();
+  const manualLines: TaxAdjustment[] = [];
+  for (const adj of adjustments) {
+    if (adj.kind === "temp_diff" && adj.accountCode) {
+      tempTaxByCode.set(adj.accountCode, adj.amount);
+    } else if (adj.kind === "add" || adj.kind === "less") {
+      manualLines.push(adj);
+    }
+  }
+
   // 3. Татвар төлөхийн өмнөх ашиг = −Σ(P&L эргэлт), орлогын татварын зардлыг хасна.
   // (turnover debit-positive: орлого сөрөг, зардал эерэг → ашиг = −нийлбэр.)
   let profitBeforeTax = 0;
@@ -138,21 +197,30 @@ export async function buildTaxReport(
     // Санхүүгийн дүн = тухайн дансны эерэг хэмжээ (зардал +turnover, орлого −turnover).
     const t = turnover.get(a.code) ?? 0;
     const financial = a.type === "expense" ? t : -t;
-    if (Math.abs(financial) < 0.005) continue;
+    const hasTempTax = a.tax_class === "temp_diff" && tempTaxByCode.has(a.code);
+    // temp_diff татварын тал гараар орсон бол санхүү 0 байсан ч мөрийг үзүүлнэ.
+    if (Math.abs(financial) < 0.005 && !hasTempTax) continue;
 
     let tax = financial; // анхдагч: бүрэн хүлээн зөвшөөрнө
     if (a.tax_class === "non_deductible" || a.tax_class === "exempt_income") {
       tax = 0; // бүхэлдээ зөрүү (байнгын)
+    } else if (a.tax_class === "temp_diff") {
+      // Татварын тал гараар (элэгдлийн зөрүү гэх мэт); оруулаагүй бол зөрүүгүй.
+      tax = tempTaxByCode.get(a.code) ?? financial;
     }
-    // temp_diff: татварын тал гараар тогтоогдоно (phase 4) — одоохондоо tax=financial, зөрүү 0.
 
     const diff = round2(financial - tax);
 
-    if (a.tax_class === "non_deductible")
-      permanentAdd += diff; // зардал: financial − 0 = +нэмэгдэл
-    else if (a.tax_class === "exempt_income")
-      permanentLess += diff; // орлого: financial(+) − 0 = +, гэхдээ татвар ногдох орлогоос ХАСНА
-    else tempDiff += diff;
+    if (a.tax_class === "non_deductible") {
+      permanentAdd += diff; // зардал: татвар ногдох орлогод НЭМНЭ
+    } else if (a.tax_class === "exempt_income") {
+      permanentLess += diff; // орлого: татвар ногдох орлогоос ХАСНА
+    } else {
+      // Түр зөрүү — татварын орлогод үзүүлэх цэвэр нөлөө (тэмдэгтэй):
+      //   зардал: санхүү − татвар (НББ зардал илүү бол нэмэгдэнэ)
+      //   орлого: татвар − санхүү (НББ орлого илүү бол хасагдана)
+      tempDiff += a.type === "expense" ? diff : -diff;
+    }
 
     lines.push({
       code: a.code,
@@ -165,13 +233,23 @@ export async function buildTaxReport(
     });
   }
 
+  // Гар мөрүүд.
+  let manualAdd = 0;
+  let manualLess = 0;
+  for (const m of manualLines) {
+    if (m.kind === "add") manualAdd += m.amount;
+    else manualLess += m.amount;
+  }
+
   permanentAdd = round2(permanentAdd);
   permanentLess = round2(permanentLess);
   tempDiff = round2(tempDiff);
+  manualAdd = round2(manualAdd);
+  manualLess = round2(manualLess);
 
   // 5. Татвар ногдох орлого.
   const taxableBeforeLoss = round2(
-    profitBeforeTax + permanentAdd - permanentLess + tempDiff,
+    profitBeforeTax + permanentAdd - permanentLess + tempDiff + manualAdd - manualLess,
   );
 
   // 6. Алдагдал шилжүүлэлт (тайлант орлогын ≤50%; зөвхөн эерэг орлогод).
@@ -192,6 +270,8 @@ export async function buildTaxReport(
     permanentAdd,
     permanentLess,
     tempDiff,
+    manualAdd,
+    manualLess,
     taxableBeforeLoss,
     lossUsed,
     taxableIncome,
@@ -199,6 +279,7 @@ export async function buildTaxReport(
     withholdingPaid: params.withholdingPaid,
     taxPayable,
     lines,
+    manualLines,
     smallBusiness: params.smallBusiness,
   };
 }

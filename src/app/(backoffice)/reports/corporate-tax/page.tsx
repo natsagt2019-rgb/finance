@@ -4,9 +4,11 @@ import { loadCompany } from "@/lib/company";
 import { reportYears } from "@/lib/fs-from-journal";
 import {
   buildTaxReport,
+  loadTaxAdjustments,
   CIT_BRACKET,
   type TaxParams,
 } from "@/lib/tax-report";
+import { saveTempDiff, addManualLine, deleteAdjustment } from "./actions";
 
 type SearchParams = {
   year?: string;
@@ -94,18 +96,30 @@ export default async function CorporateTaxPage({
   const r = await buildTaxReport(supabase, pFrom, pTo, params);
   const periodText = rangeMode ? `${from} — ${to}` : `${selYear} он`;
 
+  // Засварлах UI-д: түр зөрүүтэй дансны хадгалсан татварын тал (жилээр).
+  const tempStored = new Map<string, number>();
+  if (!rangeMode) {
+    for (const adj of await loadTaxAdjustments(supabase, selYear)) {
+      if (adj.kind === "temp_diff" && adj.accountCode)
+        tempStored.set(adj.accountCode, adj.amount);
+    }
+  }
+  const tempLines = r.lines.filter((l) => l.taxClass === "temp_diff");
+
   // Албан ёсны тооцооны мөрүүд (дугаарлалтай).
   const lines: { no: string; label: string; value: number; strong?: boolean }[] = [
     { no: "1", label: "Татвар төлөхийн өмнөх ашиг (алдагдал)", value: r.profitBeforeTax, strong: true },
     { no: "2", label: "Нэмэх: Татварын хувьд хасагдахгүй зардал /байнгын зөрүү/", value: r.permanentAdd },
     { no: "3", label: "Хасах: Татвараас чөлөөлөгдөх орлого /байнгын зөрүү/", value: r.permanentLess },
     { no: "4", label: "Нэмэх (хасах): Түр зөрүүний цэвэр нөлөө", value: r.tempDiff },
-    { no: "5", label: "Татвар ногдох орлого /алдагдал шилжүүлэхээс өмнө/", value: r.taxableBeforeLoss, strong: true },
-    { no: "6", label: "Хасах: Өмнөх оны алдагдлын шилжүүлэг /≤50%/", value: r.lossUsed },
-    { no: "7", label: "Татвар ногдох орлого", value: r.taxableIncome, strong: true },
-    { no: "8", label: `Ногдуулсан албан татвар /${r.smallBusiness ? "1%" : "10% / 25%"}/`, value: r.taxGross, strong: true },
-    { no: "9", label: "Хасах: Суутгасан / урьдчилж төлсөн татвар", value: r.withholdingPaid },
-    { no: "10", label: "Төлбөл зохих албан татвар", value: r.taxPayable, strong: true },
+    { no: "5", label: "Нэмэх: Гар тохируулга /нэмэгдэл/", value: r.manualAdd },
+    { no: "6", label: "Хасах: Гар тохируулга /хасагдал/", value: r.manualLess },
+    { no: "7", label: "Татвар ногдох орлого /алдагдал шилжүүлэхээс өмнө/", value: r.taxableBeforeLoss, strong: true },
+    { no: "8", label: "Хасах: Өмнөх оны алдагдлын шилжүүлэг /≤50%/", value: r.lossUsed },
+    { no: "9", label: "Татвар ногдох орлого", value: r.taxableIncome, strong: true },
+    { no: "10", label: `Ногдуулсан албан татвар /${r.smallBusiness ? "1%" : "10% / 25%"}/`, value: r.taxGross, strong: true },
+    { no: "11", label: "Хасах: Суутгасан / урьдчилж төлсөн татвар", value: r.withholdingPaid },
+    { no: "12", label: "Төлбөл зохих албан татвар", value: r.taxPayable, strong: true },
   ];
 
   return (
@@ -154,6 +168,131 @@ export default async function CorporateTaxPage({
           <PrintButton />
         </div>
       </div>
+
+      {/* ── Засварлах хэсэг (хэвлэхэд харагдахгүй) ── */}
+      {!rangeMode && (
+        <div className="no-print mb-4 grid gap-4 lg:grid-cols-2">
+          {/* Түр зөрүү — татварын тал */}
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Түр зөрүү — татварын талын дүн ({selYear})
+            </h3>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              НББ-ийн дүн санхүүгээс. Татварын дүнг (ж: татварын элэгдэл) оруулна.
+            </p>
+            {tempLines.length === 0 ? (
+              <p className="mt-3 text-xs text-zinc-400">
+                Түр зөрүүгээр тэмдэглэсэн данс алга. Дансны жагсаалтаас «Түр
+                зөрүү» сонгоно.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {tempLines.map((l) => (
+                  <form
+                    key={l.code}
+                    action={saveTempDiff}
+                    className="flex items-end gap-2"
+                  >
+                    <input type="hidden" name="year" value={selYear} />
+                    <input type="hidden" name="account_code" value={l.code} />
+                    <input type="hidden" name="label" value={l.name} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-zinc-600">
+                        {l.code} — {l.name}
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        НББ: {fmt(l.financial)}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      name="amount"
+                      step="0.01"
+                      defaultValue={tempStored.get(l.code) ?? ""}
+                      placeholder="Татварын дүн"
+                      className="w-32 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                    >
+                      Хадгалах
+                    </button>
+                  </form>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Гар тохируулга */}
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Гар тохируулга ({selYear})
+            </h3>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Дансанд үл хамаарах нэмэгдэл/хасагдал (тусгай тохиолдол).
+            </p>
+            {r.manualLines.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {r.manualLines.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-2 text-xs text-zinc-700"
+                  >
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${m.kind === "add" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
+                    >
+                      {m.kind === "add" ? "Нэмэгдэл" : "Хасагдал"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                    <span className="tabular-nums">{fmt(m.amount)}</span>
+                    <form action={deleteAdjustment}>
+                      <input type="hidden" name="id" value={m.id} />
+                      <button
+                        type="submit"
+                        className="text-red-500 hover:text-red-700"
+                        title="Устгах"
+                      >
+                        ✕
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form action={addManualLine} className="mt-3 flex items-end gap-2">
+              <input type="hidden" name="year" value={selYear} />
+              <select
+                name="kind"
+                className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
+              >
+                <option value="add">Нэмэгдэл</option>
+                <option value="less">Хасагдал</option>
+              </select>
+              <input
+                type="text"
+                name="label"
+                required
+                placeholder="Тайлбар"
+                className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+              <input
+                type="number"
+                name="amount"
+                step="0.01"
+                placeholder="Дүн"
+                className="w-28 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                Нэмэх
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Албан ёсны маягт ── */}
       <div className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-8 text-sm leading-6 text-zinc-800 print:max-w-none print:rounded-none print:border-0 print:p-0">
