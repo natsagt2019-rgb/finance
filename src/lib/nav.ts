@@ -138,6 +138,7 @@ export const navEntries: NavEntry[] = [
     items: [
       { href: "/vat", label: "НӨАТ бүртгэл", icon: "🧾" },
       { href: "/reports/vat-settlement", label: "НӨАТ тооцооны тайлан", icon: "🧮" },
+      { href: "/reports/vat-return", label: "НӨАТ тайлан (TT-03а)", icon: "📋" },
       { href: "/reports/corporate-tax", label: "ААНОАТ тайлан (зөрүүгийн тулгалт)", icon: "🏛" },
       { href: "/reports/personal-income-tax", label: "ХХОАТ тайлан (цалингаас)", icon: "🧑" },
     ],
