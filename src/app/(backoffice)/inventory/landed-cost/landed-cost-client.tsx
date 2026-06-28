@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -22,6 +22,16 @@ type Line = { key: number; itemId: number; qty: number; fobUnit: number };
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
+// Импортын валют сонголт + ойролцоо ханш (₮). Ханшийг гараар засаж болно.
+const CURRENCIES: { code: string; rate: number }[] = [
+  { code: "CNY", rate: 490 },
+  { code: "USD", rate: 3450 },
+  { code: "EUR", rate: 3750 },
+  { code: "RUB", rate: 38 },
+  { code: "JPY", rate: 23 },
+  { code: "KRW", rate: 2.6 },
+];
+
 export function LandedCostClient({
   items,
   accounts,
@@ -30,7 +40,19 @@ export function LandedCostClient({
   accounts: AccountOpt[];
 }) {
   const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  // Excel импортод бараа тааруулах (SKU / нэрээр).
+  const lookup = useMemo(() => {
+    const sku = new Map<string, PickItem>();
+    const name = new Map<string, PickItem>();
+    for (const i of items) {
+      if (i.sku) sku.set(i.sku.trim().toLowerCase(), i);
+      name.set(i.name.trim().toLowerCase(), i);
+    }
+    return { sku, name };
+  }, [items]);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
 
   const [date, setDate] = useState(todayISO());
   const [docNo, setDocNo] = useState("");
@@ -57,6 +79,87 @@ export function LandedCostClient({
   }
   function removeLine(key: number) {
     setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
+  }
+
+  // ── Excel-ээс олон БМ мөр оруулах ──
+  async function importExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+      const n = (v: unknown) => Number(String(v ?? "").replace(/[, ₮]/g, "")) || 0;
+      const fresh: Line[] = [];
+      let key = lines.at(-1)?.key ?? 0;
+      let matched = 0;
+      let missed = 0;
+      for (let i = 1; i < grid.length; i++) {
+        const row = grid[i] ?? [];
+        const code = String(row[0] ?? "").trim();
+        const nm = String(row[1] ?? "").trim();
+        const qty = n(row[2]);
+        const fob = n(row[3]);
+        if (!code && !nm) continue;
+        const it =
+          (code && lookup.sku.get(code.toLowerCase())) ||
+          (nm && lookup.name.get(nm.toLowerCase())) ||
+          (code && lookup.name.get(code.toLowerCase())) ||
+          null;
+        if (!it) { missed++; continue; }
+        fresh.push({ key: ++key, itemId: it.id, qty, fobUnit: fob });
+        matched++;
+      }
+      if (fresh.length) {
+        setLines((ls) => {
+          const keep = ls.filter((l) => l.itemId > 0);
+          return [...keep, ...fresh];
+        });
+      }
+      setImportMsg(`✓ ${matched} мөр оруулав${missed ? `, ${missed} бараа олдсонгүй` : ""}.`);
+    } catch {
+      setImportMsg("✕ Excel уншиж чадсангүй.");
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // ── Тооцооны тайланг Excel рүү хөрвүүлэх ──
+  async function exportExcel() {
+    if (calc.rows.length === 0) return;
+    const XLSX = await import("xlsx");
+    const header = [
+      "Бараа", "Код", "Тоо хэмжээ", `FOB (${currency})`, "FOB (₮)",
+      "Гааль", "Тээвэр", "Хадгалалт", "Landed нэгж", "Landed нийт",
+    ];
+    const body = calc.rows.map((r) => [
+      r.it.name, r.it.sku ?? "", r.line.qty, r2(r.line.qty * r.line.fobUnit),
+      r.fobMnt, r.duty, r.freight, r.storage, r.landedUnit, r.landed,
+    ]);
+    body.push([
+      "ДҮН", "", calc.qtyTotal, "", calc.fobMntTotal,
+      calc.dutyTotal, calc.freight, calc.storage, "", calc.landedTotal,
+    ]);
+    body.push([]);
+    body.push(["Импортын НӨАТ (нөхөгдөх)", "", "", "", "", "", "", "", "", calc.importVat]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+    ws["!cols"] = [
+      { wch: 30 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Гаалийн өртөг");
+    const out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Гаалийн_өртөг_тооцоо${docNo ? "_" + docNo : ""}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   // ── Тооцоо (landed cost allocation) ──
@@ -157,7 +260,9 @@ export function LandedCostClient({
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 print:hidden">
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Валют</span>
-          <input value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputCls} /></label>
+          <select value={currency} onChange={(e) => { const c = e.target.value; setCurrency(c); const f = CURRENCIES.find((x) => x.code === c); if (f) setRate(f.rate); }} className={inputCls}>
+            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
+          </select></label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Ханш (₮ / {currency})</span>
           <input type="number" value={rate} onChange={(e) => setRate(Number(e.target.value) || 0)} className={numCls} /></label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Гаалийн татвар (%)</span>
@@ -178,6 +283,24 @@ export function LandedCostClient({
             <option value="">— данс —</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
           </select></label>
+      </div>
+
+      {/* ── Excel хэрэгсэл ── */}
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <a href="/inventory/landed-cost/template"
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+          ↓ Excel загвар
+        </a>
+        <button type="button" onClick={() => fileRef.current?.click()}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+          ↥ Excel-ээс мөр оруулах
+        </button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={importExcel} className="hidden" />
+        <button type="button" onClick={exportExcel} disabled={calc.rows.length === 0}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40">
+          ↧ Excel татах (тайлан)
+        </button>
+        {importMsg && <span className="text-xs text-zinc-500">{importMsg}</span>}
       </div>
 
       {/* ── Мөр оруулах ── */}
