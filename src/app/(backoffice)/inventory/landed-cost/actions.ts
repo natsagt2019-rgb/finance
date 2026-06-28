@@ -19,9 +19,16 @@ export type LandedPostInput = {
   docNo: string;
   supplier: string | null;
   company: string | null;
-  bankAccountId: number; // татвар/тээвэр/хадгалалт/импортын НӨАТ төлсөн данс
+  bankAccountId: number; // импортын НӨАТ + дугуйралт төлсөн данс (банк/касс)
   fobMnt: number; // FOB нийт (₮) → нийлүүлэгчийн өглөг
   importVat: number; // импортын НӨАТ (нөхөгдөх)
+  // Нэмэлт зардал тус бүр + эх данс (банк/касс эсвэл УТЗ 140200 / УТТ 140300).
+  duty: number;
+  freight: number;
+  storage: number;
+  dutyAccountId: number | null;
+  freightAccountId: number | null;
+  storageAccountId: number | null;
   lines: LandedLineInput[];
 };
 
@@ -90,14 +97,22 @@ export async function postLandedImport(input: LandedPostInput): Promise<LandedPo
   if (importVat > 0 && vatInId != null)
     jLines.push({ account_id: vatInId, debit: importVat, credit: 0, description: "Импортын НӨАТ (нөхөгдөх)" });
   jLines.push({ account_id: apId, debit: 0, credit: fobMnt, description: "Нийлүүлэгчийн өглөг (FOB)" });
-  // Банкаар төлсөн = landed (FOB+нэмэлт) − FOB + импортын НӨАТ = нэмэлт зардал + импортын НӨАТ.
-  const bankCredit = r2(landedTotal - fobMnt + (vatInId != null ? importVat : 0));
-  jLines.push({
-    account_id: input.bankAccountId,
-    debit: 0,
-    credit: bankCredit,
-    description: "Гааль/тээвэр/хадгалалт + импортын НӨАТ",
-  });
+
+  // Нэмэлт зардал бүрийг эх данс руу кредитлэнэ (банк/касс эсвэл УТЗ/УТТ).
+  // Эх данс заагаагүй бол төлбөрийн данс (банк) руу буцаана.
+  const duty = r2(input.duty);
+  const freight = r2(input.freight);
+  const storage = r2(input.storage);
+  const acctOr = (id: number | null | undefined) => (id && id > 0 ? id : input.bankAccountId);
+  if (duty > 0) jLines.push({ account_id: acctOr(input.dutyAccountId), debit: 0, credit: duty, description: "Гаалийн албан татвар" });
+  if (freight > 0) jLines.push({ account_id: acctOr(input.freightAccountId), debit: 0, credit: freight, description: "Тээврийн зардал" });
+  if (storage > 0) jLines.push({ account_id: acctOr(input.storageAccountId), debit: 0, credit: storage, description: "Хадгалалтын зардал" });
+
+  // Импортын НӨАТ + landed дугуйралтын зөрүүг төлбөрийн данс (банк) шингээнэ.
+  const residual = r2(landedTotal - r2(fobMnt + duty + freight + storage));
+  const bankCredit = r2((vatInId != null ? importVat : 0) + residual);
+  if (Math.abs(bankCredit) > 0.005)
+    jLines.push({ account_id: input.bankAccountId, debit: 0, credit: bankCredit, description: "Импортын НӨАТ + дугуйралт" });
 
   const totDt = r2(jLines.reduce((s, l) => s + l.debit, 0));
   const totKt = r2(jLines.reduce((s, l) => s + l.credit, 0));
@@ -149,4 +164,46 @@ export async function postLandedImport(input: LandedPostInput): Promise<LandedPo
   revalidatePath("/inventory");
   revalidatePath("/journals");
   return { ok: true, docNo, inserted: moveIds.length, journalId: posted.id };
+}
+
+// Дансны одоогийн үлдэгдлийг (journal_entries Дт−Кт) буцаана — нэмэлт зардлыг
+// УТЗ/УТТ зэрэг дансны бодит үлдэгдлээс татаж оруулахад ашиглана.
+export type AccountBalanceResult =
+  | { ok: true; balance: number; code: string; name: string }
+  | { ok: false; error: string };
+
+export async function getAccountBalance(accountId: number): Promise<AccountBalanceResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Нэвтрэх шаардлагатай." };
+  if (!(accountId > 0)) return { ok: false, error: "Данс сонгоно уу." };
+
+  const { data: acc } = await supabase
+    .from("accounts")
+    .select("code, name")
+    .eq("id", accountId)
+    .maybeSingle();
+  const a = acc as { code: string; name: string } | null;
+  if (!a) return { ok: false, error: "Данс олдсонгүй." };
+
+  async function sideTotal(col: "debit_code" | "credit_code"): Promise<number> {
+    let total = 0;
+    for (let off = 0; off < 500000; off += 1000) {
+      const { data } = await supabase
+        .from("journal_entries")
+        .select("amount")
+        .eq(col, a!.code)
+        .range(off, off + 999);
+      const page = (data as { amount: number }[] | null) ?? [];
+      for (const r of page) total += Number(r.amount) || 0;
+      if (page.length < 1000) break;
+    }
+    return total;
+  }
+  const [dr, cr] = await Promise.all([sideTotal("debit_code"), sideTotal("credit_code")]);
+  // Дебет үлдэгдэлтэй данс (УТЗ/УТТ) → эерэг дүн.
+  const balance = r2(Math.abs(dr - cr));
+  return { ok: true, balance, code: a.code, name: a.name };
 }

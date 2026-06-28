@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { fmt, fmtQty } from "@/lib/inventory-calc";
 import { PrintButton } from "@/components/print-button";
-import { postLandedImport, type LandedPostResult } from "./actions";
+import { postLandedImport, getAccountBalance, type LandedPostResult } from "./actions";
 
 export type PickItem = {
   id: number;
@@ -61,11 +61,18 @@ export function LandedCostClient({
   const [currency, setCurrency] = useState("CNY");
   const [rate, setRate] = useState(490);
   const [dutyPct, setDutyPct] = useState(5);
+  const [dutyAmount, setDutyAmount] = useState(0); // > 0 бол %-ийн оронд энэ дүнг ашиглана
   const [freight, setFreight] = useState(0);
   const [storage, setStorage] = useState(0);
   const [vatPct, setVatPct] = useState(10);
   const [allocBy, setAllocBy] = useState<"value" | "qty">("value");
-  const [bank, setBank] = useState(accounts.find((a) => a.code === "110200")?.id?.toString() ?? "");
+  const acctId = (code: string) => accounts.find((a) => a.code === code)?.id?.toString() ?? "";
+  const [bank, setBank] = useState(acctId("110200"));
+  // Нэмэлт зардлын эх данс — анхдагч: гааль → УТТ(140300), тээвэр/хадгалалт → УТЗ(140200).
+  const [dutyAcct, setDutyAcct] = useState(acctId("140300") || acctId("110200"));
+  const [freightAcct, setFreightAcct] = useState(acctId("140200") || acctId("110200"));
+  const [storageAcct, setStorageAcct] = useState(acctId("140200") || acctId("110200"));
+  const [pullBusy, setPullBusy] = useState("");
 
   const [lines, setLines] = useState<Line[]>([{ key: 1, itemId: 0, qty: 0, fobUnit: 0 }]);
   const [result, setResult] = useState<LandedPostResult | null>(null);
@@ -79,6 +86,20 @@ export function LandedCostClient({
   }
   function removeLine(key: number) {
     setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
+  }
+
+  // ── Нэмэлт зардлыг дансны үлдэгдлээс татах (УТЗ/УТТ) ──
+  async function pull(which: "duty" | "freight" | "storage") {
+    const acct = which === "duty" ? dutyAcct : which === "freight" ? freightAcct : storageAcct;
+    if (!acct) { setImportMsg("✕ Эх данс сонгоно уу."); return; }
+    setPullBusy(which);
+    const res = await getAccountBalance(Number(acct));
+    setPullBusy("");
+    if (!res.ok) { setImportMsg("✕ " + res.error); return; }
+    if (which === "duty") setDutyAmount(res.balance);
+    else if (which === "freight") setFreight(res.balance);
+    else setStorage(res.balance);
+    setImportMsg(`✓ ${res.code} ${res.name}: ${fmt(res.balance)}₮ татав.`);
   }
 
   // ── Excel-ээс олон БМ мөр оруулах ──
@@ -168,28 +189,24 @@ export function LandedCostClient({
     const fobMntOf = (l: Line) => r2(l.qty * l.fobUnit * rate);
     const fobMntTotal = r2(valid.reduce((s, l) => s + fobMntOf(l), 0));
     const qtyTotal = valid.reduce((s, l) => s + l.qty, 0);
-    const dutyTotal = r2(fobMntTotal * (dutyPct / 100));
+    // Гаалийн татвар: дансаас татсан дүн (dutyAmount) байвал түүнийг, үгүй бол FOB-ийн %.
+    const dutyTotal = dutyAmount > 0 ? r2(dutyAmount) : r2(fobMntTotal * (dutyPct / 100));
     const base = (l: Line) => (allocBy === "qty" ? l.qty : fobMntOf(l));
     const baseTotal = allocBy === "qty" ? qtyTotal : fobMntTotal;
 
-    let accFreight = 0;
-    let accStorage = 0;
+    // Нэмэлт зардал бүрийг суурь (үнэ/тоо)-аар хувиарлана; үлдэгдлийг сүүлийн мөрд.
+    let accDuty = 0, accFreight = 0, accStorage = 0;
+    const share = (total: number, l: Line, last: boolean, acc: number) =>
+      last ? r2(total - acc) : baseTotal > 0 ? r2(total * (base(l) / baseTotal)) : 0;
     const rows = valid.map((l, idx) => {
       const it = itemById.get(l.itemId)!;
       const fobMnt = fobMntOf(l);
-      const duty = r2(fobMnt * (dutyPct / 100));
       const last = idx === valid.length - 1;
-      const frShare = last
-        ? r2(freight - accFreight)
-        : baseTotal > 0
-          ? r2(freight * (base(l) / baseTotal))
-          : 0;
-      const stShare = last
-        ? r2(storage - accStorage)
-        : baseTotal > 0
-          ? r2(storage * (base(l) / baseTotal))
-          : 0;
+      const duty = share(dutyTotal, l, last, accDuty);
+      const frShare = share(freight, l, last, accFreight);
+      const stShare = share(storage, l, last, accStorage);
       if (!last) {
+        accDuty = r2(accDuty + duty);
         accFreight = r2(accFreight + frShare);
         accStorage = r2(accStorage + stShare);
       }
@@ -205,7 +222,7 @@ export function LandedCostClient({
     const importVat = r2((fobMntTotal + dutyTotal) * (vatPct / 100));
     const addlTotal = r2(dutyTotal + freight + storage);
     return { rows, fobMntTotal, dutyTotal, freight, storage, importVat, landedTotal, addlTotal, qtyTotal };
-  }, [lines, rate, dutyPct, freight, storage, vatPct, allocBy, itemById]);
+  }, [lines, rate, dutyPct, dutyAmount, freight, storage, vatPct, allocBy, itemById]);
 
   function post() {
     if (calc.rows.length === 0) {
@@ -226,6 +243,12 @@ export function LandedCostClient({
         bankAccountId: Number(bank),
         fobMnt: calc.fobMntTotal,
         importVat: calc.importVat,
+        duty: calc.dutyTotal,
+        freight: calc.freight,
+        storage: calc.storage,
+        dutyAccountId: dutyAcct ? Number(dutyAcct) : null,
+        freightAccountId: freightAcct ? Number(freightAcct) : null,
+        storageAccountId: storageAcct ? Number(storageAcct) : null,
         lines: calc.rows.map((r) => ({
           itemId: r.line.itemId,
           categoryCode: r.it.category_code,
@@ -269,20 +292,42 @@ export function LandedCostClient({
           <input type="number" value={dutyPct} onChange={(e) => setDutyPct(Number(e.target.value) || 0)} className={numCls} /></label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Импортын НӨАТ (%)</span>
           <input type="number" value={vatPct} onChange={(e) => setVatPct(Number(e.target.value) || 0)} className={numCls} /></label>
-        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Тээвэр (₮ нийт)</span>
-          <input type="number" value={freight} onChange={(e) => setFreight(Number(e.target.value) || 0)} className={numCls} /></label>
-        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Хадгалалт (₮ нийт)</span>
-          <input type="number" value={storage} onChange={(e) => setStorage(Number(e.target.value) || 0)} className={numCls} /></label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Хувиарлах арга</span>
           <select value={allocBy} onChange={(e) => setAllocBy(e.target.value as "value" | "qty")} className={inputCls}>
             <option value="value">Үнийн дүнгээр</option>
             <option value="qty">Тоо хэмжээгээр</option>
           </select></label>
-        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Төлбөрийн данс (банк/касс)</span>
+        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Төлбөрийн данс (НӨАТ/банк)</span>
           <select value={bank} onChange={(e) => setBank(e.target.value)} className={inputCls}>
             <option value="">— данс —</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
           </select></label>
+      </div>
+
+      {/* ── Нэмэлт зардал: эх данс (УТЗ/УТТ) + дансны үлдэгдлээс татах ── */}
+      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 print:hidden">
+        <p className="mb-2 text-sm font-medium text-zinc-700">Нэмэлт зардал — эх данс / дансны үлдэгдлээс татах</p>
+        <div className="space-y-2">
+          {([
+            { key: "duty" as const, label: "Гаалийн татвар", amount: dutyAmount, setAmount: setDutyAmount, acct: dutyAcct, setAcct: setDutyAcct, hint: dutyAmount > 0 ? "" : `${dutyPct}% авто` },
+            { key: "freight" as const, label: "Тээвэр", amount: freight, setAmount: setFreight, acct: freightAcct, setAcct: setFreightAcct, hint: "" },
+            { key: "storage" as const, label: "Хадгалалт", amount: storage, setAmount: setStorage, acct: storageAcct, setAcct: setStorageAcct, hint: "" },
+          ]).map((c) => (
+            <div key={c.key} className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[120px_1fr_minmax(160px,1.4fr)_auto]">
+              <span className="text-sm text-zinc-600">{c.label}</span>
+              <input type="number" value={c.amount || ""} placeholder={c.hint || "0"} onChange={(e) => c.setAmount(Number(e.target.value) || 0)} className={numCls} />
+              <select value={c.acct} onChange={(e) => c.setAcct(e.target.value)} className={inputCls} title="Эх данс (банк/касс эсвэл УТЗ 140200 / УТТ 140300)">
+                <option value="">— эх данс —</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+              </select>
+              <button type="button" disabled={pullBusy === c.key} onClick={() => pull(c.key)}
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40">
+                {pullBusy === c.key ? "…" : "↧ Үлдэгдэл татах"}
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">«Үлдэгдэл татах» нь сонгосон дансны (УТЗ/УТТ г.м) одоогийн үлдэгдлийг дүнд бичнэ. Орлогод авахад тухайн данс кредитлэгдэнэ.</p>
       </div>
 
       {/* ── Excel хэрэгсэл ── */}

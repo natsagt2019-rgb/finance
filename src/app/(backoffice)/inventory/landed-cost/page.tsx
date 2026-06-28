@@ -26,14 +26,14 @@ export default async function LandedCostPage() {
     id: i.id, sku: i.sku, name: i.name, category_code: i.category_code, unit: i.unit,
   }));
 
-  // Төлбөрийн данс — мөнгөн хөрөнгө (касс/банк, код 11xxx).
+  // Данс — төлбөрийн (банк/касс) ба нэмэлт зардлын эх данс (УТЗ 140200 /
+  // УТТ 140300 г.м)-д ашиглах учир бүх идэвхтэй данс.
   const { data: accData } = await supabase
     .from("accounts")
     .select("id, code, name")
     .eq("is_active", true)
-    .like("code", "11%")
     .order("code", { ascending: true })
-    .limit(200);
+    .limit(3000);
   const accounts = (accData as AccountOpt[] | null) ?? [];
 
   return (
