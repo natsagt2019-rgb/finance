@@ -111,6 +111,7 @@ export const navEntries: NavEntry[] = [
     icon: "📦",
     items: [
       { href: "/inventory", label: "Бараа материал", icon: "📦" },
+      { href: "/inventory/issue-import", label: "Зарлага импорт (Excel)", icon: "↥" },
       // Мастер дата / процесс
       { href: "/inventory/prices", label: "Барааны үнэ", icon: "💲" },
       { href: "/inventory/locations", label: "Байршил (агуулах)", icon: "📍" },
