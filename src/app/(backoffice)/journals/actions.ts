@@ -260,8 +260,7 @@ export async function updateJournal(
 // ── Журнал устгах (мөрүүд cascade-аар устана) ───────────────────────────────
 export async function deleteJournal(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
-  // Эхлээд ерөнхий дэвтрийн тусгалыг устгана (FK байхгүй тул гараар).
-  await supabase.from("journal_entries").delete().eq("journal_id", id);
+  // journal_entries ба journal_lines хоёул CASCADE-аар устана.
   const { data, error } = await supabase
     .from("journals")
     .delete()

@@ -109,8 +109,7 @@ async function postDepreciationJournal(
     .eq("date", date);
   const oldIds = (oldJ as { id: number }[] | null)?.map((j) => j.id) ?? [];
   if (oldIds.length > 0) {
-    await supabase.from("journal_entries").delete().in("journal_id", oldIds);
-    await supabase.from("journal_lines").delete().in("journal_id", oldIds);
+    // journal_lines ба journal_entries хоёул journals-аас CASCADE устана.
     await supabase.from("journals").delete().in("id", oldIds);
   }
 
@@ -413,10 +412,8 @@ const ACC_GAIN = "620500"; // ҮХ борлуулсны олз
 const ACC_LOSS = "820100"; // ҮХ хассаны гарз
 const ACC_VAT = "330100"; // НӨАТ-ын өглөг
 
-// Журналыг бүрэн устгах (entries + lines + journal).
+// Журналыг бүрэн устгах — journal_lines ба journal_entries CASCADE-аар дагана.
 async function deleteJournalFull(supabase: Supa, journalId: number): Promise<void> {
-  await supabase.from("journal_entries").delete().eq("journal_id", journalId);
-  await supabase.from("journal_lines").delete().eq("journal_id", journalId);
   await supabase.from("journals").delete().eq("id", journalId);
 }
 

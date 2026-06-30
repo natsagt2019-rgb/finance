@@ -251,11 +251,8 @@ export async function deleteEntry(id: number): Promise<ActionResult> {
     .single();
   if (!ent) return { ok: false, error: "Баримт олдсонгүй." };
 
-  // Холбоотой журналыг бүрэн устгана. journal_entries (GL тусгал) нь FK-гүй тул
-  // гараар устгана — эс бөгөөс гүйлгээ балансад орфан үлдэж дэд бүртгэлтэй зөрнө.
   if (ent.journal_id) {
-    await supabase.from("journal_entries").delete().eq("journal_id", ent.journal_id);
-    await supabase.from("journal_lines").delete().eq("journal_id", ent.journal_id);
+    // journal_lines ба journal_entries хоёул journals-аас CASCADE устана.
     await supabase.from("journals").delete().eq("id", ent.journal_id);
   }
 

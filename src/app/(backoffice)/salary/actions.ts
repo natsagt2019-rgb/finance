@@ -346,6 +346,54 @@ async function postSalaryJournal(
   if (rows.length > 0) await supabase.from("journal_entries").insert(rows);
 }
 
+// ── Хугацаа хаалтын шалгалт ──────────────────────────────────────────────────
+async function isPeriodClosed(
+  supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
+  year: number,
+  month: number,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("salary_closed_periods")
+    .select("id")
+    .eq("year", year)
+    .eq("month", month)
+    .maybeSingle();
+  return data != null;
+}
+
+export async function closeSalaryPeriod(
+  year: number,
+  month: number,
+  note?: string,
+): Promise<ActionResult> {
+  const { supabase, user } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+  const { error } = await supabase.from("salary_closed_periods").insert({
+    year,
+    month,
+    closed_by: user.email ?? null,
+    note: note ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/salary");
+  return { ok: true, id: year * 100 + month };
+}
+
+export async function reopenSalaryPeriod(
+  year: number,
+  month: number,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  const { error } = await supabase
+    .from("salary_closed_periods")
+    .delete()
+    .eq("year", year)
+    .eq("month", month);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/salary");
+  return { ok: true, id: year * 100 + month };
+}
+
 export async function saveSalary(
   year: number,
   month: number,
@@ -353,6 +401,12 @@ export async function saveSalary(
 ): Promise<ActionResult> {
   const { supabase } = await requireAuth();
   if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+
+  if (await isPeriodClosed(supabase, year, month))
+    return {
+      ok: false,
+      error: `${year} оны ${month}-р сарын цалин хаагдсан байна. Өөрчлөлт хийхийн тулд эхлээд хугацааг нээнэ үү.`,
+    };
 
   const { params, monthHours } = await loadParams(supabase, year);
   const mh = monthHours[month - 1] ?? 0;
