@@ -3,10 +3,9 @@
 -- БҮТЭЦ + ДАНСНЫ ТӨЛӨВЛӨГӨӨ + АЮУЛГҮЙ БАЙДАЛ (RLS)
 -- ============================================================
 -- Шинэ Supabase project үүсгээд ЭНЭ ФАЙЛЫГ БҮХЭЛД НЬ SQL Editor-д Run хийнэ:
---   1) Бүх хүснэгт/view/RPC/индекс (гүйлгээ ОРОХГҮЙ — цэвэр)
+--   1) Бүх хүснэгт/view/RPC/индекс (43 хүснэгт — гүйлгээ ОРОХГҮЙ, цэвэр)
 --   2) Стандарт 138 данс (130100/310100/130600/330100 — апп-тай таарна)
---   3) RLS: бүх хүснэгт хамгаалагдана — anon хаагдаж, зөвхөн нэвтэрсэн
---      хэрэглэгч хандана (нэвтрэлтгүйгээр дата уншигдахгүй).
+--   3) RLS: бүх хүснэгт хамгаалагдана (anon хаагдаж, нэвтэрсэн хэрэглэгч хандана)
 -- accounts хоосон үед л seed орно. ДАРАА НЬ: банкны данс, эхний үлдэгдэл оруулна.
 -- ============================================================
 
@@ -21,6 +20,10 @@
 -- accounts seed ажиллуулна (заавал биш).
 -- Автоматаар угсарсан: scripts/_build-new-company-setup.mjs
 -- ============================================================
+
+-- Функцийн биеийг үүсгэх үед шалгахгүй (урагшаа лавлагаа: pnorm г.м. дараа
+-- тодорхойлогддог — pg_dump-ийн стандарт арга). Ажиллах үед бүгд бэлэн болсон байна.
+SET check_function_bodies = false;
 
 -- Trigram extension (харилцагчийн нэр fuzzy тулгалтад шаардлагатай)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -1477,6 +1480,378 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
   FROM names n LEFT JOIN pmap pm ON pm.k = pnorm(n.partner_name)
   ORDER BY (pm.k IS NOT NULL) ASC, n.total DESC NULLS LAST;
 $$;
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/bank-accounts-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- Банкны данс (хуулга цэгцлэгчид ашиглана). Файлын нэрэн дэх дансны дугаараар
+-- тухайн дансыг таниж, банкны төрлөөр parser сонгоно. GL код = харилцах дансны
+-- өөрийн код (орлого→Дт, зарлага→Кт). Тохиргоо → Банкны данс хуудаснаас удирдана.
+CREATE TABLE IF NOT EXISTS bank_accounts (
+    id          BIGSERIAL PRIMARY KEY,
+    account_no  TEXT NOT NULL,                    -- дансны дугаар (файлын нэрэнд агуулагдана)
+    bank_type   TEXT NOT NULL DEFAULT 'tdb',      -- 'tdb' | 'golomt' | 'mbank'
+    label       TEXT NOT NULL DEFAULT '',         -- харагдах нэр
+    gl_code     TEXT,                             -- харилцах дансны GL код (110xxx)
+    currency    TEXT NOT NULL DEFAULT 'MNT',
+    sort        INT NOT NULL DEFAULT 0,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_no ON bank_accounts (account_no);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/company-settings-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- Үндсэн байгууллагын мэдээлэл (нэг мөр, id=1). Нэхэмжлэх г.м. баримтад
+-- хэвлэгдэнэ. Тохиргоо → Байгууллага хуудаснаас засна. Idempotent.
+CREATE TABLE IF NOT EXISTS company_settings (
+    id            SMALLINT PRIMARY KEY DEFAULT 1,
+    name          TEXT NOT NULL DEFAULT '',   -- "Компани" ХХК
+    name_upper    TEXT NOT NULL DEFAULT '',   -- ИХ ҮСГЭЭР (тамга/толгойд)
+    address       TEXT NOT NULL DEFAULT '',
+    phone         TEXT NOT NULL DEFAULT '',
+    email         TEXT NOT NULL DEFAULT '',
+    web           TEXT NOT NULL DEFAULT '',
+    register      TEXT NOT NULL DEFAULT '',   -- ТТД (улсын бүртгэл)
+    tax_id        TEXT NOT NULL DEFAULT '',   -- НӨАТ дугаар
+    bank_name     TEXT NOT NULL DEFAULT '',
+    bank_account  TEXT NOT NULL DEFAULT '',
+    bank_iban     TEXT NOT NULL DEFAULT '',
+    director      TEXT NOT NULL DEFAULT '',   -- захирал (гарын үсэг)
+    accountant    TEXT NOT NULL DEFAULT '',   -- нягтлан (гарын үсэг)
+    is_vat_payer  BOOLEAN NOT NULL DEFAULT TRUE,  -- НӨАТ төлөгч эсэх (нэхэмжлэлд 10% тооцох)
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT company_settings_singleton CHECK (id = 1)
+);
+
+-- Хуучин хүснэгтэд багана нэмэх (idempotent).
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_vat_payer BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/category-gl-map-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- category_gl_map — Ангилал (cashflow код) → GL данс зураглал, КОМПАНИ бүрээр.
+-- ============================================================
+-- "Автомат холболт" (statements) энэ хүснэгтийг суурь дүрэм болгон ашиглана:
+--   Орлого:  Кт = энэ дансаар (Дт = банк авто).
+--   Зарлага: Дт = энэ дансаар (Кт = банк авто).
+-- Сурсан дүрэм (гараар кодолсон жишээ) байвал тэр давамгайлна; байхгүй үед
+-- энэ зураглалаас авна → шинэ импорт эхний өдрөөс кодлогдоно.
+--
+-- company: данс бүлгийн код ('TT' = Түмэн Тээх бүлэг: TT/GM/MB/TTU/TTE,
+--          'TR' = Түмэн Ресурс). Шинэ компани/төрөл нэмэхэд энд мөр нэмнэ
+--          (Тохиргоо → Ангилал → данс зураглал хуудаснаас).
+--
+-- Анхны seed нь bank-journal-posting.ts дахь CAT_ACCOUNT-оос (амьд кодтой
+-- нийцсэн, батлагдсан зураглал) авсан. Supabase SQL Editor-д ажиллуулна.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS category_gl_map (
+    id            BIGSERIAL PRIMARY KEY,
+    company       TEXT NOT NULL,             -- 'TT' | 'TR' | …
+    category_code TEXT NOT NULL,             -- '1.1.1', '1.2.14' …
+    side          TEXT NOT NULL,             -- 'credit' (орлого) | 'debit' (зарлага)
+    gl_code       TEXT NOT NULL,             -- '120101', '702701' …
+    note          TEXT,                      -- ангиллын тайлбар
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT category_gl_map_uniq UNIQUE (company, category_code)
+);
+CREATE INDEX IF NOT EXISTS idx_category_gl_map_company ON category_gl_map (company);
+
+-- ── TT (Түмэн Тээх бүлэг) seed — CAT_ACCOUNT-оос ─────────────────────────
+INSERT INTO category_gl_map (company, category_code, side, gl_code, note) VALUES
+  -- Орлого (Кт)
+  ('TT', '1.1.1', 'credit', '120101', 'Үндсэн үйлчилгээний орлого (тээвэр)'),
+  ('TT', '1.1.2', 'credit', '120101', 'Авлага / тооцоо орлого'),
+  ('TT', '1.1.3', 'credit', '840201', 'Хүүгийн орлого'),
+  ('TT', '1.1.4', 'credit', '120101', 'Буцаалтын орлого'),
+  ('TT', '5.1.1', 'credit', '120105', 'Охин компани — тооцоо орлого'),
+  ('TT', '5.1.2', 'credit', '120105', 'Охин компани — зээл орлого'),
+  ('TT', '5.1.3', 'credit', '120601', 'Ажилтан зээл буцаалт'),
+  -- Зарлага (Дт)
+  ('TT', '1.2.1', 'debit', '610201', 'Поткийн зардал (одоогийн сар)'),
+  ('TT', '1.2.2', 'debit', '610201', 'Поткийн зардал (өмнөх сар)'),
+  ('TT', '2.1.1', 'debit', '310201', 'Цалин (олголт → цалингийн өглөг)'),
+  ('TT', '2.1.3', 'debit', '700401', 'Томилолт'),
+  ('TT', '2.1.5', 'debit', '700801', 'Сургалт'),
+  ('TT', '2.1.10', 'debit', '701401', 'Түрээс (Гацуурт)'),
+  ('TT', '2.1.14', 'debit', '702701', 'Банкны шимтгэл'),
+  ('TT', '2.2.1', 'debit', '310401', 'ХХОАТ'),
+  ('TT', '2.2.2', 'debit', '310201', 'Мост Мони (цалингийн өглөг)'),
+  ('TT', '2.2.3', 'debit', '310601', 'НӨАТ / ААН татвар'),
+  ('TT', '2.2.4', 'debit', '310501', 'НДШ / ЭМНДШ'),
+  ('TT', '3.2.1', 'debit', '200601', 'Компьютер / техник хэрэгсэл'),
+  ('TT', '3.2.2', 'debit', '200501', 'Тавилга / эд хогшил'),
+  ('TT', '5.2.1', 'debit', '120105', 'Охин компани — тооцоо зарлага'),
+  ('TT', '5.2.2', 'debit', '120105', 'Охин компани — зээл зарлага'),
+  ('TT', '5.2.3', 'debit', '120601', 'Ажилтан зээл олголт')
+ON CONFLICT (company, category_code) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/tax-adjustments.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- ААНОАТ гар тохируулга — түр зөрүүний татварын тал + гар мөр
+-- (ААНОАТ хууль 2019.03.22 · А/144 журам)
+-- ============================================================
+-- kind утгууд:
+--   temp_diff — түр зөрүүтэй дансны ТАТВАРЫН ТАЛЫН дүн (жилд нэг, дансаар).
+--               Санхүүгийн тал нь pnl_range-аас, зөрүү = санхүү − татвар.
+--               account_code заавал, amount = татварын дүн.
+--   add       — гар нэмэгдэл (татвар ногдох орлогод нэмэх). account_code NULL.
+--   less      — гар хасагдал (татвар ногдох орлогоос хасах). account_code NULL.
+-- Supabase Dashboard → SQL Editor-д ажиллуулна. Идемпотент.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS tax_adjustments (
+    id            BIGSERIAL PRIMARY KEY,
+    year          SMALLINT NOT NULL,
+    kind          TEXT NOT NULL CHECK (kind IN ('temp_diff', 'add', 'less')),
+    account_code  TEXT,
+    label         TEXT NOT NULL DEFAULT '',
+    amount        NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    note          TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Түр зөрүү: жил × данс тутамд нэг мөр (upsert).
+CREATE UNIQUE INDEX IF NOT EXISTS tax_adjustments_tempdiff_uniq
+    ON tax_adjustments (year, account_code)
+    WHERE kind = 'temp_diff';
+
+CREATE INDEX IF NOT EXISTS tax_adjustments_year_idx ON tax_adjustments (year);
+
+COMMENT ON TABLE tax_adjustments IS
+  'ААНОАТ гар тохируулга: temp_diff (татварын тал), add/less (гар мөр)';
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/invoice-lines-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- Нэхэмжлэлийн мөр (line items). Нэг нэхэмжлэлд олон мөр. Мөрийн дүн нь
+-- НӨАТ-гүй (net): amount = qty × unit_price. Нэхэмжлэлийн нийт дүн (gross) =
+-- Σ amount × 1.1 (НӨАТ 10%). Мөргүй нэхэмжлэл хуучнаар (нэг дүнгээр) ажиллана.
+CREATE TABLE IF NOT EXISTS invoice_lines (
+    id           BIGSERIAL PRIMARY KEY,
+    invoice_id   BIGINT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    sort         INT NOT NULL DEFAULT 0,
+    description  TEXT NOT NULL DEFAULT '',
+    qty          NUMERIC(18, 3) NOT NULL DEFAULT 1,
+    unit_price   NUMERIC(18, 2) NOT NULL DEFAULT 0,  -- НӨАТ-гүй нэгж үнэ
+    amount       NUMERIC(18, 2) NOT NULL DEFAULT 0,  -- qty × unit_price (НӨАТ-гүй)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines (invoice_id);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/inventory-location-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- C. Байршил (агуулах) мастер дата + баар код + хөдөлгөөний байршил
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inv_locations (
+    id          BIGSERIAL PRIMARY KEY,
+    code        TEXT,                            -- байршлын код (заавал биш)
+    name        TEXT NOT NULL,                   -- агуулах/байршлын нэр
+    keeper      TEXT,                            -- няраж (хариуцагч)
+    note        TEXT,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Барааны баар код.
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS barcode TEXT;
+
+-- Хөдөлгөөний байршил (аль агуулахад орлого/зарлага хийгдсэн).
+ALTER TABLE inv_moves ADD COLUMN IF NOT EXISTS location_id BIGINT
+    REFERENCES inv_locations(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_inv_moves_location ON inv_moves (location_id);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/inventory-prices-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- inv_prices — Барааны үнэ (B. Үнийн удирдлага)
+-- ============================================================
+-- Барааны зарах/өртгийн үнэ. partner_id NULL бол ерөнхий үнэ, утгатай бол
+-- тухайн харилцагчийн тусгай үнэ. valid_from-оор түүх хадгалагдаж, үнийн
+-- өөрчлөлтийн тайлан гарна. Хамгийн сүүлийн (valid_from max) нь идэвхтэй үнэ.
+CREATE TABLE IF NOT EXISTS inv_prices (
+    id          BIGSERIAL PRIMARY KEY,
+    item_id     BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE CASCADE,
+    partner_id  BIGINT REFERENCES partners(id) ON DELETE CASCADE,  -- NULL = ерөнхий үнэ
+    sale_price  NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- зарах үнэ (НӨТ-гүй)
+    cost_price  NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- төлөвлөсөн өртөг (заавал биш)
+    currency    TEXT NOT NULL DEFAULT 'MNT',
+    valid_from  DATE NOT NULL DEFAULT CURRENT_DATE,  -- мөрдөж эхлэх огноо
+    note        TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_inv_prices_item ON inv_prices (item_id, valid_from DESC);
+CREATE INDEX IF NOT EXISTS idx_inv_prices_partner ON inv_prices (partner_id);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/inventory-recipe-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- D. Хөрвүүлэлт — Орц (BOM) + хөрвүүлэлтийн баримт
+-- ============================================================
+-- inv_recipes: бүтээгдэхүүн (product) 1 нэгж гаргахад орох түүхий эдүүд.
+CREATE TABLE IF NOT EXISTS inv_recipes (
+    id                BIGSERIAL PRIMARY KEY,
+    product_item_id   BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE CASCADE,
+    component_item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE CASCADE,
+    qty               NUMERIC(18, 4) NOT NULL DEFAULT 0,   -- 1 бүтээгдэхүүнд орох тоо
+    note              TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT inv_recipes_uniq UNIQUE (product_item_id, component_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_inv_recipes_product ON inv_recipes (product_item_id);
+
+-- inv_conversions: хөрвүүлэлтийн баримтын толгой (бүтээгдэхүүн X тоогоор гаргав).
+CREATE TABLE IF NOT EXISTS inv_conversions (
+    id              BIGSERIAL PRIMARY KEY,
+    date            DATE NOT NULL,
+    product_item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE CASCADE,
+    output_qty      NUMERIC(18, 3) NOT NULL DEFAULT 0,
+    total_cost      NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- зарцуулсан түүхий эдийн нийт өртөг
+    journal_id      BIGINT REFERENCES journals(id) ON DELETE SET NULL,
+    doc_no          TEXT,
+    company         TEXT,
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/assets-location-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- Үндсэн хөрөнгө — БАЙРШИЛ (мастер) + БААР КОД (идемпотент migration)
+-- ============================================================
+--   node scripts/apply-sql.mjs scripts/assets-location-schema.sql
+-- ============================================================
+
+-- ── asset_locations — байршлын лавлах (001 Ашиглалт, 002 Агуулах ...) ──
+CREATE TABLE IF NOT EXISTS asset_locations (
+    id          BIGSERIAL PRIMARY KEY,
+    code        TEXT,                          -- байршлын код (001, 002 ...)
+    name        TEXT NOT NULL,                 -- байршлын нэр
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE, -- зөөлөн устгал
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS asset_locations_active_idx ON asset_locations (is_active);
+
+-- ── assets — байршлын холбоос + баар код ──
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS location_id BIGINT
+  REFERENCES asset_locations(id) ON DELETE SET NULL;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS barcode TEXT;
+CREATE INDEX IF NOT EXISTS assets_location_idx ON assets (location_id);
+CREATE INDEX IF NOT EXISTS assets_barcode_idx  ON assets (barcode);
+
+-- ── Анхдагч байршил (идемпотент — кодоор шалгана) ──
+INSERT INTO asset_locations (code, name)
+SELECT v.code, v.name
+FROM (VALUES ('001', 'Ашиглалт'), ('002', 'Агуулах')) AS v(code, name)
+WHERE NOT EXISTS (SELECT 1 FROM asset_locations l WHERE l.code = v.code);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/assets-movement-schema.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- Үндсэн хөрөнгө — ХӨДӨЛГӨӨН (эзэмшил шилжүүлэх / дотоод) — идемпотент migration
+-- ============================================================
+--   node scripts/apply-sql.mjs scripts/assets-movement-schema.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS asset_movements (
+    id               BIGSERIAL PRIMARY KEY,
+    asset_id         BIGINT REFERENCES assets(id) ON DELETE CASCADE,
+    moved_date       DATE NOT NULL,                 -- хөдөлгөөний огноо
+    move_type        TEXT NOT NULL                  -- custody=эзэмшил | internal=дотоод
+                       CHECK (move_type IN ('custody', 'internal')),
+    from_responsible TEXT,                          -- хуучин эд хариуцагч
+    to_responsible   TEXT,                          -- шинэ эд хариуцагч
+    from_location_id BIGINT REFERENCES asset_locations(id) ON DELETE SET NULL, -- хуучин байршил
+    to_location_id   BIGINT REFERENCES asset_locations(id) ON DELETE SET NULL, -- шинэ байршил
+    note             TEXT,                          -- акт/тэмдэглэл
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS asset_movements_asset_idx ON asset_movements (asset_id);
+CREATE INDEX IF NOT EXISTS asset_movements_date_idx  ON asset_movements (moved_date);
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/schema-sync-columns.sql
+-- ════════════════════════════════════════════════════════════
+-- ============================================================
+-- Схем-нэмэлт: сүүлд нэмэгдсэн багануудыг гүйцээх (idempotent)
+-- sandbox-ийн жинхэнэ схемээс гаргав 2026-06-30.
+-- ============================================================
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS tax_class text;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS disposal_type text;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS disposal_proceeds numeric(18,2) DEFAULT 0;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS disposal_vat numeric(18,2) DEFAULT 0;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS disposal_journal_id bigint;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS location_id bigint;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS barcode text;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS acquisition_vat numeric(18,2) DEFAULT 0;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS acquisition_journal_id bigint;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_kind text;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_date date;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_cost numeric(18,2);
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_accum numeric(18,2);
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_life_months integer;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_note text;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS revision_journal_id bigint;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS last_name text;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS salary_type text DEFAULT 'fixed'::text;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS department text;
+ALTER TABLE public.inv_items ADD COLUMN IF NOT EXISTS barcode text;
+ALTER TABLE public.inv_moves ADD COLUMN IF NOT EXISTS location_id bigint;
+ALTER TABLE public.inv_moves ADD COLUMN IF NOT EXISTS lot_no text;
+ALTER TABLE public.inv_moves ADD COLUMN IF NOT EXISTS expiry_date date;
+ALTER TABLE public.inv_settings ADD COLUMN IF NOT EXISTS cost_method text DEFAULT 'fifo'::text;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS has_vat boolean DEFAULT true;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS salary_type text DEFAULT 'fixed'::text;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS overtime_hours numeric(8,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS holiday_overtime_hours numeric(8,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS late_minutes numeric(8,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS transport_allowance numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS meal_allowance numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS fuel_allowance numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS tenure_allowance numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS overtime_pay numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS holiday_overtime_pay numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS late_deduction numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS savings_deduction numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS discipline_deduction numeric(18,2) DEFAULT 0;
+ALTER TABLE public.salary_records ADD COLUMN IF NOT EXISTS department text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debit_code text;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS credit_code text;
+ALTER TABLE public.bank_accounts ADD COLUMN IF NOT EXISTS company text;
+ALTER TABLE public.inv_locations ADD COLUMN IF NOT EXISTS is_bonded boolean DEFAULT false;
+
+-- ════════════════════════════════════════════════════════════
+-- FILE: scripts/vat-return-summary-rpc.sql
+-- ════════════════════════════════════════════════════════════
+-- vat_return_summary RPC (sandbox-аас гаргав 2026-06-30)
+CREATE OR REPLACE FUNCTION public.vat_return_summary(d_from date, d_to date)
+ RETURNS TABLE(out_taxable_base numeric, out_exempt_base numeric, out_vat numeric, out_cnt integer, in_base numeric, in_vat numeric, in_cnt integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+  SELECT
+    COALESCE(SUM(amount)     FILTER (WHERE type = 'out' AND COALESCE(tax_type,'') <> 'Чөлөөлөгдөх'), 0),
+    COALESCE(SUM(amount)     FILTER (WHERE type = 'out' AND tax_type = 'Чөлөөлөгдөх'), 0),
+    COALESCE(SUM(vat_amount) FILTER (WHERE type = 'out'), 0),
+    COALESCE(COUNT(*)        FILTER (WHERE type = 'out'), 0)::int,
+    COALESCE(SUM(amount)     FILTER (WHERE type = 'in'), 0),
+    COALESCE(SUM(vat_amount) FILTER (WHERE type = 'in'), 0),
+    COALESCE(COUNT(*)        FILTER (WHERE type = 'in'), 0)::int
+  FROM vat_active
+  WHERE date >= d_from AND date <= d_to;
+$function$
 
 -- ════════════════════════════════════════════════════════════
 -- FILE: scripts/enable-rls.sql
