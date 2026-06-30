@@ -10,20 +10,32 @@ import type { FsBalanceMap } from "@/lib/fs-report";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-// Тухайн жилд ерөнхий журналд БОДИТ гүйлгээ (эхний үлдэгдэл биш) байгаа эсэх.
-// Байвал тайланг журналаас гаргана (нэг эх сурвалжийн зарчим). Үгүй бол
-// trial_balances snapshot руу буцна (Excel-ээр импортолсон хуучин он).
+// Тухайн жилд тайланг журналаас гаргаж болох эсэхийг шалгана.
+// 1) Жилийн бодит гүйлгээ (is_opening=false) байвал → журналаас.
+// 2) Өмнөх оны эхний үлдэгдэл (is_opening=true) байвал → журналаас
+//    (trial_balance_range-д opening баганад харагдана).
+// Аль нь ч байхгүй бол → fs_line_balances snapshot руу буцна.
 export async function journalHasYear(
   supabase: SupabaseClient,
   year: number,
 ): Promise<boolean> {
-  const { count } = await supabase
+  // 1. Жилийн бодит гүйлгээ шалгана.
+  const { count: txn } = await supabase
     .from("journal_entries")
     .select("id", { count: "exact", head: true })
     .gte("txn_date", `${year}-01-01`)
     .lte("txn_date", `${year}-12-31`)
     .eq("is_opening", false);
-  return (count ?? 0) > 0;
+  if ((txn ?? 0) > 0) return true;
+
+  // 2. Өмнөх оны эхний үлдэгдэл шалгана (trial_balance opening баганад орно).
+  const { count: open } = await supabase
+    .from("journal_entries")
+    .select("id", { count: "exact", head: true })
+    .gte("txn_date", `${year - 1}-01-01`)
+    .lte("txn_date", `${year}-01-01`)
+    .eq("is_opening", true);
+  return (open ?? 0) > 0;
 }
 
 // Тайланд сонгох боломжит онууд: trial_balances (snapshot) + журналын
