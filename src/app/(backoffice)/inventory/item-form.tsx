@@ -79,7 +79,7 @@ export function ItemForm({ mode, item, defaultCompany }: Props) {
           <label className={labelCls}>Ангилал</label>
           <select
             name="category_code"
-            defaultValue={item?.category_code ?? "120201"}
+            defaultValue={item?.category_code ?? "150100"}
             className={inputCls}
           >
             {CATEGORIES.map((c) => (

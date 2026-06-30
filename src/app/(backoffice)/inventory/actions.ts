@@ -48,7 +48,7 @@ function readItem(formData: FormData) {
   return {
     sku: get("sku") || null,
     name: get("name"),
-    category_code: get("category_code") || "120299",
+    category_code: get("category_code") || "150100",
     unit: get("unit") || "ш",
     reorder_point: num(formData.get("reorder_point")),
     company: get("company") || null,

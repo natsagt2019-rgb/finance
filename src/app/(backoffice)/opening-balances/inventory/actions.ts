@@ -76,9 +76,9 @@ export async function importInventoryExcel(
   const validCodes = new Set(CATEGORIES.map((c) => c.code));
   const catCodeOf = (raw: string): string => {
     const s = raw.trim().toLowerCase();
-    if (!s) return "120299";
+    if (!s) return "150100";
     if (validCodes.has(s)) return s;
-    return codeByLabel.get(s) ?? "120299";
+    return codeByLabel.get(s) ?? "150100";
   };
 
   // Байгаа идэвхтэй барааг нэрээр (давхар үүсгэхгүй).
@@ -120,7 +120,7 @@ export async function importInventoryExcel(
         .from("inv_items")
         .insert({
           name,
-          category_code: idx.cat >= 0 ? catCodeOf(String(row[idx.cat] ?? "")) : "120299",
+          category_code: idx.cat >= 0 ? catCodeOf(String(row[idx.cat] ?? "")) : "150100",
           unit: idx.unit >= 0 ? String(row[idx.unit] ?? "").trim() || "ш" : "ш",
           sku: idx.sku >= 0 ? String(row[idx.sku] ?? "").trim() || null : null,
           is_active: true,

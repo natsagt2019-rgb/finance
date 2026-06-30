@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS inv_items (
 
     sku             TEXT,                            -- код / артикул (заавал биш)
     name            TEXT NOT NULL,                   -- барааны нэр
-    category_code   TEXT NOT NULL DEFAULT '120299',  -- 120201..120299 (inventory-calc.ts CATEGORIES)
+    category_code   TEXT NOT NULL DEFAULT '150100',  -- 150100..150700 (inventory-calc.ts CATEGORIES)
     unit            TEXT NOT NULL DEFAULT 'ш',        -- хэмжих нэгж (л, кг, ш...)
     reorder_point   NUMERIC(18, 2) NOT NULL DEFAULT 0,  -- хамгийн бага нөөц
     company         TEXT,                            -- ТҮМЭН РЕСУРС | ТҮМЭН ТЭЭХ
@@ -82,12 +82,12 @@ CREATE INDEX IF NOT EXISTS inv_counts_item_idx ON inv_counts (item_id);
 CREATE INDEX IF NOT EXISTS inv_counts_date_idx ON inv_counts (date);
 
 -- ── inv_settings — нэг мөрийн тохиргоо (id = 1) ─────────────────────────────
--- Дансыг кодоор биш, бодит accounts.id-аар холбоно (дүрмийн 120201..299 кодууд
+-- Дансыг кодоор биш, бодит accounts.id-аар холбоно (дүрмийн 150100..700 кодууд
 -- идэвхтэй төлөвлөгөөнд таарахгүй тул).
 CREATE TABLE IF NOT EXISTS inv_settings (
     id                            SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
 
-    -- Ангилал → бараа материалын данс: { "120201": <account_id>, ... }
+    -- Ангилал → бараа материалын данс: { "150100": <account_id>, ... }
     category_accounts             JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     -- Стандарт данснууд (журналд хэрэглэнэ)

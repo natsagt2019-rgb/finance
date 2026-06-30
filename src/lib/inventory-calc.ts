@@ -10,12 +10,13 @@
 export type Category = { code: string; label: string };
 
 export const CATEGORIES: Category[] = [
-  { code: "120201", label: "Шатахуун, тосолгоо" },
-  { code: "120202", label: "Сэлбэг эд анги" },
-  { code: "120203", label: "Засварын материал" },
-  { code: "120204", label: "Оффисын хэрэглэл" },
-  { code: "120205", label: "Аюулгүй ажиллагааны" },
-  { code: "120299", label: "Бусад материал" },
+  { code: "150100", label: "Түүхий эд, үндсэн материал" },
+  { code: "150200", label: "Туслах материал, сэлбэг" },
+  { code: "150300", label: "Дуусаагүй үйлдвэрлэл" },
+  { code: "150400", label: "Бэлэн бүтээгдэхүүн" },
+  { code: "150500", label: "Худалдааны бараа" },
+  { code: "150600", label: "Бага үнэтэй, түргэн элэгдэх зүйл" },
+  { code: "150700", label: "Замд яваа бараа материал" },
 ];
 
 export function categoryLabel(code: string): string {
