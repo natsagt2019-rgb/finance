@@ -125,6 +125,79 @@ export type ReceivablesSummary = {
   partnerCount: number;
 };
 
+// ── Насжилтын дэлгэрэнгүй (нээлттэй зүйл бүрийг тус тусад нь) ─────────────────
+// Нэгтгэлийн оронд нээлттэй зүйл (нэхэмжлэх/FIFO хэсэг) бүрийг хоног, бүлэгтэй нь
+// харуулна — өр төлбөр цуглуулах/тулгах ажлын жагсаалт.
+export type AgingDetailItem = ReceivableItem & { days: number; bucket: AgingBucket };
+
+export type PartnerAgingDetail = {
+  partnerKey: string;
+  partnerName: string;
+  items: AgingDetailItem[]; // огноогоор хуучнаас шинэ рүү
+  total: number;
+  buckets: Record<AgingBucket, number>;
+};
+
+export type AgingDetailSummary = {
+  partners: PartnerAgingDetail[]; // дүнгээр буурахаар
+  total: number;
+  buckets: Record<AgingBucket, number>;
+  partnerCount: number;
+  itemCount: number;
+};
+
+// Нээлттэй зүйлсийг харилцагчаар бүлэглэж, зүйл тус бүрд хоног+бүлэг онооно.
+// minDays-аас бага настай зүйлсийг алгасаж болно (анхдагч 0 — бүгд).
+export function buildAgingDetail(
+  items: ReceivableItem[],
+  today: string,
+  minDays = 0,
+): AgingDetailSummary {
+  const byPartner = new Map<string, PartnerAgingDetail>();
+
+  for (const it of items) {
+    const amount = Number(it.amount) || 0;
+    if (amount <= 0.005) continue;
+    const days = daysBetween(it.date, today);
+    if (days < minDays) continue;
+    const bucket = bucketOf(it.date, today);
+
+    let p = byPartner.get(it.partnerKey);
+    if (!p) {
+      p = {
+        partnerKey: it.partnerKey,
+        partnerName: it.partnerName,
+        items: [],
+        total: 0,
+        buckets: emptyBuckets(),
+      };
+      byPartner.set(it.partnerKey, p);
+    }
+    p.items.push({ ...it, amount, days, bucket });
+    p.total += amount;
+    p.buckets[bucket] += amount;
+  }
+
+  const partners = [...byPartner.values()].sort((a, b) => b.total - a.total);
+  let itemCount = 0;
+  const summary: AgingDetailSummary = {
+    partners,
+    total: 0,
+    buckets: emptyBuckets(),
+    partnerCount: partners.length,
+    itemCount: 0,
+  };
+  for (const p of partners) {
+    // Хуучин зүйл эхэнд (хамгийн их хэтэрсэн нь дээр).
+    p.items.sort((a, b) => b.days - a.days);
+    summary.total += p.total;
+    for (const b of AGING_BUCKETS) summary.buckets[b] += p.buckets[b];
+    itemCount += p.items.length;
+  }
+  summary.itemCount = itemCount;
+  return summary;
+}
+
 // Авлагын мөрүүдийг харилцагчаар бүлэглэж, насжилтаар задлан нэгтгэнэ.
 // 0.005-аас бага (бараг тэг) болон сөрөг үлдэгдлийг алгасна.
 export function summarizeReceivables(

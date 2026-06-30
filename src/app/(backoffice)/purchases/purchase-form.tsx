@@ -90,7 +90,7 @@ export function PurchaseForm({ accounts }: { accounts: AccOpt[] }) {
         </div>
       )}
       <p className="mt-2 text-xs text-zinc-400">
-        Бичилт: Дт сонгосон данс (цэвэр) + Дт 120201 НӨАТ / Кт 310101 өглөг. → /payables, харилцагчийн тооцоонд тусна.
+        Бичилт: Дт сонгосон данс (цэвэр) + Дт 120201 НӨАТ / Кт 310100 өглөг. → /payables, харилцагчийн тооцоонд тусна.
       </p>
     </form>
   );

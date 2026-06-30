@@ -22,7 +22,7 @@ function num(v: FormDataEntryValue | null): number {
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Худалдан авалт нэмэх → журналд өглөг бичих.
-//   Дт зардал/бараа (цэвэр) + Дт 120201 НӨАТ суутгал / Кт 310101 өглөг (нийт)
+//   Дт зардал/бараа (цэвэр) + Дт 120201 НӨАТ суутгал / Кт 310100 өглөг (нийт)
 export async function createPurchase(formData: FormData): Promise<ActionResult> {
   const supabase = await requireAuth();
 

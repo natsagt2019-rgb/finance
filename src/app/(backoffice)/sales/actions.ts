@@ -22,7 +22,7 @@ function num(v: FormDataEntryValue | null): number {
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Борлуулалт → авлага + output НӨАТ.
-//   Дт 120101 авлага (нийт) / Кт орлого (цэвэр) + Кт 310601 НӨАТ
+//   Дт 130100 авлага (нийт) / Кт орлого (цэвэр) + Кт 310601 НӨАТ
 export async function createSale(formData: FormData): Promise<ActionResult> {
   const supabase = await requireAuth();
 

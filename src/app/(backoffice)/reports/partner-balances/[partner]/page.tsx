@@ -1,8 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import {
+  isPayableAccount,
+  isReceivableAccount,
+} from "@/lib/receivables-calc";
 
 type SearchParams = { to?: string };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+type AccRow = {
+  code: string;
+  name: string;
+  type: string | null;
+  fs_line: string | null;
+};
 
 type JE = {
   txn_date: string;
@@ -30,13 +41,31 @@ export default async function PartnerLedgerPage({
   const to = sp.to && ISO.test(sp.to) ? sp.to : "2026-12-31";
 
   const supabase = await createClient();
+
+  // Авлага/өглөгийн дансны кодыг нэрээр илрүүлнэ — partner_balances RPC болон
+  // авлага/өглөгийн насжилтын хуудастай ижил логик (ганц данс биш бүх "авлага"/
+  // "өглөг" данс). Эс бөгөөс дэлгэрэнгүй нь товчоотойгоо зөрнө.
+  const { data: accData } = await supabase
+    .from("accounts")
+    .select("code, name, type, fs_line")
+    .eq("is_active", true)
+    .limit(5000);
+  const accs = (accData as AccRow[] | null) ?? [];
+  const recCodes = new Set(
+    accs.filter((a) => isReceivableAccount(a.name, a.type, a.fs_line)).map((a) => a.code),
+  );
+  const payCodes = new Set(
+    accs.filter((a) => isPayableAccount(a.name, a.type, a.fs_line)).map((a) => a.code),
+  );
+  const allCodes = [...recCodes, ...payCodes];
+
   const { data } = await supabase
     .from("journal_entries")
     .select("txn_date, description, debit_code, credit_code, amount")
     .eq("partner_name", partner)
     .lte("txn_date", to)
     .or(
-      "debit_code.in.(120101,310101),credit_code.in.(120101,310101)",
+      `debit_code.in.(${allCodes.join(",")}),credit_code.in.(${allCodes.join(",")})`,
     )
     .order("txn_date", { ascending: true })
     .order("id", { ascending: true })
@@ -50,9 +79,17 @@ export default async function PartnerLedgerPage({
   const rows = entries.map((e) => {
     const amt = Number(e.amount) || 0;
     const recEff =
-      e.debit_code === "130100" ? amt : e.credit_code === "130100" ? -amt : 0;
+      e.debit_code && recCodes.has(e.debit_code)
+        ? amt
+        : e.credit_code && recCodes.has(e.credit_code)
+          ? -amt
+          : 0;
     const payEff =
-      e.credit_code === "310100" ? amt : e.debit_code === "310100" ? -amt : 0;
+      e.credit_code && payCodes.has(e.credit_code)
+        ? amt
+        : e.debit_code && payCodes.has(e.debit_code)
+          ? -amt
+          : 0;
     runRec += recEff;
     runPay += payEff;
     return { ...e, recEff, payEff, net: runRec - runPay };
@@ -73,7 +110,7 @@ export default async function PartnerLedgerPage({
           </a>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-900">{partner}</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Гүйлгээний дэлгэрэнгүй (авлага 120101, өглөг 310101) — {to} хүртэл.
+            Гүйлгээний дэлгэрэнгүй (авлага ба өглөгийн бүх данс) — {to} хүртэл.
           </p>
         </div>
         <PrintButton />
@@ -138,7 +175,7 @@ export default async function PartnerLedgerPage({
         </table>
       </div>
       <p className="mt-2 text-xs text-zinc-400">
-        {rows.length} гүйлгээ. Авлага: Дт 120101 = +, Кт = −. Өглөг: Кт 310101 = +, Дт = −.
+        {rows.length} гүйлгээ. Авлагын данс: Дт = +, Кт = −. Өглөгийн данс: Кт = +, Дт = −.
       </p>
     </div>
   );

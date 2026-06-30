@@ -83,7 +83,9 @@ export const navEntries: NavEntry[] = [
       { href: "/partners", label: "Харилцагчид", icon: "👥" },
       { href: "/partners/merge", label: "Харилцагчийн нэр нэгтгэх", icon: "🔗" },
       { href: "/receivables", label: "Авлагын насжилт", icon: "📥" },
+      { href: "/reports/receivables-aging-detail", label: "Авлагын насжилт (дэлгэрэнгүй)", icon: "📥" },
       { href: "/payables", label: "Өглөгийн насжилт", icon: "📤" },
+      { href: "/reports/payables-aging-detail", label: "Өглөгийн насжилт (дэлгэрэнгүй)", icon: "📤" },
       { href: "/reports/partner-balances", label: "Харилцагчийн тооцоо", icon: "🤝" },
       { href: "/reports/partner-balance-detail", label: "Харилцагчийн үлдэгдлийн тайлан", icon: "📋" },
       { href: "/reports/partner-statement", label: "Тооцооны үлдэгдлийн тайлан", icon: "📃" },
@@ -176,6 +178,7 @@ export const navEntries: NavEntry[] = [
     title: "Тусламж",
     icon: "❓",
     items: [
+      { href: "/help/faq", label: "Нийтлэг асуулт хариулт (FAQ)", icon: "❓" },
       { href: "/help/accounts", label: "Дансны төлөвлөгөө — заавар", icon: "📋" },
       { href: "/help/tax-reports", label: "Татварын тайлан — заавар", icon: "🏛" },
       { href: "/help/opening-balances", label: "Эхний үлдэгдэл оруулах заавар", icon: "◔" },
