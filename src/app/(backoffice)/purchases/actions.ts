@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-const AP = "310100"; // Нийлүүлэгч, гүйцэтгэгчийн өглөг
-const INPUT_VAT = "130600"; // НӨАТ-ын авлага (суутгал)
+// Өгөгдмөл утгууд — financial_settings хүснэгтэд тохиргоо байхгүй үед.
+const DEFAULT_AP          = "310100"; // Нийлүүлэгч, гүйцэтгэгчийн өглөг
+const DEFAULT_INPUT_VAT   = "130600"; // НӨАТ-ын авлага (суутгал)
 
 export type ActionResult = { ok: true; id: number } | { ok: false; error: string };
 
@@ -21,8 +22,25 @@ function num(v: FormDataEntryValue | null): number {
 }
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
+type FinSettings = { ap_code: string; input_vat_code: string };
+
+async function loadFinancialSettings(
+  supabase: Awaited<ReturnType<typeof requireAuth>>,
+  company: string,
+): Promise<FinSettings> {
+  const { data } = await supabase
+    .from("financial_settings")
+    .select("ap_code, input_vat_code")
+    .eq("company", company)
+    .maybeSingle();
+  return {
+    ap_code:        (data as FinSettings | null)?.ap_code        ?? DEFAULT_AP,
+    input_vat_code: (data as FinSettings | null)?.input_vat_code ?? DEFAULT_INPUT_VAT,
+  };
+}
+
 // Худалдан авалт нэмэх → журналд өглөг бичих.
-//   Дт зардал/бараа (цэвэр) + Дт 120201 НӨАТ суутгал / Кт 310100 өглөг (нийт)
+//   Дт зардал/бараа (цэвэр) + Дт НӨАТ суутгал / Кт өглөг (нийт)
 export async function createPurchase(formData: FormData): Promise<ActionResult> {
   const supabase = await requireAuth();
 
@@ -39,6 +57,7 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
   if (!expenseCode) return { ok: false, error: "Зардал/барааны данс сонгоно уу." };
   if (net <= 0) return { ok: false, error: "Дүн (НӨАТ-гүй) 0-ээс их байх ёстой." };
 
+  const cfg = await loadFinancialSettings(supabase, company);
   const vat = vatPct >= 1 ? r2(net * 0.1) : 0;
   const total = r2(net + vat);
 
@@ -63,7 +82,6 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
   const id = pur.id as number;
 
   // 2) Журнал (journal_entries — тайлангийн эх сурвалж).
-  // source_id = худалдан авалтын id — устгахад нарийн холбоно.
   const rows: Record<string, unknown>[] = [
     {
       txn_date: date,
@@ -71,7 +89,7 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
       partner_name: partnerName,
       amount: net,
       debit_code: expenseCode,
-      credit_code: AP,
+      credit_code: cfg.ap_code,
       is_opening: false,
       source: "purchase",
       source_id: id,
@@ -83,8 +101,8 @@ export async function createPurchase(formData: FormData): Promise<ActionResult> 
       description: `Худалдан авалтын НӨАТ суутгал: ${partnerName ?? ""}`.slice(0, 180),
       partner_name: partnerName,
       amount: vat,
-      debit_code: INPUT_VAT,
-      credit_code: AP,
+      debit_code: cfg.input_vat_code,
+      credit_code: cfg.ap_code,
       is_opening: false,
       source: "purchase",
       source_id: id,

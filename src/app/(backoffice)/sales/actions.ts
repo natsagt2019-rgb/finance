@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-const AR = "130100"; // Худалдан авагч, захиалагчийн авлага
-const OUTPUT_VAT = "330100"; // НӨАТ-ын өглөг (тооцоолсон)
+// Өгөгдмөл утгууд — financial_settings хүснэгтэд тохиргоо байхгүй үед.
+const DEFAULT_AR          = "130100"; // Худалдан авагч, захиалагчийн авлага
+const DEFAULT_OUTPUT_VAT  = "330100"; // НӨАТ-ын өглөг (тооцоолсон)
 
 export type ActionResult = { ok: true; id: number } | { ok: false; error: string };
 
@@ -21,8 +22,25 @@ function num(v: FormDataEntryValue | null): number {
 }
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
+type FinSettings = { ar_code: string; output_vat_code: string };
+
+async function loadFinancialSettings(
+  supabase: Awaited<ReturnType<typeof requireAuth>>,
+  company: string,
+): Promise<FinSettings> {
+  const { data } = await supabase
+    .from("financial_settings")
+    .select("ar_code, output_vat_code")
+    .eq("company", company)
+    .maybeSingle();
+  return {
+    ar_code:         (data as FinSettings | null)?.ar_code         ?? DEFAULT_AR,
+    output_vat_code: (data as FinSettings | null)?.output_vat_code ?? DEFAULT_OUTPUT_VAT,
+  };
+}
+
 // Борлуулалт → авлага + output НӨАТ.
-//   Дт 130100 авлага (нийт) / Кт орлого (цэвэр) + Кт 310601 НӨАТ
+//   Дт авлага (нийт) / Кт орлого (цэвэр) + Кт НӨАТ өглөг
 export async function createSale(formData: FormData): Promise<ActionResult> {
   const supabase = await requireAuth();
 
@@ -39,6 +57,7 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
   if (!revenueCode) return { ok: false, error: "Орлогын данс сонгоно уу." };
   if (net <= 0) return { ok: false, error: "Дүн (НӨАТ-гүй) 0-ээс их байх ёстой." };
 
+  const cfg = await loadFinancialSettings(supabase, company);
   const vat = vatPct >= 1 ? r2(net * 0.1) : 0;
   const total = r2(net + vat);
 
@@ -54,13 +73,12 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
   if (e1) return { ok: false, error: e1.message };
   const id = sale.id as number;
 
-  // source_id = борлуулалтын id — устгахад нарийн холбоно.
   const rows: Record<string, unknown>[] = [
     {
       txn_date: date,
       description: `Борлуулалт: ${description ?? partnerName ?? ""}`.slice(0, 180),
       partner_name: partnerName, amount: net,
-      debit_code: AR, credit_code: revenueCode, is_opening: false,
+      debit_code: cfg.ar_code, credit_code: revenueCode, is_opening: false,
       source: "sale", source_id: id,
     },
   ];
@@ -69,13 +87,11 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
       txn_date: date,
       description: `Борлуулалтын НӨАТ: ${partnerName ?? ""}`.slice(0, 180),
       partner_name: partnerName, amount: vat,
-      debit_code: AR, credit_code: OUTPUT_VAT, is_opening: false,
+      debit_code: cfg.ar_code, credit_code: cfg.output_vat_code, is_opening: false,
       source: "sale", source_id: id,
     });
   }
   let { error: e2 } = await supabase.from("journal_entries").insert(rows);
-  // source_id багана хараахан нэмэгдээгүй бол (journal-entries-source-id.sql)
-  // холбоосгүйгээр бичнэ — апп эвдрэхгүй, migration дараа нарийн болно.
   if (e2 && /source_id/i.test(e2.message)) {
     const bare = rows.map(({ source_id: _omit, ...r }) => r);
     ({ error: e2 } = await supabase.from("journal_entries").insert(bare));
@@ -92,14 +108,12 @@ export async function createSale(formData: FormData): Promise<ActionResult> {
 export async function deleteSale(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
 
-  // Нарийн устгал: зөвхөн энэ борлуулалтын журнал (source_id-аар).
   const { error: delErr } = await supabase
     .from("journal_entries")
     .delete()
     .eq("source", "sale")
     .eq("source_id", id);
 
-  // source_id багана байхгүй (migration хийгээгүй) бол хуучин аргаар уналга.
   if (delErr && /source_id/i.test(delErr.message)) {
     const { data: s } = await supabase
       .from("sales")
