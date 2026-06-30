@@ -29,11 +29,13 @@ export type PartnerBalance = {
 
 export type AgingTotals = Record<AgingBucket, number>;
 
+export type AccountRow = { code: string; name: string; balance: number; type: string };
+
 export type DashboardData = {
   asof: string;
   year: number;
   // Дансны үлдэгдэл (тэгээс ялгаатай)
-  accounts: { code: string; name: string; balance: number }[];
+  accounts: AccountRow[];
   // Орлого сараар (12 утга), нийт
   incomeMonthly: number[];
   incomeTotal: number;
@@ -150,6 +152,7 @@ export async function loadDashboard(asof: string): Promise<DashboardData> {
         code: r.code,
         name: r.name ?? "",
         balance: CREDIT_NORMAL.has(type ?? "") ? -raw : raw,
+        type: type ?? "",
       };
     })
     .filter((a) => Math.abs(a.balance) > 0.5)

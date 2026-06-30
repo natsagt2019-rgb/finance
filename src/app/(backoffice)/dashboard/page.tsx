@@ -269,16 +269,39 @@ export default async function DashboardPage({
       ) : (
         data && (
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* 1. Дансны үлдэгдэл */}
-            <Panel title="Дансны үлдэгдэл">
-              <BalanceTable
-                rows={data.accounts}
-                total={data.accounts.reduce((a, b) => a + b.balance, 0)}
-                codeHeader="Дансны код"
-                nameHeader="Дансны нэр"
-                emptyText="Үлдэгдэл олдсонгүй."
-              />
-            </Panel>
+            {/* 1а. Хөрөнгийн үлдэгдэл */}
+            {(() => {
+              const rows = data.accounts.filter((a) => a.type === "asset" || a.type === "expense");
+              const total = rows.reduce((s, a) => s + a.balance, 0);
+              return (
+                <Panel title={`Хөрөнгө · ${fmt(total)}₮`}>
+                  <BalanceTable
+                    rows={rows}
+                    total={total}
+                    codeHeader="Данс"
+                    nameHeader="Нэр"
+                    emptyText="Хөрөнгийн үлдэгдэл олдсонгүй."
+                  />
+                </Panel>
+              );
+            })()}
+
+            {/* 1б. Өр төлбөр ба өмчийн үлдэгдэл */}
+            {(() => {
+              const rows = data.accounts.filter((a) => a.type === "liability" || a.type === "equity" || a.type === "income");
+              const total = rows.reduce((s, a) => s + a.balance, 0);
+              return (
+                <Panel title={`Өр төлбөр ба өмч · ${fmt(total)}₮`}>
+                  <BalanceTable
+                    rows={rows}
+                    total={total}
+                    codeHeader="Данс"
+                    nameHeader="Нэр"
+                    emptyText="Өр төлбөр, өмчийн үлдэгдэл олдсонгүй."
+                  />
+                </Panel>
+              );
+            })()}
 
             {/* 2. Орлого / Өртөг */}
             <Panel
