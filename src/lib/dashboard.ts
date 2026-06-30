@@ -134,16 +134,24 @@ export async function loadDashboard(asof: string): Promise<DashboardData> {
   for (const a of accRows) typeByCode.set(a.code, a.type);
 
   // ── Дансны үлдэгдэл ──────────────────────────────────────────────────────
+  // Хөрөнгийн данс (asset, expense): дебет нормаль → эерэг тоогоор харуулна.
+  // Өглөг/өмч/орлогын данс (liability, equity, income): кредит нормаль →
+  // trial_balance сөрөг буцаадаг тул харуулахдаа эсрэгээр (Math.abs) авна.
+  const CREDIT_NORMAL = new Set(["liability", "equity", "income"]);
   const accounts = (
     (tbrRes.data as
       | { code: string; name: string | null; closing: number | null }[]
       | null) ?? []
   )
-    .map((r) => ({
-      code: r.code,
-      name: r.name ?? "",
-      balance: Number(r.closing) || 0,
-    }))
+    .map((r) => {
+      const raw = Number(r.closing) || 0;
+      const type = typeByCode.get(r.code);
+      return {
+        code: r.code,
+        name: r.name ?? "",
+        balance: CREDIT_NORMAL.has(type ?? "") ? -raw : raw,
+      };
+    })
     .filter((a) => Math.abs(a.balance) > 0.5)
     .sort((a, b) => a.code.localeCompare(b.code));
 
