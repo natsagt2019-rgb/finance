@@ -614,25 +614,28 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 
--- ── 24. НӨАТ-ын тооцоо харилцагчаар (output 310601 / input 120201) ──────
+-- ── 24. НӨАТ-ын тооцоо харилцагчаар (output 330100 / input 130600) ──────
+-- Гарах НӨАТ = 330100 (НӨАТ-ын өглөг, createSale), орох НӨАТ = 130600 (НӨАТ-ын
+-- авлага, createPurchase). Хуучин 310601/120201 кодууд энэ COA-д БАЙХГҮЙ тул
+-- /reports/vat-settlement хоосон гарч байсныг зассан.
 CREATE OR REPLACE FUNCTION vat_by_partner(d_from DATE, d_to DATE)
 RETURNS TABLE(partner TEXT, output_vat NUMERIC, input_vat NUMERIC, txn_count INT)
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT partner_name,
-    COALESCE(SUM(CASE WHEN credit_code='310601' THEN amount WHEN debit_code='310601' THEN -amount ELSE 0 END),0)::numeric,
-    COALESCE(SUM(CASE WHEN debit_code='120201' THEN amount WHEN credit_code='120201' THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN credit_code='330100' THEN amount WHEN debit_code='330100' THEN -amount ELSE 0 END),0)::numeric,
+    COALESCE(SUM(CASE WHEN debit_code='130600' THEN amount WHEN credit_code='130600' THEN -amount ELSE 0 END),0)::numeric,
     COUNT(*)::int
   FROM journal_entries
   WHERE partner_name IS NOT NULL AND partner_name<>'' AND txn_date>=d_from AND txn_date<=d_to
-    AND (debit_code IN ('310601','120201') OR credit_code IN ('310601','120201'))
+    AND (debit_code IN ('330100','130600') OR credit_code IN ('330100','130600'))
   GROUP BY partner_name
-  HAVING ABS(COALESCE(SUM(CASE WHEN credit_code='310601' THEN amount WHEN debit_code='310601' THEN -amount ELSE 0 END),0))>1
-      OR ABS(COALESCE(SUM(CASE WHEN debit_code='120201' THEN amount WHEN credit_code='120201' THEN -amount ELSE 0 END),0))>1;
+  HAVING ABS(COALESCE(SUM(CASE WHEN credit_code='330100' THEN amount WHEN debit_code='330100' THEN -amount ELSE 0 END),0))>1
+      OR ABS(COALESCE(SUM(CASE WHEN debit_code='130600' THEN amount WHEN credit_code='130600' THEN -amount ELSE 0 END),0))>1;
 $$;
 
 
 -- ── 25. Худалдан авалт (purchase → НӨАТ суутгал → өглөг) ────────────────
--- createPurchase: Дт expense_code (цэвэр) + Дт 120201 НӨАТ / Кт 310101 өглөг.
+-- createPurchase: Дт expense_code (цэвэр) + Дт 130600 НӨАТ / Кт 310100 өглөг.
 CREATE TABLE IF NOT EXISTS purchases (
     id           BIGSERIAL PRIMARY KEY,
     pur_date     DATE NOT NULL,
@@ -642,7 +645,7 @@ CREATE TABLE IF NOT EXISTS purchases (
     description  TEXT,
     expense_code TEXT,                       -- Дт данс (зардал/бараа/ҮХ)
     net_amount   NUMERIC(18, 2) DEFAULT 0,   -- НӨАТ-гүй
-    vat_amount   NUMERIC(18, 2) DEFAULT 0,   -- input НӨАТ (120201)
+    vat_amount   NUMERIC(18, 2) DEFAULT 0,   -- input НӨАТ (130600)
     total_amount NUMERIC(18, 2) DEFAULT 0,
     status       TEXT DEFAULT 'posted',
     company      TEXT,
@@ -653,7 +656,7 @@ CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases (pur_date);
 
 
 -- ── 26. Борлуулалт (sale → output НӨАТ → авлага) ───────────────────────
--- createSale: Дт 120101 авлага (нийт) / Кт revenue_code (цэвэр) + Кт 310601 НӨАТ.
+-- createSale: Дт 130100 авлага (нийт) / Кт revenue_code (цэвэр) + Кт 330100 НӨАТ.
 CREATE TABLE IF NOT EXISTS sales (
     id           BIGSERIAL PRIMARY KEY,
     sale_date    DATE NOT NULL,
