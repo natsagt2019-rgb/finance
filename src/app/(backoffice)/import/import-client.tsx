@@ -10,11 +10,12 @@ import {
 import {
   previewImport,
   commitImport,
+  aiClassifyRows,
   type PreviewRow,
   type FileResult,
 } from "./actions";
 
-type EditableRow = PreviewRow & { include: boolean };
+type EditableRow = PreviewRow & { include: boolean; aiConf?: number };
 
 function fmtMoney(n: number | null): string {
   if (n == null) return "";
@@ -46,6 +47,7 @@ export function ImportClient() {
   const [error, setError] = useState<string | null>(null);
   const [committed, setCommitted] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [aiPending, setAiPending] = useState(false);
 
   const includedCount = rows.filter((r) => r.include).length;
   const newCount = rows.filter((r) => !r.isDuplicate).length;
@@ -108,6 +110,34 @@ export function ImportClient() {
         setError(e instanceof Error ? e.message : "Хадгалахад алдаа гарлаа.");
       }
     });
+  }
+
+  function handleAiClassify() {
+    if (rows.length === 0) return;
+    setError(null);
+    setMessage(null);
+    setAiPending(true);
+    // Server action-д зөвхөн PreviewRow талбарууд дамжина (include/aiConf үл хэрэгсэнэ).
+    aiClassifyRows(rows)
+      .then((suggestions) => {
+        setRows((prev) =>
+          prev.map((r, i) => {
+            const s = suggestions[i];
+            if (!s) return r;
+            // AI-ийн санал (хоосон бол ангилалгүй болгоно — буруу "тээвэр"-ээс дээр).
+            const patch: Partial<EditableRow> = { aiConf: s.confidence };
+            if (r.income != null) patch.income_code = s.code || null;
+            else patch.expense_code = s.code || null;
+            return { ...r, ...patch };
+          }),
+        );
+        const classified = suggestions.filter((s) => s.code).length;
+        setMessage(`AI ангилал дууслаа: ${classified}/${suggestions.length} мөрд код оноов.`);
+      })
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "AI ангилалд алдаа гарлаа."),
+      )
+      .finally(() => setAiPending(false));
   }
 
   function updateRow(index: number, patch: Partial<EditableRow>) {
@@ -204,14 +234,24 @@ export function ImportClient() {
                 дарна уу.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleCommit}
-              disabled={isPending || includedCount === 0}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {isPending ? "Хадгалж байна…" : `Батлах (${includedCount})`}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAiClassify}
+                disabled={aiPending || isPending || rows.length === 0}
+                className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {aiPending ? "AI ангилж байна…" : "✨ AI-аар ангилах"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCommit}
+                disabled={isPending || aiPending || includedCount === 0}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {isPending ? "Хадгалж байна…" : `Батлах (${includedCount})`}
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -299,20 +339,36 @@ export function ImportClient() {
                         )}
                       </td>
                       <td className="px-3 py-2 align-top">
-                        <select
-                          value={currentCode}
-                          onChange={(e) =>
-                            handleCodeChange(i, row, e.target.value)
-                          }
-                          className="w-56 rounded border border-zinc-200 px-2 py-1 text-sm focus:border-zinc-400 focus:outline-none"
-                        >
-                          <option value="">— ангилаагүй —</option>
-                          {codes.map((code) => (
-                            <option key={code} value={code}>
-                              {code} — {CATEGORY_CODES[code]}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={currentCode}
+                            onChange={(e) =>
+                              handleCodeChange(i, row, e.target.value)
+                            }
+                            className="w-56 rounded border border-zinc-200 px-2 py-1 text-sm focus:border-zinc-400 focus:outline-none"
+                          >
+                            <option value="">— ангилаагүй —</option>
+                            {codes.map((code) => (
+                              <option key={code} value={code}>
+                                {code} — {CATEGORY_CODES[code]}
+                              </option>
+                            ))}
+                          </select>
+                          {row.aiConf != null && (
+                            <span
+                              title="AI итгэлийн хувь"
+                              className={`rounded px-1 py-0.5 text-[10px] font-medium ${
+                                row.aiConf >= 0.8
+                                  ? "bg-green-100 text-green-700"
+                                  : row.aiConf >= 0.5
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-red-100 text-red-700"
+                              }`}
+                            >
+                              {Math.round(row.aiConf * 100)}%
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

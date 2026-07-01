@@ -349,3 +349,20 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
 
   return { added, skipped };
 }
+
+// ── AI ангилал: preview мөрүүдийг Claude-аар дахин ангилна ────────────────
+// Дүрэмд суурилсан coder-ийн (default 1.2.1) оронд бодит утгаар нь ангилна.
+// Мөр бүрд {code, confidence} буцаана (оруулсан дараалал хадгалагдана).
+export async function aiClassifyRows(
+  rows: PreviewRow[],
+): Promise<{ code: string; confidence: number }[]> {
+  const { aiClassify } = await import("@/lib/ai-categorize");
+  const txns = rows.map((r) => ({
+    description: r.description ?? "",
+    counterparty: r.counterparty ?? "",
+    amount: Math.abs(Number(r.income ?? r.expense ?? 0)),
+    direction: (r.income != null ? "income" : "expense") as "income" | "expense",
+  }));
+  const suggestions = await aiClassify(txns);
+  return suggestions.map((s) => ({ code: s.code, confidence: s.confidence }));
+}
