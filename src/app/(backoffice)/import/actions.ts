@@ -91,7 +91,6 @@ export type PreviewResult = {
 export type CommitResult = {
   added: number;
   skipped: number;
-  linked: number; // импортын дараа GL данст автоматаар холбогдсон тоо
 };
 
 function toPreviewRow(t: NormalizedTxn): PreviewRow {
@@ -320,7 +319,7 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Нэвтрэх шаардлагатай");
 
-  if (rows.length === 0) return { added: 0, skipped: 0, linked: 0 };
+  if (rows.length === 0) return { added: 0, skipped: 0 };
 
   // Данс → GL код зураглал (харилцах дансны өөрийн код).
   const glByAccount = new Map<string, string | null>();
@@ -341,7 +340,7 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   });
 
   if (newRows.length === 0) {
-    return { added: 0, skipped: rows.length, linked: 0 };
+    return { added: 0, skipped: rows.length };
   }
 
   const dbRows = newRows.map((r) => {
@@ -374,24 +373,12 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   const added = data?.length ?? 0;
   const skipped = rows.length - added;
 
-  // Импортын дараа GL данс холболтыг ШУУД автоматаар гүйцэтгэнэ — ангилал бүрийг
-  // (банкны шимтгэл→810300 г.м) сурсан дүрэм + category_gl_map-аар нөгөө талд нь
-  // холбоно. Алдаа гарвал импорт амжилттай хэвээр (холболтыг дараа дахин хийж болно).
-  let linked = 0;
-  try {
-    const { autoLinkAccounts } = await import("../statements/actions");
-    const res = await autoLinkAccounts();
-    linked = res.linked;
-  } catch {
-    // холболт бүтэлгүйтвэл чимээгүй үргэлжилнэ (импорт хадгалагдсан)
-  }
-
   // Холбоотой тайлангуудыг шинэчлэх.
   revalidatePath("/statements");
   revalidatePath("/reports/cashflow");
   revalidatePath("/cash/bank-summary");
 
-  return { added, skipped, linked };
+  return { added, skipped };
 }
 
 // ── AI ангилал: preview мөрүүдийг Claude-аар дахин ангилна ────────────────

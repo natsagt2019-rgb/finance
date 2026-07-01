@@ -100,8 +100,7 @@ export function ImportClient() {
         const result = await commitImport(selected);
         setMessage(
           `Амжилттай: ${result.added} мөр нэмэгдлээ` +
-            (result.skipped > 0 ? `, ${result.skipped} давхардал алгаслаа` : "") +
-            (result.linked > 0 ? ` · ${result.linked} мөр GL данст автоматаар холбогдлоо.` : "."),
+            (result.skipped > 0 ? `, ${result.skipped} давхардал алгаслаа.` : "."),
         );
         setRows([]);
         setFiles([]);
