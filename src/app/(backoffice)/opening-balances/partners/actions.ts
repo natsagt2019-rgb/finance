@@ -58,7 +58,9 @@ export async function savePartnerOpening(
     if (!name) continue;
     const recv = r2(r.recv);
     const pay = r2(r.pay);
-    if (recv >= 0.005)
+    // Тэмдэгтэй нь хадгална — сөрөг авлага/өглөг (кредит/дебет үлдэгдэл)
+    // зөвшөөрөгдөнө. amount дээр DB check байхгүй тул сөрөг дүн зөв ажиллана.
+    if (Math.abs(recv) >= 0.005)
       entries.push({
         txn_date: date,
         description: "Харилцагчийн эхний үлдэгдэл — авлага",
@@ -69,7 +71,7 @@ export async function savePartnerOpening(
         is_opening: true,
         source: OPENING_SOURCES.partners,
       });
-    if (pay >= 0.005)
+    if (Math.abs(pay) >= 0.005)
       entries.push({
         txn_date: date,
         description: "Харилцагчийн эхний үлдэгдэл — өглөг",
