@@ -94,8 +94,9 @@ export const TDB_COMPACT_COL = {
 export const GOLOMT_COL = {
   date: 1, // Огноо (ISO string)
   description: 2, // Гүйлгээний утга
-  counterparty: 3, // Харилцагч
+  counterparty: 3, // Харьцсан дансны нэр
   account_no: 4, // Харьцсан данс
+  rate: 5, // Ханш (валют→MNT; MNT-д 1)
   income: 6, // Орлого
   expense: 7, // Зарлага
 } as const;

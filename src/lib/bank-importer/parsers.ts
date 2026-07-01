@@ -160,6 +160,9 @@ export function parseGolomt(
   cutoff: Date,
 ): NormalizedTxn[] {
   const col = GOLOMT_COL;
+  // Валют: бүртгэлийн данснаас (MNT/USD/CNY…). Гадаад валютад мөр бүрийн
+  // ханшийг col5-аас уншиж MNT дүйцэл гаргана (MNT-д ханш=1).
+  const currency = account.currency || "MNT";
   const result: NormalizedTxn[] = [];
 
   for (const row of rows) {
@@ -177,6 +180,7 @@ export function parseGolomt(
     const ctpy = String(cell(r, col.counterparty) ?? "");
     const acct = String(cell(r, col.account_no) ?? "");
     const desc = cleanDescription(rawDesc);
+    const rate = currency === "MNT" ? 1 : toNum(cell(r, col.rate)) || 1;
 
     result.push({
       account_id: account.accountNo,
@@ -185,7 +189,8 @@ export function parseGolomt(
       description: desc,
       counterparty: ctpy,
       account_no: acct,
-      exchange_rate: 1.0,
+      exchange_rate: rate,
+      currency,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
     });
