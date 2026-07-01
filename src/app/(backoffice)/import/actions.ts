@@ -37,6 +37,24 @@ async function loadBankAccounts(
   }));
 }
 
+// Харьцсан данс → харилцагчийн нэр (bank_counterparties). ХААН зэрэг нэргүй
+// хуулгад гүйлгээний харьцсан дансаар харилцагчийн нэрийг нөхөхөд ашиглана.
+async function loadCounterpartyMap(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data } = await supabase
+    .from("bank_counterparties")
+    .select("account_no, name")
+    .limit(20000);
+  for (const r of (data as { account_no: string; name: string }[] | null) ?? []) {
+    const acct = (r.account_no ?? "").trim();
+    const name = (r.name ?? "").trim();
+    if (acct && name) map.set(acct, name);
+  }
+  return map;
+}
+
 // Client ↔ server хооронд дамжих мөр (txn_date нь ISO string).
 export type PreviewRow = {
   account_id: AccountId;
@@ -252,6 +270,19 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
         duplicates: 0,
         error: e instanceof Error ? e.message : "Уншихад алдаа гарлаа",
       });
+    }
+  }
+
+  // Харилцагчийн нэр нөхөх (ХААН зэрэг нэргүй хуулга) — харьцсан дансаар
+  // bank_counterparties-аас. Зөвхөн хоосон нэртэй мөрд, дедупээс ӨМНӨ (fingerprint
+  // харилцагчийг оруулдаг тул нэр нөхсний дараа шалгах ёстой).
+  const cpMap = await loadCounterpartyMap(supabase);
+  if (cpMap.size > 0) {
+    for (const r of rows) {
+      if ((!r.counterparty || !r.counterparty.trim()) && r.account_no) {
+        const nm = cpMap.get(r.account_no.trim());
+        if (nm) r.counterparty = nm;
+      }
     }
   }
 
