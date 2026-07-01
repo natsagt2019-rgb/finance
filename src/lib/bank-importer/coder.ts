@@ -31,7 +31,7 @@ const KW = {
   kran: ["кран", "kran"],
   mashin: ["машин", "mashin"],
   // Холбоо, интернэт (утас, дата, интернэт үйлчилгээ)
-  holboo: ["холбоо", "интернэт", "интернет", "mobikom", "mobicom", "unitel", "skytel", "gmobile", "g-mobile", "internet", " data ", "data ", "дата", "starlink", "старлинк", "утас"],
+  holboo: ["холбоо", "интернэт", "интернет", "mobikom", "mobicom", "unitel", "skytel", "gmobile", "g-mobile", "internet", " data ", "data ", "дата", "starlink", "старлинк", "утас", "utas"],
   // Бичиг хэрэг, оффис
   bichig: ["бичиг хэрэг", "бичиг", "bichig", "принтер", "printer", "toner", "тонер", "канц", "kants", "цаас", "tsaas", "хэвлэл", "hevlel"],
   // Орчуулга / бусад үйлчилгээ
