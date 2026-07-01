@@ -31,18 +31,31 @@ export function detectAccount(
 }
 
 // Файлын агуулгын текстээс данс таних (файлын нэр дугааргүй банкинд — ж: Хас).
+// Текстэд ХАМГИЙН ЭХЭНД гарч буй бүртгэлтэй дансыг сонгоно: хуулгын өөрийн данс
+// үргэлж толгой хэсэгт (Дансны дугаар) байдаг бол харьцсан данс нь доор
+// гүйлгээний мөрүүдэд гардаг. Ингэснээр харьцсан данс (мөн бүртгэлтэй байвал)
+// өөрийн дансыг далдлахаас сэргийлнэ. Байрлал тэнцвэл урт дугаарыг сонгоно.
 export function detectAccountInText(
   text: string,
   accounts: AccountConfig[],
 ): AccountConfig | null {
   const hay = text.toUpperCase();
-  const sorted = [...accounts].sort(
-    (a, b) => b.accountNo.length - a.accountNo.length,
-  );
-  for (const acc of sorted) {
-    if (acc.accountNo && hay.includes(acc.accountNo.toUpperCase())) return acc;
+  let best: AccountConfig | null = null;
+  let bestPos = Infinity;
+  for (const acc of accounts) {
+    if (!acc.accountNo) continue;
+    const pos = hay.indexOf(acc.accountNo.toUpperCase());
+    if (pos < 0) continue;
+    if (
+      pos < bestPos ||
+      (pos === bestPos &&
+        acc.accountNo.length > (best?.accountNo.length ?? 0))
+    ) {
+      bestPos = pos;
+      best = acc;
+    }
   }
-  return null;
+  return best;
 }
 
 // Нэг файлыг parse + ангилал хийж нормчилсон мөрүүд буцаана (DB-гүй).
