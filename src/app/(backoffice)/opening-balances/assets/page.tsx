@@ -9,7 +9,7 @@ import {
   openDateFor,
   resolveYear,
 } from "../shared";
-import { syncAssetOpening } from "./actions";
+import { seedAssetCategories, syncAssetOpening } from "./actions";
 import { AssetsImport } from "./assets-import";
 
 type SearchParams = { year?: string };
@@ -104,6 +104,25 @@ export default async function OpeningAssetsPage({
       <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-3">
         <AssetsImport />
       </div>
+
+      {/* Ангилал байхгүй хөрөнгө байвал тохируулах товч харуулна */}
+      {groupList.some((g) => g.account === "—") && (
+        <form
+          action={seedAssetCategories}
+          className="mt-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <p className="flex-1 text-sm text-amber-800">
+            Ангилалгүй хөрөнгө байна — нэрний загвараар автоматаар оноох уу?
+            (Чиргүүл/Толгой/Холбогч → ҮХ-3 Тээврийн, Компьютер → ҮХ-5)
+          </p>
+          <button
+            type="submit"
+            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            Ангилал тохируулах
+          </button>
+        </form>
+      )}
 
       {!hasData ? (
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">
