@@ -108,7 +108,10 @@ export default async function OpeningAssetsPage({
       {/* Ангилал байхгүй хөрөнгө байвал тохируулах товч харуулна */}
       {groupList.some((g) => g.account === "—") && (
         <form
-          action={seedAssetCategories}
+          action={async () => {
+            "use server";
+            await seedAssetCategories();
+          }}
           className="mt-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
         >
           <p className="flex-1 text-sm text-amber-800">

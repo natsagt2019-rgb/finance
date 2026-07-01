@@ -30,8 +30,8 @@ const KW = {
   gatsuurt: ["гацуурт", "gatsuurt", "gatuurt"],
   kran: ["кран", "kran"],
   mashin: ["машин", "mashin"],
-  // Холбоо, интернэт (утас, дата, GPS-ийн бус интернэт)
-  holboo: ["холбоо", "интернэт", "интернет", "mobikom", "mobicom", "unitel", "skytel", "gmobile", "g-mobile", "internet", " data ", "data ", "дата"],
+  // Холбоо, интернэт (утас, дата, интернэт үйлчилгээ)
+  holboo: ["холбоо", "интернэт", "интернет", "mobikom", "mobicom", "unitel", "skytel", "gmobile", "g-mobile", "internet", " data ", "data ", "дата", "starlink", "старлинк", "утас"],
   // Бичиг хэрэг, оффис
   bichig: ["бичиг хэрэг", "бичиг", "bichig", "принтер", "printer", "toner", "тонер", "канц", "kants", "цаас", "tsaas", "хэвлэл", "hevlel"],
   // Орчуулга / бусад үйлчилгээ
@@ -133,7 +133,7 @@ export function codeTt(
 
     // Техник хэрэгсэл / тавилга
     if (
-      ["dell", "notebook", "laptop", "ноутбук", "компьютер", "computer", "16gb", "512 gb", "ssd"].some((x) =>
+      ["dell", "notebook", "laptop", "ноутбук", "компьютер", "computer", "komputer", "kompyuter", "16gb", "512 gb", "ssd"].some((x) =>
         d.includes(x),
       )
     ) {
@@ -214,7 +214,7 @@ export function codeTr(
     // Түрээс — ЗӨВХӨН Гацуурт ХХК-д төлсөн (бусад түрээс → тээвэр).
     if (has(d, KW.gatsuurt) || ctp.includes("гацуурт")) return ["N", "2.1.10"];
 
-    if (["dell", "notebook", "laptop", "ноутбук", "компьютер", "computer"].some((x) => d.includes(x))) {
+    if (["dell", "notebook", "laptop", "ноутбук", "компьютер", "computer", "komputer", "kompyuter"].some((x) => d.includes(x))) {
       return ["N", "3.2.1"];
     }
 
