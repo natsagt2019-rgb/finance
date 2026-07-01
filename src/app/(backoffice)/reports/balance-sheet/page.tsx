@@ -53,26 +53,35 @@ export default async function BalanceSheetPage({
   let balances: FsBalanceMap = new Map();
   let error: { message: string } | null = null;
 
+  const { data: fsRows, error: e } = await supabase
+    .from("fs_line_balances")
+    .select("fs_line, opening_total, closing_total")
+    .eq("year", selYear)
+    .eq("period", period);
+  error = e;
+  const snapshotMap = new Map<string, { opening: number; closing: number }>();
+  for (const r of (fsRows as
+    | { fs_line: string; opening_total: number | null; closing_total: number | null }[]
+    | null) ?? []) {
+    snapshotMap.set(r.fs_line, {
+      opening: Number(r.opening_total) || 0,
+      closing: Number(r.closing_total) || 0,
+    });
+  }
+
   if (journalMode) {
     const dFrom = rangeMode ? from : `${selYear}-01-01`;
     const dTo = rangeMode ? to : `${selYear}-12-31`;
     const { bs } = await fsBalancesFromJournal(supabase, dFrom, dTo);
     balances = bs;
-  } else {
-    const { data: fsRows, error: e } = await supabase
-      .from("fs_line_balances")
-      .select("fs_line, opening_total, closing_total")
-      .eq("year", selYear)
-      .eq("period", period);
-    error = e;
-    for (const r of (fsRows as
-      | { fs_line: string; opening_total: number | null; closing_total: number | null }[]
-      | null) ?? []) {
-      balances.set(r.fs_line, {
-        opening: Number(r.opening_total) || 0,
-        closing: Number(r.closing_total) || 0,
-      });
+    // Journal-д байхгүй fs_line-уудыг snapshot-оос нэмнэ (хөрөнгийн эхний үлдэгдэл)
+    for (const [line, snap] of snapshotMap) {
+      if (!balances.has(line) && (snap.opening !== 0 || snap.closing !== 0)) {
+        balances.set(line, snap);
+      }
     }
+  } else {
+    balances = snapshotMap;
   }
 
   // Банкны хуулга журналд бүрэн тусаагүй (кодгүй/хуучирсан) эсэхийг шалгана.
