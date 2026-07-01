@@ -88,7 +88,7 @@ export function buildInternalCashflow(
   const r122 = get("1.2.2");
   const sub12 = addArr(r121, r122);
 
-  const opsCodes = ["2.1.1", "2.1.3", "2.1.5", "2.1.10", "2.1.14"];
+  const opsCodes = ["2.1.1", "2.1.3", "2.1.5", "2.1.6", "2.1.7", "2.1.8", "2.1.9", "2.1.10", "2.1.14"];
   const opsVals = opsCodes.map(get);
   const sub21 = addArr(...opsVals);
 
