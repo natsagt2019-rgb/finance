@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { BANK_LABEL } from "@/lib/banks";
+
 import { saveBankAccount, deleteBankAccount } from "./actions";
 
 export type BankAccountRow = {
@@ -16,22 +18,6 @@ export type BankAccountRow = {
 };
 export type GlOption = { code: string; name: string };
 
-// Монголын арилжааны банкууд. Түлхүүр (bank_type) нь bank_accounts-д
-// хадгалагдана — хуучин дансны түлхүүрийг (tdb/golomt/mbank/khas) солихгүй.
-const BANK_LABEL: Record<string, string> = {
-  tdb: "Худалдаа хөгжлийн банк (ХХБ/ТДБ)",
-  khan: "ХААН банк",
-  golomt: "Голомт банк",
-  state: "Төрийн банк",
-  teever: "Тээвэр хөгжлийн банк",
-  arig: "Ариг банк",
-  capitron: "Капитрон банк",
-  nibank: "Үндэсний хөрөнгө оруулалтын банк",
-  khas: "Хас банк (XacBank)",
-  bogd: "Богд банк",
-  chinggis: "Чингис Хаан банк",
-  mbank: "М банк",
-};
 const CURRENCIES = ["MNT", "USD", "EUR", "CNY", "RUB", "JPY", "GBP"];
 
 const inputCls =

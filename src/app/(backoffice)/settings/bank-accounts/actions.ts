@@ -3,10 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { BANK_TYPES } from "@/lib/banks";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-const BANK_TYPES = ["tdb", "golomt", "mbank", "khas"];
 
 function str(v: FormDataEntryValue | null): string {
   return String(v ?? "").trim();

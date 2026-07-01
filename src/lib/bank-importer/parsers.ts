@@ -8,7 +8,7 @@
 import * as XLSX from "xlsx";
 
 import {
-  TDB_COL, GOLOMT_COL, MBANK_COL, TDB_COMPACT_COL,
+  TDB_COL, GOLOMT_COL, MBANK_COL, TDB_COMPACT_COL, KHAN_COL,
   SKIP_KEYWORDS, GENERIC_COUNTERPARTIES,
 } from "./config";
 import type { AccountConfig, NormalizedTxn } from "./types";
@@ -297,6 +297,57 @@ export function parseKhas(
   return result;
 }
 
+// ХААН банк "Депозит дансны дэлгэрэнгүй хуулга" (.XLSX) унших.
+// Толгой: "Гүйлгээний огноо" гэсэн 0-р нүдтэй мөрнөөс дата эхэлнэ.
+// Кредит = орлого (col3), Дебит = зарлага (col4, сөрөг тэмдэгтэй → Math.abs).
+export function parseKhan(
+  rows: Row[],
+  account: AccountConfig,
+  cutoff: Date,
+): NormalizedTxn[] {
+  const col = KHAN_COL;
+
+  // Толгой мөрийг агуулгаар олно (мөрийн байрлал файл бүрт өөр байж болно).
+  let start = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i]?.[col.date] ?? "").trim() === col.header_first) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start < 0) start = 8; // fallback — жишээ файлд дата 8-р мөрнөөс
+
+  const result: NormalizedTxn[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const row = rows[i] ?? [];
+    const txnDate = toIsoDate(cell(row, col.date));
+    if (!txnDate) continue; // footer ("Нийт дүн:") болон хоосон мөр таслагдана
+    if (txnDate.getTime() <= cutoff.getTime()) continue;
+
+    const income = toNum(cell(row, col.income));
+    const expense = Math.abs(toNum(cell(row, col.expense))); // дебит сөрөг тул abs
+    if (income === 0 && expense === 0) continue;
+
+    const rawDesc = String(cell(row, col.description) ?? "").trim();
+    if (shouldSkip(rawDesc)) continue;
+
+    const acct = String(cell(row, col.account_no) ?? "").trim();
+    result.push({
+      account_id: account.accountNo,
+      txn_date: txnDate,
+      bank: account.label || "ХААН банк",
+      description: cleanDescription(rawDesc),
+      counterparty: "", // ХААН хуулгад харилцагчийн нэрийн багана байхгүй
+      account_no: acct,
+      exchange_rate: 1.0,
+      currency: account.currency || "MNT",
+      income: income > 0 ? income : null,
+      expense: expense > 0 ? expense : null,
+    });
+  }
+  return result;
+}
+
 // Workbook-ийн эхний sheet-ийг array-of-arrays болгож унших.
 function sheetRows(buffer: ArrayBuffer | Buffer): Row[] {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
@@ -407,6 +458,9 @@ export function parseFile(
   }
   if (account.bankType === "khas") {
     return parseKhas(rows, account, cutoff);
+  }
+  if (account.bankType === "khan") {
+    return parseKhan(rows, account, cutoff);
   }
   throw new Error(`Танихгүй банкны төрөл: ${account.bankType}`);
 }
