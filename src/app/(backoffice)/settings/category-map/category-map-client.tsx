@@ -7,7 +7,7 @@ import { saveCategoryMap } from "./actions";
 export type AccountOpt = { code: string; name: string };
 export type CatDef = { code: string; side: "credit" | "debit"; label: string; glCode: string };
 export type MapRow = CatDef;
-export type CompanyOpt = { code: "TT" | "TR"; name: string };
+export type CompanyOpt = { code: "TT" | "TR" | "HJ"; name: string };
 
 export function CategoryMapClient({
   company,

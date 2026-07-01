@@ -99,7 +99,7 @@ export async function autoLinkAccounts(): Promise<{
     registry.map((a) => a.glCode).filter((c): c is string => !!c),
   );
   // account_id (дансны дугаар) → компани бүлгийн код (TT/TR) — суурь зураглалд.
-  const companyByAccount = new Map<string, "TT" | "TR">(
+  const companyByAccount = new Map<string, "TT" | "TR" | "HJ">(
     registry.map((a) => [a.accountNo, companyCode(a.company)]),
   );
 

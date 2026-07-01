@@ -19,7 +19,7 @@ export default async function CategoryMapPage({
   const sp = await searchParams;
   const company = COMPANIES.some((c) => c.code === sp.company)
     ? (sp.company as string)
-    : "TT";
+    : "HJ";
 
   const supabase = await createClient();
 

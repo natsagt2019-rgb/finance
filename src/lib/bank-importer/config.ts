@@ -5,6 +5,10 @@ import type { AccountId } from "./types";
 // ── Компани нэр ───────────────────────────────────────────────────────────
 export const COMPANY_TT = "ТҮМЭН ТЭЭХ ХХК";
 export const COMPANY_TR = "ТҮМЭН РЕСУРС ХХК";
+export const COMPANY_HJ = "ХОТГОР ЖИНСТ ТРАНС ХХК";
+
+// Компани бүлгийн код (ангилал-кодлол ба category_gl_map суурь зураглалд).
+export type CompanyGroup = "TT" | "TR" | "HJ";
 
 // Тэмдэглэл: данс таних, дэлгэцийн нэр, GL код, валют нь одоо bank_accounts
 // бүртгэлээс (src/lib/bank-registry.ts) динамикаар авагдана. Хуучин hardcode
@@ -26,17 +30,22 @@ export const ACCOUNT_COMPANY: Record<string, "TT" | "TR"> = Object.fromEntries(
 );
 
 // Зураглалд ашиглах компани бүлгүүд (UI сонголтод).
-export const COMPANIES: { code: "TT" | "TR"; name: string }[] = [
+export const COMPANIES: { code: CompanyGroup; name: string }[] = [
+  { code: "HJ", name: COMPANY_HJ },
   { code: "TT", name: COMPANY_TT },
   { code: "TR", name: COMPANY_TR },
 ];
 
-// bank_accounts.company (чөлөөт текст, ж: "Түмэн Тээх" / "Түмэн Ресурс") →
-// компани бүлгийн код ('TT' | 'TR'). Зөвхөн Түмэн Ресурс тусдаа бүлэг; бусад
-// бүх данс (ХХБ/Голомт/М банк/валют) TT бүлэгт. Ангилал-кодлол ба category_gl_map
-// суурь зураглалыг компаниар сонгоход ашиглана.
-export function companyCode(company: string | null | undefined): "TT" | "TR" {
-  return (company ?? "").toLowerCase().includes("ресурс") ? "TR" : "TT";
+// bank_accounts.company (чөлөөт текст) → компани бүлгийн код.
+//   "…ресурс…" → TR (Түмэн Ресурс)
+//   "…хотгор…" → HJ (Хотгор Жинст Транс — бие даасан шинэ байгууллага)
+//   бусад      → TT (Түмэн Тээх бүлэг — ХХБ/Голомт/М банк/валют дансууд)
+// Ангилал-кодлол (coder) ба category_gl_map суурь зураглалыг компаниар сонгоно.
+export function companyCode(company: string | null | undefined): CompanyGroup {
+  const c = (company ?? "").toLowerCase();
+  if (c.includes("ресурс")) return "TR";
+  if (c.includes("хотгор")) return "HJ";
+  return "TT";
 }
 
 // ── Гүйлгээ орхих түлхүүр үгс ─────────────────────────────────────────────

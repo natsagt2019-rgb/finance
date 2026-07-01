@@ -33,7 +33,7 @@ const KW = {
   // Холбоо, интернэт (утас, дата, GPS-ийн бус интернэт)
   holboo: ["холбоо", "интернэт", "интернет", "mobikom", "mobicom", "unitel", "skytel", "gmobile", "g-mobile", "internet", " data ", "data ", "дата"],
   // Бичиг хэрэг, оффис
-  bichig: ["бичиг хэрэг", "принтер", "printer", "toner", "тонер", "канц", "цаас", "tsaas", "hevlel"],
+  bichig: ["бичиг хэрэг", "бичиг", "bichig", "принтер", "printer", "toner", "тонер", "канц", "kants", "цаас", "tsaas", "хэвлэл", "hevlel"],
   // Орчуулга / бусад үйлчилгээ
   orchuulga: ["орчуулга", "orchuulga", "notariat", "нотариат"],
   // Барьцаа, дэнчин
@@ -239,7 +239,9 @@ export function codeTr(
 }
 
 // Гүйлгээний dict-д ангиллын кодыг нэмж буцаана.
-// company: 'TT' | 'GM' | 'MB' → code_tt, бусад (TR) → code_tr
+// company: 'TT' | 'GM' | 'MB' | 'HJ' → code_tt, бусад (TR) → code_tr
+// HJ (Хотгор Жинст Транс) нь ерөнхий түлхүүр үгийн дүрмийг (codeTt доторх
+// generic хэсэг) ашиглана; ТТ-ийн тусгай харилцагчийн дүрэм хоргүй тул үлдээв.
 export function applyCodes(txn: NormalizedTxn, company: string): NormalizedTxn {
   const desc = txn.description ?? "";
   const inc = txn.income ?? 0;
@@ -248,7 +250,7 @@ export function applyCodes(txn: NormalizedTxn, company: string): NormalizedTxn {
   const ctpy = txn.counterparty ?? "";
 
   const [direction, code] =
-    company === "TT" || company === "GM" || company === "MB"
+    company === "TT" || company === "GM" || company === "MB" || company === "HJ"
       ? codeTt(desc, inc, exp, month, ctpy)
       : codeTr(desc, inc, exp, month, ctpy);
 
