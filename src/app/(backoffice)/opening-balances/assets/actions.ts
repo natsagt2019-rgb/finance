@@ -131,13 +131,16 @@ export async function seedAssetCategories(): Promise<SyncResult> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, message: "Нэвтрэх шаардлагатай" };
 
+  // Дансны кодууд СТАНДАРТ COA-тай нийцнэ: 160200 Барилга … 160800 Бусад ҮХ,
+  // 160900 = Хуримтлагдсан элэгдэл (хасах, контр-актив). Бүх ангиллын
+  // хуримтлагдсан элэгдэл 160900 руу.
   const cats = [
-    { code: "ҮХ-1", name: "Барилга байгууламж",                            useful_life_years: 40, account_code: "160100", accum_account_code: "160800", expense_account_code: "720300" },
-    { code: "ҮХ-2", name: "Машин, тоног төхөөрөмж",                        useful_life_years: 10, account_code: "160200", accum_account_code: "160800", expense_account_code: "720300" },
-    { code: "ҮХ-3", name: "Тээврийн хэрэгсэл",                             useful_life_years: 10, account_code: "160300", accum_account_code: "160800", expense_account_code: "720300" },
-    { code: "ҮХ-4", name: "Тавилга, эд хогшил",                            useful_life_years: 10, account_code: "160400", accum_account_code: "160800", expense_account_code: "720300" },
-    { code: "ҮХ-5", name: "Компьютер, дагалдах хэрэгсэл, програм хангамж", useful_life_years: 3,  account_code: "160500", accum_account_code: "160800", expense_account_code: "720300" },
-    { code: "ҮХ-6", name: "Бусад үндсэн хөрөнгө",                          useful_life_years: 10, account_code: "160600", accum_account_code: "160800", expense_account_code: "720300" },
+    { code: "ҮХ-1", name: "Барилга байгууламж",                            useful_life_years: 40, account_code: "160200", accum_account_code: "160900", expense_account_code: "720300" },
+    { code: "ҮХ-2", name: "Машин, тоног төхөөрөмж",                        useful_life_years: 10, account_code: "160300", accum_account_code: "160900", expense_account_code: "720300" },
+    { code: "ҮХ-3", name: "Тээврийн хэрэгсэл",                             useful_life_years: 10, account_code: "160400", accum_account_code: "160900", expense_account_code: "720300" },
+    { code: "ҮХ-4", name: "Тавилга, эд хогшил",                            useful_life_years: 10, account_code: "160500", accum_account_code: "160900", expense_account_code: "720300" },
+    { code: "ҮХ-5", name: "Компьютер, дагалдах хэрэгсэл, програм хангамж", useful_life_years: 3,  account_code: "160600", accum_account_code: "160900", expense_account_code: "720300" },
+    { code: "ҮХ-6", name: "Бусад үндсэн хөрөнгө",                          useful_life_years: 10, account_code: "160800", accum_account_code: "160900", expense_account_code: "720300" },
   ];
 
   // Байгаа ангиллыг авах
