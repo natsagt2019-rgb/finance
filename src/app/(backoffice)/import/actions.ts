@@ -13,6 +13,12 @@ import {
   type BankType,
   type NormalizedTxn,
 } from "@/lib/bank-importer";
+import { companyCode } from "@/lib/bank-importer/config";
+
+// Импортын үед ШУУД GL данст холбогдох ангилал(ууд). Одоогоор зөвхөн банкны
+// шимтгэл — давтагдах, тодорхой тул. Бусдыг хэрэглэгч ангилалаа шалгасны дараа
+// /statements → «Автомат холболт»-оор өөрөө холбоно.
+const AUTO_LINK_EXPENSE_CATS = ["2.1.14"]; // Банкны шимтгэл
 
 // bank_accounts хүснэгтээс бүртгэсэн дансуудыг ачаална.
 async function loadBankAccounts(
@@ -326,6 +332,18 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   for (const a of await loadBankAccounts(supabase))
     glByAccount.set(a.accountNo, a.glCode);
 
+  // Банкны шимтгэлийн (AUTO_LINK_EXPENSE_CATS) зардлын Дт данс — импорт дээр
+  // шууд холбоно. category_gl_map-аас компани бүлэг × ангиллаар GL код.
+  const feeGl = new Map<string, string>(); // `${group}|${cat}` → gl_code
+  {
+    const { data: fm } = await supabase
+      .from("category_gl_map")
+      .select("company, category_code, gl_code")
+      .in("category_code", AUTO_LINK_EXPENSE_CATS);
+    for (const m of (fm as { company: string; category_code: string; gl_code: string }[] | null) ?? [])
+      feeGl.set(`${m.company}|${m.category_code}`, m.gl_code);
+  }
+
   // Батлахаас өмнө дахин шалгана: DB-тэй тулгах БА нэг багц доторх давхардлыг
   // (ижил мөр 2 удаа) алгасах. UI-аас хамааралгүй, найдвартай.
   const dbSet = await existingFingerprints(supabase, rows);
@@ -346,6 +364,12 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
   const dbRows = newRows.map((r) => {
     // Банкны тал (харилцах дансны өөрийн код) авто: орлого→Дт, зарлага→Кт.
     const bankCode = glByAccount.get(r.account_id) ?? null;
+    // Зардлын Дт данс: ЗӨВХӨН банкны шимтгэлийг (2.1.14→810300) шууд холбоно;
+    // бусад зардлын нөгөө талыг хоосон үлдээж, хэрэглэгч дараа холбоно.
+    const expenseDebit =
+      r.expense != null && r.expense_code && AUTO_LINK_EXPENSE_CATS.includes(r.expense_code)
+        ? feeGl.get(`${companyCode(r.company)}|${r.expense_code}`) ?? null
+        : null;
     return {
       account_id: r.account_id,
       company: r.company,
@@ -360,7 +384,7 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
       expense: r.expense,
       income_code: r.income_code,
       expense_code: r.expense_code,
-      debit_code: r.income != null ? bankCode : null,
+      debit_code: r.income != null ? bankCode : expenseDebit,
       credit_code: r.expense != null ? bankCode : null,
       master_code: r.master_code,
       master_name: r.master_name,
