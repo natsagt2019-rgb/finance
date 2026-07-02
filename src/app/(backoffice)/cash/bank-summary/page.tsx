@@ -67,15 +67,50 @@ export default async function BankSummaryPage({
     expense: r.total_expense,
   }));
 
+  // Эхний үлдэгдэл — тухайн дансны GL кодын is_opening бичилтээс (Дт-эерэг).
+  // (Эхний үлдэгдэл хуудсаар оруулсан дүн journal_entries-д GL кодоор ордог.
+  // Хуучин account_balances нь богино түлхүүртэй тул зөвхөн нөөц эх сурвалж.)
+  const glByAccount: Record<string, string> = {};
+  for (const a of registry) if (a.glCode) glByAccount[a.accountNo] = a.glCode;
+  const glCodes = [...new Set(Object.values(glByAccount))];
+  const openDate = `${selYear - 1}-12-31`;
+
+  const openingByAccount: Record<string, number> = {};
+  if (glCodes.length) {
+    const { data: oeData } = await supabase
+      .from("journal_entries")
+      .select("debit_code, credit_code, amount")
+      .eq("is_opening", true)
+      .eq("txn_date", openDate)
+      .or(
+        `debit_code.in.(${glCodes.join(",")}),credit_code.in.(${glCodes.join(",")})`,
+      )
+      .limit(5000);
+    const glSet = new Set(glCodes);
+    const netByGl: Record<string, number> = {};
+    for (const e of (oeData as
+      | { debit_code: string | null; credit_code: string | null; amount: number }[]
+      | null) ?? []) {
+      const amt = Number(e.amount) || 0;
+      if (e.debit_code && glSet.has(e.debit_code))
+        netByGl[e.debit_code] = (netByGl[e.debit_code] ?? 0) + amt;
+      if (e.credit_code && glSet.has(e.credit_code))
+        netByGl[e.credit_code] = (netByGl[e.credit_code] ?? 0) - amt;
+    }
+    for (const [acc, gl] of Object.entries(glByAccount)) {
+      if (netByGl[gl] != null) openingByAccount[acc] = netByGl[gl];
+    }
+  }
+
+  // Нөөц: account_balances (хэрэв дансны дугаараар байвал, GL-д олдоогүйг нөхнө).
   const { data: balData } = await supabase
     .from("account_balances")
     .select("account_id,opening_balance")
     .eq("year", selYear)
     .in("account_id", inIds);
-
-  const openingByAccount: Record<string, number> = {};
   for (const r of (balData as { account_id: string; opening_balance: number }[] | null) ?? []) {
-    openingByAccount[r.account_id] = Number(r.opening_balance);
+    if (openingByAccount[r.account_id] == null)
+      openingByAccount[r.account_id] = Number(r.opening_balance);
   }
 
   const summary = buildBankSummary(
