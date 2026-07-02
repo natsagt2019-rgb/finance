@@ -3,7 +3,28 @@
 import { revalidatePath } from "next/cache";
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/server";
+import { fetchMongolbankRates } from "@/lib/mongolbank";
 import { OPENING_SOURCES, openDateFor } from "../shared";
+
+// ── Монголбанкны ханш татах (эхний үлдэгдлийн огноогоор = (Y-1)-12-31) ────────
+// Валютын дансуудын эхний ₮ дүнг «валютын дүн × ханш»-аар бодоход туслана.
+export async function fetchOpeningRates(year: number): Promise<
+  | { ok: true; rateDate: string; rates: Record<string, number> }
+  | { ok: false; error: string }
+> {
+  const date = openDateFor(year);
+  try {
+    const r = await fetchMongolbankRates(date);
+    if (!r || Object.keys(r.rates).length === 0)
+      return { ok: false, error: "Монголбанкны ханш татаж чадсангүй." };
+    return { ok: true, rateDate: r.rateDate, rates: r.rates };
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Монголбанктай холбогдоход алдаа: ${(e as Error).message}`,
+    };
+  }
+}
 
 // Хөрөнгө/зардал = дебет шинж; өр/өмч/орлого = кредит шинж.
 const DEBIT_TYPES = new Set(["asset", "expense"]);

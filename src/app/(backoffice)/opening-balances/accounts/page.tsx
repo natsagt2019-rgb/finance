@@ -27,7 +27,7 @@ export default async function OpeningAccountsPage({
   // Идэвхтэй данс (баланс + P&L бүгд — ихэнх нь хоосон үлдэнэ).
   const { data: accRows } = await supabase
     .from("accounts")
-    .select("code, name, type")
+    .select("code, name, type, currency")
     .eq("is_active", true)
     .order("code")
     .limit(5000);

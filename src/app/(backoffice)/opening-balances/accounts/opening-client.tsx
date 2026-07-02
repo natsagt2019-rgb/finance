@@ -4,10 +4,24 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   saveOpeningBalances,
   importOpeningExcel,
+  fetchOpeningRates,
   type OpenRow,
 } from "./actions";
 
-export type Acct = { code: string; name: string; type: string };
+export type Acct = {
+  code: string;
+  name: string;
+  type: string;
+  currency?: string | null;
+};
+
+// Валютын данс уу? (MNT биш, тохируулсан бол).
+function isForeign(a: Acct): boolean {
+  return !!a.currency && a.currency.toUpperCase() !== "MNT";
+}
+function round2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
 
 const TYPE_LABEL: Record<string, string> = {
   asset: "Хөрөнгө",
@@ -41,11 +55,78 @@ export function OpeningClient({
     for (const [k, v] of Object.entries(initial)) if (v) m[k] = String(v);
     return m;
   });
+  // Валютын дансны туслах оролт: валютын дүн + ханш (₮ дүнг эндээс боддог).
+  const [fxVals, setFxVals] = useState<Record<string, string>>({});
+  const [rateVals, setRateVals] = useState<Record<string, string>>({});
+  const [rateBusy, setRateBusy] = useState(false);
   const [q, setQ] = useState("");
   const [onlyFilled, setOnlyFilled] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const hasForeign = useMemo(() => accounts.some(isForeign), [accounts]);
+
+  // fx эсвэл ханш өөрчлөгдөхөд ₮ дүнг (fx × ханш) дахин бодно.
+  function recompute(code: string, fxStr: string, rateStr: string) {
+    const fx = parseNum(fxStr);
+    const rate = parseNum(rateStr);
+    if (fx > 0 && rate > 0) setVal(code, String(round2(fx * rate)));
+  }
+  function setFx(code: string, v: string) {
+    setFxVals((m) => ({ ...m, [code]: v }));
+    recompute(code, v, rateVals[code] ?? "");
+  }
+  function setRate(code: string, v: string) {
+    setRateVals((m) => ({ ...m, [code]: v }));
+    recompute(code, fxVals[code] ?? "", v);
+  }
+
+  // Монголбанкнаас ((Y-1)-12-31) ханш татаж, валютын дансуудад бөглөнө.
+  function loadRates() {
+    setRateBusy(true);
+    setMsg(null);
+    start(async () => {
+      const res = await fetchOpeningRates(year);
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error });
+        setRateBusy(false);
+        return;
+      }
+      const nextRate = { ...rateVals };
+      const nextFx = { ...fxVals };
+      const nextVals = { ...vals };
+      let filled = 0;
+      const missing = new Set<string>();
+      for (const a of accounts) {
+        if (!isForeign(a)) continue;
+        const cur = (a.currency ?? "").toUpperCase();
+        const rate = res.rates[cur];
+        if (rate && rate > 0) {
+          nextRate[a.code] = String(rate);
+          filled++;
+          const fx = parseNum(fxVals[a.code] ?? "");
+          const mnt = parseNum(vals[a.code] ?? "");
+          if (fx > 0) {
+            nextVals[a.code] = String(round2(fx * rate));
+          } else if (mnt > 0) {
+            // Одоо ₮ дүнтэй бол ханшаар нөгөө талд валютын дүнг илчилнэ.
+            nextFx[a.code] = String(round2(mnt / rate));
+          }
+        } else if (cur) missing.add(cur);
+      }
+      setRateVals(nextRate);
+      setFxVals(nextFx);
+      setVals(nextVals);
+      setMsg({
+        ok: true,
+        text: `Монголбанк — ${res.rateDate} ханш: ${filled} валютын данс бөглөгдлөө.${
+          missing.size ? ` Олдоогүй: ${[...missing].join(", ")}.` : ""
+        }`,
+      });
+      setRateBusy(false);
+    });
+  }
 
   const rows = useMemo(() => {
     return accounts
@@ -128,6 +209,17 @@ export function OpeningClient({
           </span>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {hasForeign && (
+            <button
+              type="button"
+              onClick={loadRates}
+              disabled={rateBusy || pending}
+              title={`Валютын дансуудад ${year - 1}-12-31-ний Монголбанкны ханшийг татаж бөглөх`}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {rateBusy ? "Татаж байна…" : "₮ Монголбанкны ханш татах"}
+            </button>
+          )}
           <a
             href="/opening-balances/accounts/template"
             className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
@@ -192,12 +284,39 @@ export function OpeningClient({
                 <td className="px-3 py-1.5 text-zinc-700">{a.name}</td>
                 <td className="px-3 py-1.5 text-xs text-zinc-400">{TYPE_LABEL[a.type] ?? a.type}</td>
                 <td className="px-3 py-1.5 text-right">
-                  <input
-                    value={vals[a.code] ?? ""}
-                    onChange={(e) => setVal(a.code, e.target.value)}
-                    placeholder="0"
-                    className="w-40 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums focus:border-zinc-900 focus:outline-none"
-                  />
+                  {isForeign(a) ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <input
+                        value={fxVals[a.code] ?? ""}
+                        onChange={(e) => setFx(a.code, e.target.value)}
+                        placeholder="0"
+                        title="Валютын дүн"
+                        className="w-24 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums focus:border-zinc-900 focus:outline-none"
+                      />
+                      <span className="w-9 text-left text-xs font-medium text-zinc-400">
+                        {(a.currency ?? "").toUpperCase()}
+                      </span>
+                      <span className="text-zinc-300">×</span>
+                      <input
+                        value={rateVals[a.code] ?? ""}
+                        onChange={(e) => setRate(a.code, e.target.value)}
+                        placeholder="ханш"
+                        title="Ханш (гараар засаж болно)"
+                        className="w-20 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums focus:border-zinc-900 focus:outline-none"
+                      />
+                      <span className="text-zinc-300">=</span>
+                      <span className="w-32 text-right text-sm tabular-nums font-medium text-zinc-700">
+                        {fmt(a.amt)}₮
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      value={vals[a.code] ?? ""}
+                      onChange={(e) => setVal(a.code, e.target.value)}
+                      placeholder="0"
+                      className="w-40 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums focus:border-zinc-900 focus:outline-none"
+                    />
+                  )}
                 </td>
                 <td className="px-3 py-1.5 text-center">
                   {a.amt ? (
@@ -217,6 +336,9 @@ export function OpeningClient({
         Зөвхөн эерэг дүн бичнэ — Дт/Кт-г дансны шинжээс автомат тогтооно (хөрөнгө/зардал→Дт, өр/өмч/орлого→Кт).
         Контр данс (ж: хуримтлагдсан элэгдэл) бол сөрөг тоо бичнэ. Харилцагч/хөрөнгө/барааны дэлгэрэнгүйг
         тус тусын таб дээр оруулна — нийт тэнцлийг дээрх «Зөрүү» харуулна.
+        <br />
+        Валютын данс (USD/CNY…) дээр «валютын дүн × ханш» бичихэд ₮ дүн автомат бодогдоно. «Монголбанкны ханш
+        татах» товчоор {year - 1}-12-31-ний албан ёсны ханшийг татна — ханшийг гараар засаж болно.
       </p>
     </div>
   );
