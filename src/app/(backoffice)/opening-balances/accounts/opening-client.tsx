@@ -314,9 +314,14 @@ export function OpeningClient({
                         className="w-20 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums focus:border-zinc-900 focus:outline-none"
                       />
                       <span className="text-zinc-300">=</span>
-                      <span className="w-32 text-right text-sm tabular-nums font-medium text-zinc-700">
-                        {fmt(a.amt)}₮
-                      </span>
+                      <input
+                        value={vals[a.code] ?? ""}
+                        onChange={(e) => setVal(a.code, e.target.value)}
+                        placeholder="0"
+                        title="₮ дүн — шууд гараас засаж болно"
+                        className="w-32 rounded border border-zinc-200 px-2 py-1 text-right text-sm tabular-nums font-medium focus:border-zinc-900 focus:outline-none"
+                      />
+                      <span className="text-xs text-zinc-400">₮</span>
                     </div>
                   ) : (
                     <input
