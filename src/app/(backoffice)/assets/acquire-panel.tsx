@@ -20,10 +20,17 @@ const SETTLEMENT_OPTS = [
 
 const ACC_NAMES: Record<string, string> = {
   "130600": "НӨАТ-ын авлага",
+  "180500": "Хойшлогдсон НӨАТ",
   "310100": "Нийлүүлэгчийн өглөг",
   "110100": "Касс",
   "110200": "Харилцах",
 };
+
+// Худалдан авалтын НӨАТ данс: шууд хасах эсвэл хойшлуулах.
+const VAT_ACCT_OPTS = [
+  { code: "130600", label: "130600 — Шууд хасах (НӨАТ авлага)" },
+  { code: "180500", label: "180500 — Хойшлуулах (барилга/тоног)" },
+];
 
 const inputCls =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900";
@@ -46,6 +53,7 @@ export function AcquirePanel({
   const [note, setNote] = useState("");
   const [noVat, setNoVat] = useState(false);
   const [settlement, setSettlement] = useState("310100");
+  const [vatAccount, setVatAccount] = useState("130600");
 
   const assetAcc = category?.account_code ?? null;
   const acquired = asset.acquisition_journal_id != null;
@@ -56,10 +64,10 @@ export function AcquirePanel({
     const built = buildAcquisitionJournal({
       cost: Number(asset.cost) || 0,
       vat,
-      accounts: { asset: assetAcc, inputVat: "130600", settlement },
+      accounts: { asset: assetAcc, inputVat: vatAccount, settlement },
     });
     return { vat, built };
-  }, [assetAcc, noVat, isVatPayer, asset.cost, settlement]);
+  }, [assetAcc, noVat, isVatPayer, asset.cost, settlement, vatAccount]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,6 +77,7 @@ export function AcquirePanel({
     fd.set("note", note);
     fd.set("no_vat", noVat ? "1" : "0");
     fd.set("settlement_code", settlement);
+    fd.set("vat_account", vatAccount);
     startTransition(async () => {
       const res = await acquireAsset(asset.id, fd);
       if (!res.ok) { setError(res.error); return; }
@@ -141,6 +150,16 @@ export function AcquirePanel({
             ))}
           </select>
         </div>
+        {!noVat && isVatPayer && (
+          <div>
+            <label className={labelCls}>НӨАТ данс</label>
+            <select value={vatAccount} onChange={(e) => setVatAccount(e.target.value)} className={inputCls}>
+              {VAT_ACCT_OPTS.map((o) => (
+                <option key={o.code} value={o.code}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label className={labelCls}>Тэмдэглэл / нийлүүлэгч</label>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Нэхэмжлэх №, нийлүүлэгч" className={inputCls} />
@@ -158,7 +177,7 @@ export function AcquirePanel({
         <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
           <div className="grid grid-cols-3 gap-2 text-sm">
             <Stat label="Цэвэр өртөг" value={fmt(preview.built.cost)} />
-            <Stat label="НӨАТ (130600)" value={fmt(preview.vat)} />
+            <Stat label={`НӨАТ (${vatAccount})`} value={fmt(preview.vat)} />
             <Stat label="Нийт төлбөр" value={fmt(preview.built.gross)} />
           </div>
           <div className="mt-4 overflow-x-auto">

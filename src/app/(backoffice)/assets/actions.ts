@@ -640,6 +640,8 @@ export async function acquireAsset(
   const partnerId = partnerRaw ? Number(partnerRaw) : null;
   const noVat = get("no_vat") === "1";
   const note = get("note") || null;
+  // НӨАТ данс: 130600 (шууд хасах) эсвэл 180500 (хойшлуулах — барилга/тоног).
+  const vatAccount = get("vat_account") || ACC_INPUT_VAT;
 
   // Хөрөнгө + ангилал.
   const { data: aRaw, error: ae } = await supabase
@@ -682,7 +684,7 @@ export async function acquireAsset(
   const built = buildAcquisitionJournal({
     cost,
     vat,
-    accounts: { asset: assetAcc, inputVat: ACC_INPUT_VAT, settlement },
+    accounts: { asset: assetAcc, inputVat: vatAccount, settlement },
   });
   if (!built.ok) return { ok: false, error: built.error };
 
