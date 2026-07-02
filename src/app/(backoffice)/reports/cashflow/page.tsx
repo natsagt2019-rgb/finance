@@ -46,17 +46,44 @@ export default async function CashflowPage({
     .eq("year", selYear)
     .in("account_id", inIds);
 
-  // Эхний мөнгөн үлдэгдэл (account_balances-аас).
-  const { data: balData } = await supabase
-    .from("account_balances")
-    .select("opening_balance")
-    .eq("year", selYear)
-    .in("account_id", inIds);
-
-  const openingCash = ((balData as { opening_balance: number }[] | null) ?? []).reduce(
-    (s, r) => s + Number(r.opening_balance),
-    0,
-  );
+  // Эхний мөнгөн үлдэгдэл — банкны дансуудын GL кодын is_opening бичилтээс
+  // (Дт-эерэг, ₮). Эхний үлдэгдэл хуудсаар оруулсан дүн journal_entries-д GL
+  // кодоор ордог; хуучин account_balances нь богино түлхүүртэй тул зөвхөн нөөц.
+  const glCodes = [
+    ...new Set(registry.map((a) => a.glCode).filter((c): c is string => !!c)),
+  ];
+  const openDate = `${selYear - 1}-12-31`;
+  let openingCash = 0;
+  if (glCodes.length) {
+    const { data: oeData } = await supabase
+      .from("journal_entries")
+      .select("debit_code, credit_code, amount")
+      .eq("is_opening", true)
+      .eq("txn_date", openDate)
+      .or(
+        `debit_code.in.(${glCodes.join(",")}),credit_code.in.(${glCodes.join(",")})`,
+      )
+      .limit(5000);
+    const glSet = new Set(glCodes);
+    for (const e of (oeData as
+      | { debit_code: string | null; credit_code: string | null; amount: number }[]
+      | null) ?? []) {
+      const amt = Number(e.amount) || 0;
+      if (e.debit_code && glSet.has(e.debit_code)) openingCash += amt;
+      if (e.credit_code && glSet.has(e.credit_code)) openingCash -= amt;
+    }
+  }
+  if (!openingCash) {
+    const { data: balData } = await supabase
+      .from("account_balances")
+      .select("opening_balance")
+      .eq("year", selYear)
+      .in("account_id", inIds);
+    openingCash = ((balData as { opening_balance: number }[] | null) ?? []).reduce(
+      (s, r) => s + Number(r.opening_balance),
+      0,
+    );
+  }
 
   // Код × сар → дүн map (дансуудаар нэгтгэнэ).
   const byCode: CodeMonthly = {};
@@ -211,7 +238,7 @@ export default async function CashflowPage({
 
       <p className="mt-3 text-xs text-zinc-400">
         Эх сурвалж: дансны хуулга (transactions) · ангилал кодоор нэгтгэв. Эхний үлдэгдэл:
-        account_balances ({selYear}).
+        банкны дансуудын GL эхний үлдэгдэл ({selYear - 1}-12-31).
       </p>
     </div>
   );
