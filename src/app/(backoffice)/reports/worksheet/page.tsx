@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { bankJournalStatus } from "@/lib/bank-journal-status";
+import { BankJournalBanner } from "../bank-journal-banner";
 
 // Ажлын хүснэгт (10 баганат working trial balance):
 //   Шалгах баланс (эхний) → Гүйлгээ → Хаалтын бичилтийн өмнөх шалгах баланс
@@ -103,6 +105,12 @@ export default async function WorksheetPage({
   const from = sp.from && ISO.test(sp.from) ? sp.from : "2026-01-01";
   const to = sp.to && ISO.test(sp.to) ? sp.to : "2026-12-31";
 
+  // Банкны хуулга журналд бүрэн тусаагүй (кодгүй/хуучирсан) эсэхийг шалгана —
+  // импортолсон гүйлгээ transactions-д байгаа ч journal_entries-д ороогүй бол
+  // энэ хүснэгтэд харагдахгүй тул анхааруулж, журналд бичих товч санал болгоно.
+  const wsYear = Number(from.slice(0, 4)) || new Date().getFullYear();
+  const bankStatus = await bankJournalStatus(supabase, wsYear);
+
   const { data: accData } = await supabase
     .from("accounts")
     .select("code, name, type")
@@ -189,6 +197,8 @@ export default async function WorksheetPage({
           <PrintButton />
         </div>
       </div>
+
+      <BankJournalBanner year={wsYear} status={bankStatus} />
 
       <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-200 bg-white print:border-0">
         <table className="w-full text-xs">
