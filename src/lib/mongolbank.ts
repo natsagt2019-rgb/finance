@@ -31,23 +31,30 @@ export async function fetchMongolbankRates(
   // огнооноос өмнөх хамгийн сүүлийн зарласан ханшийг авна.
   const start = addDays(date, -10);
 
-  const res = await fetch(ENDPOINT, {
+  // Монголбанкны сайт нь startDate/endDate-ийг POST-ийн BODY биш, QUERY
+  // параметрээр хүлээж авдаг (axios `params`). Body-д явуулбал "Тохирох үр дүн
+  // олдсонгүй." гэж string буцаадаг тул массив гэж бодоод .filter хийхэд цохилно.
+  const url = `${ENDPOINT}?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(date)}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
       "User-Agent": "Mozilla/5.0",
+      Accept: "application/json",
     },
-    body: JSON.stringify({ startDate: start, endDate: date }),
     cache: "no-store",
   });
   if (!res.ok) return null;
 
   const json = (await res.json()) as {
     success?: boolean;
-    data?: Record<string, unknown>[];
+    data?: unknown;
   };
-  const rows = json?.data ?? [];
+  // Үр дүнгүй үед `data` нь массив биш string ("Тохирох үр дүн олдсонгүй.")
+  // байдаг тул массив эсэхийг заавал шалгана.
+  const rows = Array.isArray(json?.data)
+    ? (json.data as Record<string, unknown>[])
+    : [];
   if (rows.length === 0) return null;
 
   // RATE_DATE ≤ date дотроос хамгийн сүүлийнхийг сонгоно.
