@@ -246,6 +246,11 @@ export default async function JournalsPage({
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-zinc-800">
                       {fmt(j.total_amount)}₮
+                      {j.currency && j.currency !== "MNT" && j.fx_amount ? (
+                        <div className="text-[10px] font-normal text-amber-600">
+                          {fmt(j.fx_amount)} {j.currency} × {j.exchange_rate}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2">
                       <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">

@@ -23,7 +23,11 @@ export type JournalInitial = {
   partner_id: number | null;
   status: "draft" | "posted";
   rows: Row[];
+  currency?: string;
+  exchange_rate?: number;
 };
+
+const CURRENCIES = ["MNT", "CNY", "USD", "EUR", "JPY", "RUB", "KRW"];
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -58,6 +62,14 @@ export function JournalForm({
   const [partnerId, setPartnerId] = useState(
     initial?.partner_id != null ? String(initial.partner_id) : "",
   );
+  const [currency, setCurrency] = useState(initial?.currency ?? "MNT");
+  const [rate, setRate] = useState(
+    initial?.exchange_rate && initial.exchange_rate !== 1
+      ? String(initial.exchange_rate)
+      : "",
+  );
+  const isForeign = currency !== "MNT";
+  const rateNum = num(rate) || (isForeign ? 0 : 1);
   const [rows, setRows] = useState<Row[]>(
     initial?.rows && initial.rows.length >= 2
       ? initial.rows
@@ -74,7 +86,8 @@ export function JournalForm({
     };
   }, [rows]);
 
-  const balanced = totals.diff === 0 && totals.debit > 0;
+  const balanced =
+    totals.diff === 0 && totals.debit > 0 && (!isForeign || rateNum > 0);
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -107,6 +120,8 @@ export function JournalForm({
         partner_id: partnerId ? Number(partnerId) : null,
         status,
         lines,
+        currency,
+        exchange_rate: isForeign ? rateNum : 1,
       };
       const res = isEdit
         ? await updateJournal(journalId!, payload)
@@ -175,6 +190,36 @@ export function JournalForm({
             ))}
           </select>
         </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-zinc-600">
+            Валют
+          </span>
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        {isForeign && (
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-zinc-600">
+              Ханш (1 {currency} → ₮) <span className="text-red-500">*</span>
+            </span>
+            <input
+              inputMode="decimal"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              placeholder="жишээ: 518.91"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm tabular-nums"
+            />
+          </label>
+        )}
       </div>
 
       {/* Мөрүүд */}
@@ -199,10 +244,10 @@ export function JournalForm({
                   Данс
                 </th>
                 <th className="px-3 py-2 text-right" style={{ width: "16%" }}>
-                  Дебет
+                  Дебет{isForeign ? ` (${currency})` : ""}
                 </th>
                 <th className="px-3 py-2 text-right" style={{ width: "16%" }}>
-                  Кредит
+                  Кредит{isForeign ? ` (${currency})` : ""}
                 </th>
                 <th className="px-3 py-2">Тайлбар</th>
                 <th className="w-10 px-3 py-2"></th>
@@ -277,7 +322,9 @@ export function JournalForm({
             </tbody>
             <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
               <tr>
-                <td className="px-3 py-2 text-right text-zinc-600">Нийт</td>
+                <td className="px-3 py-2 text-right text-zinc-600">
+                  Нийт{isForeign ? ` (${currency})` : ""}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums text-zinc-800">
                   {fmt(totals.debit)}
                 </td>
@@ -291,11 +338,25 @@ export function JournalForm({
                     </span>
                   ) : (
                     <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                      Зөрүү: {fmt(totals.diff)}
+                      {isForeign && rateNum <= 0
+                        ? "Ханш оруулна уу"
+                        : `Зөрүү: ${fmt(totals.diff)}`}
                     </span>
                   )}
                 </td>
               </tr>
+              {isForeign && rateNum > 0 && (
+                <tr className="text-xs text-zinc-500">
+                  <td className="px-3 py-1.5 text-right">₮ дүйцэл (× {fmt(rateNum)})</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmt(Math.round(totals.debit * rateNum))}₮
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmt(Math.round(totals.credit * rateNum))}₮
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

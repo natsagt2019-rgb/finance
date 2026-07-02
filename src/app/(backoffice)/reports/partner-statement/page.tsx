@@ -15,6 +15,11 @@ function f2(n: number): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Валютын дүн (2 орон, бүхэл бол таслалгүй).
+function fxAmt(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 type AccRow = { code: string; name: string; type: string | null; fs_line: string | null; currency: string | null };
 type Entry = {
   id: number;
@@ -24,9 +29,19 @@ type Entry = {
   debit_code: string | null;
   credit_code: string | null;
   partner_name: string | null;
+  journal_id: number | null;
 };
 
-type Line = { id: number; date: string; desc: string; debit: number; credit: number; balance: number };
+type Line = {
+  id: number;
+  date: string;
+  desc: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  currency: string; // журналын валют (MNT бол зураас харуулна)
+  rate: number; // 1 нэгж валют → ₮
+};
 type AcctSection = {
   code: string;
   name: string;
@@ -91,14 +106,14 @@ export default async function PartnerStatementPage({
     const [{ data: dr }, { data: cr }] = await Promise.all([
       supabase
         .from("journal_entries")
-        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name")
+        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name, journal_id")
         .in("debit_code", allCodes)
         .lte("txn_date", to)
         .ilike("partner_name", likePattern)
         .limit(ENTRY_LIMIT),
       supabase
         .from("journal_entries")
-        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name")
+        .select("id, txn_date, description, amount, debit_code, credit_code, partner_name, journal_id")
         .in("credit_code", allCodes)
         .lte("txn_date", to)
         .ilike("partner_name", likePattern)
@@ -110,6 +125,23 @@ export default async function PartnerStatementPage({
       if (normalizePartner(e.partner_name) !== pKey) continue;
       seen.add(e.id);
       entries.push(e);
+    }
+
+    // Гүйлгээний журналын валют/ханш (₮-ийн доор валютын дүн харуулахад).
+    const jIds = [...new Set(entries.map((e) => e.journal_id).filter((x): x is number => x != null))];
+    const fxByJournal = new Map<number, { currency: string; rate: number }>();
+    if (jIds.length > 0) {
+      const { data: jrows } = await supabase
+        .from("journals")
+        .select("id, currency, exchange_rate")
+        .in("id", jIds)
+        .limit(ENTRY_LIMIT);
+      for (const j of (jrows as { id: number; currency: string | null; exchange_rate: number | null }[] | null) ?? []) {
+        fxByJournal.set(j.id, {
+          currency: (j.currency || "MNT").toUpperCase(),
+          rate: Number(j.exchange_rate) || 1,
+        });
+      }
     }
 
     // Данс бүрээр бүлэглэнэ.
@@ -150,7 +182,17 @@ export default async function PartnerStatementPage({
         bal += delta;
         tDr += dr;
         tCt += ct;
-        lines.push({ id: e.id, date: (e.txn_date || "").slice(0, 10), desc: e.description || "", debit: dr, credit: ct, balance: bal });
+        const fx = e.journal_id != null ? fxByJournal.get(e.journal_id) : undefined;
+        lines.push({
+          id: e.id,
+          date: (e.txn_date || "").slice(0, 10),
+          desc: e.description || "",
+          debit: dr,
+          credit: ct,
+          balance: bal,
+          currency: fx?.currency ?? "MNT",
+          rate: fx?.rate ?? 1,
+        });
       }
       const info = accInfo.get(code);
       // Хоосон (бүх нь 0) дансыг алгасна.
@@ -408,8 +450,22 @@ function AccountSection({
             </div>
           </td>
           <td className="px-3 py-1" />
-          <td className="px-3 py-1 text-right tabular-nums text-zinc-700">{f(l.debit)}</td>
-          <td className="px-3 py-1 text-right tabular-nums text-zinc-700">{f(l.credit)}</td>
+          <td className="px-3 py-1 text-right tabular-nums text-zinc-700">
+            {f(l.debit)}
+            {l.currency !== "MNT" && l.debit ? (
+              <div className="text-[10px] font-normal text-amber-600">
+                {fxAmt(l.debit / l.rate)} {l.currency} × {l.rate}
+              </div>
+            ) : null}
+          </td>
+          <td className="px-3 py-1 text-right tabular-nums text-zinc-700">
+            {f(l.credit)}
+            {l.currency !== "MNT" && l.credit ? (
+              <div className="text-[10px] font-normal text-amber-600">
+                {fxAmt(l.credit / l.rate)} {l.currency} × {l.rate}
+              </div>
+            ) : null}
+          </td>
           <td className="px-3 py-1 text-right tabular-nums text-zinc-600">{f(l.balance)}</td>
         </tr>
       ))}

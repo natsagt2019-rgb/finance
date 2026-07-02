@@ -24,7 +24,9 @@ export default async function EditJournalPage({
     await Promise.all([
       supabase
         .from("journals")
-        .select("id, date, number, description, reference, status, source, partner_id")
+        .select(
+          "id, date, number, description, reference, status, source, partner_id, currency, exchange_rate, fx_amount",
+        )
         .eq("id", journalId)
         .maybeSingle(),
       supabase
@@ -57,6 +59,13 @@ export default async function EditJournalPage({
 
   const isManual = jrn.source === "manual";
 
+  // Валют/ханш — журналын мөр ₮-өөр хадгалагддаг тул валютын журналыг харуулахдаа
+  // ханшид хувааж, оруулсан валютын дүнг сэргээнэ.
+  const currency = ((jrn.currency as string | null) ?? "MNT").toUpperCase();
+  const rate = Number(jrn.exchange_rate) || 1;
+  const toFx = (mnt: number) =>
+    currency === "MNT" || rate <= 0 ? mnt : Math.round((mnt / rate) * 100) / 100;
+
   const fmtNum = (n: number) => (n ? String(n) : "");
   const initial: JournalInitial = {
     date: jrn.date as string,
@@ -64,12 +73,14 @@ export default async function EditJournalPage({
     reference: (jrn.reference as string | null) ?? "",
     partner_id: (jrn.partner_id as number | null) ?? null,
     status: (jrn.status as "draft" | "posted") ?? "posted",
+    currency,
+    exchange_rate: rate,
     rows:
       lines.length > 0
         ? lines.map((l) => ({
             account_id: l.account_id != null ? String(l.account_id) : "",
-            debit: fmtNum(Number(l.debit) || 0),
-            credit: fmtNum(Number(l.credit) || 0),
+            debit: fmtNum(toFx(Number(l.debit) || 0)),
+            credit: fmtNum(toFx(Number(l.credit) || 0)),
             description: l.description ?? "",
           }))
         : [

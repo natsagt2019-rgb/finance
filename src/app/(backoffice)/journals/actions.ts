@@ -23,6 +23,19 @@ function round2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+// Валют + ханшийг цэгцэлнэ. MNT бол ханш үргэлж 1. Гадаад валютын ханш ≤0 бол алдаа.
+function resolveFx(
+  currency?: string,
+  exchange_rate?: number,
+): { ok: true; currency: string; rate: number } | { ok: false; error: string } {
+  const cur = (currency || "MNT").toUpperCase();
+  if (cur === "MNT") return { ok: true, currency: "MNT", rate: 1 };
+  const rate = Number(exchange_rate) || 0;
+  if (rate <= 0)
+    return { ok: false, error: `${cur} валютын ханш (0-ээс их) шаардлагатай.` };
+  return { ok: true, currency: cur, rate };
+}
+
 // Дараагийн журналын дугаар: GL-000001 (одоо байгаа тооноос).
 async function nextNumber(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -41,43 +54,27 @@ export async function createJournal(input: {
   partner_id: number | null;
   status: "draft" | "posted";
   lines: LineInput[];
+  currency?: string;
+  exchange_rate?: number;
 }): Promise<ActionResult> {
   const supabase = await requireAuth();
 
   if (!input.date) return { ok: false, error: "Огноо заавал шаардлагатай." };
 
-  // Зөвхөн утга бүхий мөрүүд (данс + дүн).
-  const lines = input.lines
-    .map((l) => ({
-      account_id: l.account_id,
-      debit: round2(l.debit),
-      credit: round2(l.credit),
-      description: (l.description ?? "").trim() || null,
-    }))
-    .filter((l) => l.account_id != null && (l.debit !== 0 || l.credit !== 0));
+  const fx = resolveFx(input.currency, input.exchange_rate);
+  if (!fx.ok) return fx;
 
-  if (lines.length < 2)
-    return { ok: false, error: "Дор хаяж 2 мөр (дебет, кредит) шаардлагатай." };
-
-  for (const l of lines) {
-    if (l.debit < 0 || l.credit < 0)
-      return { ok: false, error: "Дүн сөрөг байж болохгүй." };
-    if (l.debit !== 0 && l.credit !== 0)
-      return {
-        ok: false,
-        error: "Нэг мөрд зөвхөн дебет ЭСВЭЛ кредит бичнэ.",
-      };
-  }
-
-  const totalDebit = round2(lines.reduce((s, l) => s + l.debit, 0));
-  const totalCredit = round2(lines.reduce((s, l) => s + l.credit, 0));
-  if (totalDebit !== totalCredit)
-    return {
-      ok: false,
-      error: `Баланслахгүй байна: дебет ${totalDebit.toLocaleString()} ≠ кредит ${totalCredit.toLocaleString()}.`,
-    };
-  if (totalDebit === 0)
-    return { ok: false, error: "Нийт дүн 0 байж болохгүй." };
+  // Мөрүүд журналын валютаар оруулагдана — тэнцэл шалгаад ₮ рүү хөрвүүлнэ.
+  const prep = prepareLines(input.lines);
+  if (!prep.ok) return prep;
+  const fxTotal = prep.total; // валютаараа нийт
+  const lines = prep.lines.map((l) => ({
+    account_id: l.account_id,
+    debit: round2(l.debit * fx.rate),
+    credit: round2(l.credit * fx.rate),
+    description: l.description,
+  }));
+  const totalDebit = round2(lines.reduce((s, l) => s + l.debit, 0)); // ₮ нийт
 
   const number = await nextNumber(supabase);
 
@@ -92,6 +89,9 @@ export async function createJournal(input: {
       source: "manual",
       partner_id: input.partner_id,
       total_amount: totalDebit,
+      currency: fx.currency,
+      exchange_rate: fx.rate,
+      fx_amount: fx.currency === "MNT" ? null : fxTotal,
     })
     .select("id, number")
     .single();
@@ -191,6 +191,8 @@ export async function updateJournal(
     partner_id: number | null;
     status: "draft" | "posted";
     lines: LineInput[];
+    currency?: string;
+    exchange_rate?: number;
   },
 ): Promise<ActionResult> {
   const supabase = await requireAuth();
@@ -209,8 +211,20 @@ export async function updateJournal(
       error: "Зөвхөн гар бичилт (manual) засагдана. Автомат журналыг эх модулиар нь засна.",
     };
 
+  const fx = resolveFx(input.currency, input.exchange_rate);
+  if (!fx.ok) return fx;
+
+  // Мөрүүд журналын валютаар — тэнцэл шалгаад ₮ рүү хөрвүүлнэ.
   const prep = prepareLines(input.lines);
   if (!prep.ok) return prep;
+  const fxTotal = prep.total;
+  const mntLines = prep.lines.map((l) => ({
+    account_id: l.account_id,
+    debit: round2(l.debit * fx.rate),
+    credit: round2(l.credit * fx.rate),
+    description: l.description,
+  }));
+  const mntTotal = round2(mntLines.reduce((s, l) => s + l.debit, 0));
 
   const { error: e1 } = await supabase
     .from("journals")
@@ -220,15 +234,18 @@ export async function updateJournal(
       reference: input.reference.trim() || null,
       status: input.status,
       partner_id: input.partner_id,
-      total_amount: prep.total,
+      total_amount: mntTotal,
+      currency: fx.currency,
+      exchange_rate: fx.rate,
+      fx_amount: fx.currency === "MNT" ? null : fxTotal,
     })
     .eq("id", id);
   if (e1) return { ok: false, error: e1.message };
 
-  // Мөрүүдийг бүхэлд нь солино.
+  // Мөрүүдийг бүхэлд нь солино (₮-өөр).
   await supabase.from("journal_lines").delete().eq("journal_id", id);
   const { error: e2 } = await supabase.from("journal_lines").insert(
-    prep.lines.map((l, i) => ({
+    mntLines.map((l, i) => ({
       journal_id: id,
       account_id: l.account_id,
       debit: l.debit,
@@ -248,7 +265,7 @@ export async function updateJournal(
       partner_name: await partnerNameById(supabase, input.partner_id),
       source: "manual",
       journalId: id,
-      lines: prep.lines,
+      lines: mntLines,
     });
     if (!mir.ok) return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
   }

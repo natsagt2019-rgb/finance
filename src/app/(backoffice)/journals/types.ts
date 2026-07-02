@@ -10,13 +10,16 @@ export type JournalRow = {
   status: JournalStatus;
   source: string;
   partner_id: number | null;
-  total_amount: number;
+  total_amount: number; // ₮ (валют × ханш)
   month: number | null;
+  currency: string; // 'MNT' | 'CNY' | 'USD' ...
+  exchange_rate: number; // 1 нэгж валют → ₮ (MNT бол 1)
+  fx_amount: number | null; // валютаараа илэрхийлсэн нийт дүн
 };
 
 export const JOURNAL_SELECT =
   "id, date, number, description, reference, status, source, " +
-  "partner_id, total_amount, month";
+  "partner_id, total_amount, month, currency, exchange_rate, fx_amount";
 
 // Журналын мөр (гүйлгээний нэг мөр).
 export type JournalLineRow = {
