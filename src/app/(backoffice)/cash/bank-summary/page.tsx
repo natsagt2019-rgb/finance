@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { loadRegistry, displayMap } from "@/lib/bank-registry";
+import { loadRegistry, displayMap, currencyMap } from "@/lib/bank-registry";
 import {
   buildBankSummary,
   buildBlock,
@@ -84,6 +84,81 @@ export default async function BankSummaryPage({
     groupAccountIds,
     bankNames,
   );
+
+  // ── Валютын данс: валютаараа (CNY/USD…) зэрэгцээ цуврал ──────────────────────
+  // monthly_cashflow нь ₮ (дүн × ханш) тул валютын дүнг гаргахын тулд transactions-
+  // ийн түүхий income/expense-ийг account_id × сараар нэгтгэнэ. Эхний үлдэгдлийг
+  // өмнөх оны цэвэр (орлого−зарлага) валютын дүнгээс бодно.
+  const curByAccount = currencyMap(registry);
+  const foreignIds = groupAccountIds.filter(
+    (id) => (curByAccount[id] ?? "MNT").toUpperCase() !== "MNT",
+  );
+  if (foreignIds.length) {
+    type FxTxn = {
+      account_id: string;
+      month: number;
+      year: number;
+      income: number | null;
+      expense: number | null;
+      exchange_rate: number | null;
+    };
+    // 1000-ийн хязгаараас сэргийлж хуудаслана (зөвхөн валютын данс).
+    async function pageFxTxns(scope: (q: any) => any): Promise<FxTxn[]> {
+      const out: FxTxn[] = [];
+      for (let off = 0; off < 500000; off += 1000) {
+        const { data } = await scope(
+          supabase
+            .from("transactions")
+            .select("account_id,month,year,income,expense,exchange_rate")
+            .in("account_id", foreignIds),
+        ).range(off, off + 999);
+        const page = (data as FxTxn[] | null) ?? [];
+        out.push(...page);
+        if (page.length < 1000) break;
+      }
+      return out;
+    }
+    const fxCur = await pageFxTxns((q) => q.eq("year", selYear));
+    const fxPrior = await pageFxTxns((q) => q.lt("year", selYear));
+
+    const fxInc: Record<string, number[]> = {};
+    const fxExp: Record<string, number[]> = {};
+    const fxOpen: Record<string, number> = {};
+    const fxWarn: Record<string, number> = {};
+    for (const id of foreignIds) {
+      fxInc[id] = new Array(12).fill(0);
+      fxExp[id] = new Array(12).fill(0);
+      fxOpen[id] = 0;
+      fxWarn[id] = 0;
+    }
+    const isAnom = (t: FxTxn) =>
+      ((Number(t.income) || 0) !== 0 || (Number(t.expense) || 0) !== 0) &&
+      (Number(t.exchange_rate) || 0) <= 1;
+    for (const t of fxCur) {
+      const m = (t.month ?? 0) - 1;
+      if (m < 0 || m > 11) continue;
+      fxInc[t.account_id][m] += Number(t.income) || 0;
+      fxExp[t.account_id][m] += Number(t.expense) || 0;
+      if (isAnom(t)) fxWarn[t.account_id]++;
+    }
+    for (const t of fxPrior) {
+      fxOpen[t.account_id] += (Number(t.income) || 0) - (Number(t.expense) || 0);
+      if (isAnom(t)) fxWarn[t.account_id]++;
+    }
+    for (const b of summary.banks) {
+      const cur = (curByAccount[b.accountId] ?? "MNT").toUpperCase();
+      if (cur === "MNT" || !fxInc[b.accountId]) continue;
+      b.currency = cur;
+      b.fx = buildBlock(
+        b.accountId,
+        b.bank,
+        fxInc[b.accountId],
+        fxExp[b.accountId],
+        fxOpen[b.accountId],
+      );
+      if (fxWarn[b.accountId]) b.fxWarn = fxWarn[b.accountId];
+    }
+  }
 
   // ── Касс (бэлэн мөнгө) — cash_registers + cash_entries ──────────────────────
   // Банкнаас тусдаа хүснэгтэд хадгалагддаг тул нэгтгэлд гараар нэмнэ.
@@ -198,19 +273,27 @@ export default async function BankSummaryPage({
   );
 }
 
-function BankCard({ block, highlight }: { block: BankBlock; highlight: boolean }) {
-  const rows: {
-    label: string;
-    vals: number[];
-    total: number;
-    kind: "bal" | "in" | "out" | "net";
-  }[] = [
-    { label: "Эхний үлдэгдэл", vals: block.opening, total: block.yearOpening, kind: "bal" },
-    { label: "Орлого", vals: block.income, total: sum(block.income), kind: "in" },
-    { label: "Зарлага", vals: block.expense, total: sum(block.expense), kind: "out" },
-    { label: "Цэвэр урсгал", vals: block.net, total: sum(block.net), kind: "net" },
-    { label: "Эцсийн үлдэгдэл", vals: block.closing, total: block.yearClosing, kind: "bal" },
+type SumRow = {
+  label: string;
+  vals: number[];
+  total: number;
+  kind: "bal" | "in" | "out" | "net";
+};
+
+function blockRows(b: BankBlock): SumRow[] {
+  return [
+    { label: "Эхний үлдэгдэл", vals: b.opening, total: b.yearOpening, kind: "bal" },
+    { label: "Орлого", vals: b.income, total: sum(b.income), kind: "in" },
+    { label: "Зарлага", vals: b.expense, total: sum(b.expense), kind: "out" },
+    { label: "Цэвэр урсгал", vals: b.net, total: sum(b.net), kind: "net" },
+    { label: "Эцсийн үлдэгдэл", vals: b.closing, total: b.yearClosing, kind: "bal" },
   ];
+}
+
+function BankCard({ block, highlight }: { block: BankBlock; highlight: boolean }) {
+  const rows = blockRows(block);
+  const fxRows = block.fx ? blockRows(block.fx) : null;
+  const cur = block.currency;
 
   return (
     <div
@@ -224,11 +307,20 @@ function BankCard({ block, highlight }: { block: BankBlock; highlight: boolean }
             {block.accountId}
           </span>
           <span className="font-semibold text-zinc-900">{block.bank}</span>
+          {cur && (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              {cur}
+            </span>
+          )}
         </div>
         <div className="text-xs text-zinc-500">
-          Эхний үлдэгдэл: <span className="font-medium text-zinc-700">{fmt(block.yearOpening)}₮</span>
-          {"  ·  "}
           Эцсийн үлдэгдэл: <span className="font-medium text-zinc-700">{fmt(block.yearClosing)}₮</span>
+          {block.fx && (
+            <span className="font-medium text-amber-700">
+              {"  ·  "}
+              {fmt(block.fx.yearClosing)} {cur}
+            </span>
+          )}
         </div>
       </div>
 
@@ -272,6 +364,50 @@ function BankCard({ block, highlight }: { block: BankBlock; highlight: boolean }
                 </tr>
               );
             })}
+
+            {/* Валютаараа (CNY/USD…) зэрэгцээ мөрүүд */}
+            {fxRows && (
+              <>
+                <tr className="border-t-2 border-amber-200 bg-amber-50/40">
+                  <td
+                    colSpan={14}
+                    className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-amber-700"
+                  >
+                    {cur} валютаар
+                    {block.fxWarn ? (
+                      <span className="ml-2 normal-case text-red-600">
+                        ⚠ {block.fxWarn} гүйлгээ ханшгүй (rate≤1) — валютын дүн
+                        гажуудсан байж болзошгүй, ханшийг нь засна уу.
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+                {fxRows.map((row) => {
+                  const labelExtra =
+                    row.kind === "in"
+                      ? "text-green-700"
+                      : row.kind === "out"
+                        ? "text-red-700"
+                        : "";
+                  return (
+                    <tr
+                      key={`fx-${row.label}`}
+                      className="border-t border-amber-100 bg-amber-50/20 text-zinc-600"
+                    >
+                      <td className={`px-3 py-1.5 ${labelExtra}`}>
+                        {row.kind === "in" ? "↓ " : row.kind === "out" ? "↑ " : ""}
+                        {row.label}{" "}
+                        <span className="text-[10px] text-amber-600">({cur})</span>
+                      </td>
+                      {row.vals.map((v, j) => (
+                        <Cell key={j} v={v} kind={row.kind} />
+                      ))}
+                      <Cell v={row.total} kind={row.kind} bold />
+                    </tr>
+                  );
+                })}
+              </>
+            )}
           </tbody>
         </table>
       </div>

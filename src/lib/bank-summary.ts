@@ -24,6 +24,11 @@ export type BankBlock = {
   closing: number[];
   yearOpening: number; // оны эхэн
   yearClosing: number; // оны эцэс
+  // Валютын данс бол (MNT биш) валютаараа илэрхийлсэн зэрэгцээ цуврал.
+  currency?: string;
+  fx?: BankBlock;
+  // Ханшгүй (rate≤1) гүйлгээний тоо — валютын дүнг гажуудуулдаг тул анхааруулга.
+  fxWarn?: number;
 };
 
 export type BankSummary = {
