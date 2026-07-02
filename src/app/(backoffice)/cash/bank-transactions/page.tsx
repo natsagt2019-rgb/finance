@@ -16,6 +16,10 @@ function fmt(n: number, ccy = "MNT"): string {
   });
 }
 
+function round2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 // timestamptz → Улаанбаатарын YYYY-MM-DD.
 function ubDate(ts: string): string {
   return new Date(ts).toLocaleDateString("en-CA", {
@@ -71,17 +75,39 @@ export default async function BankTransactionsPage({
   const fromYear = from.slice(0, 4);
   const ccy = ccyByAcc[acc] ?? "MNT";
 
-  // Жилийн эхний үлдэгдэл.
-  const { data: balRow } = await supabase
-    .from("account_balances")
-    .select("opening_balance")
-    .eq("account_id", acc)
-    .eq("year", Number(fromYear))
-    .maybeSingle();
-
-  const yearOpening = Number(
-    (balRow as { opening_balance: number } | null)?.opening_balance ?? 0,
-  );
+  // Жилийн эхний үлдэгдэл — дансны GL кодын is_opening бичилтээс (Дт-эерэг, ₮).
+  // (Эхний үлдэгдэл хуудсаар оруулсан дүн journal_entries-д GL кодоор ордог.
+  //  account_balances нь хуучин түлхүүртэй тул зөвхөн нөөц эх сурвалж.)
+  const glCode = registry.find((a) => a.accountNo === acc)?.glCode ?? null;
+  const openDate = `${Number(fromYear) - 1}-12-31`;
+  let yearOpeningMnt = 0;
+  if (glCode) {
+    const { data: oe } = await supabase
+      .from("journal_entries")
+      .select("debit_code, credit_code, amount")
+      .eq("is_opening", true)
+      .eq("txn_date", openDate)
+      .or(`debit_code.eq.${glCode},credit_code.eq.${glCode}`)
+      .limit(2000);
+    for (const e of (oe as
+      | { debit_code: string | null; credit_code: string | null; amount: number }[]
+      | null) ?? []) {
+      const amt = Number(e.amount) || 0;
+      if (e.debit_code === glCode) yearOpeningMnt += amt;
+      if (e.credit_code === glCode) yearOpeningMnt -= amt;
+    }
+  }
+  if (!yearOpeningMnt) {
+    const { data: balRow } = await supabase
+      .from("account_balances")
+      .select("opening_balance")
+      .eq("account_id", acc)
+      .eq("year", Number(fromYear))
+      .maybeSingle();
+    yearOpeningMnt = Number(
+      (balRow as { opening_balance: number } | null)?.opening_balance ?? 0,
+    );
+  }
 
   // Тухайн оны эхнээс to хүртэлх бүх гүйлгээ. PostgREST мөрийн дээд хязгаар
   // (~1000) тул хуудаслаж бүгдийг татна (нэг банкны жилийн дүн → хэдэн мянга).
@@ -126,12 +152,29 @@ export default async function BankTransactionsPage({
       preMovement += inc - exp;
     }
   }
-  const opening = yearOpening + preMovement;
+  const isForeign = ccy !== "MNT";
+  // Валютын данс: эхний үлдэгдэл GL дээр ₮-өөр хадгалагддаг тул валютын дүнг
+  // ойролцоо ханшаар (мужийн эхний бодит ханштай гүйлгээ) гаргана.
+  let proxyRate = 0;
+  for (const t of allTxns) {
+    const d = ubDate(t.txn_date);
+    if (d < from || d > to) continue;
+    const r = Number(t.exchange_rate) || 0;
+    if (r > 1) {
+      proxyRate = r;
+      break;
+    }
+  }
+  const yearOpeningCcy = isForeign
+    ? proxyRate > 0
+      ? round2(yearOpeningMnt / proxyRate)
+      : 0
+    : yearOpeningMnt;
+  const opening = yearOpeningCcy + preMovement;
   balance = opening;
   let totalIn = 0;
   let totalOut = 0;
   // MNT дүйцэл (валютын данс) — гүйлгээ бүрийг өөрийн ханшаар.
-  const isForeign = ccy !== "MNT";
   let totalInMnt = 0;
   let totalOutMnt = 0;
   for (const t of allTxns) {
@@ -148,10 +191,11 @@ export default async function BankTransactionsPage({
     rows.push({ t, inc, exp, balance, rate, balanceMnt: balance * rate });
   }
   const closing = opening + totalIn - totalOut;
-  // Эхэн/эцсийн MNT — хамгийн ойрын гүйлгээний ханшаар (валютын данс).
-  const firstRate = rows[0]?.rate ?? 0;
-  const lastRate = rows[rows.length - 1]?.rate ?? 0;
-  const openingMnt = isForeign ? opening * firstRate : opening;
+  // Эхэн/эцсийн MNT — эхэн нь GL-ийн бодит ₮ дүн, эцэс нь ойрын ханшаар.
+  const lastRate = rows[rows.length - 1]?.rate ?? proxyRate;
+  const openingMnt = isForeign
+    ? yearOpeningMnt + Math.round(preMovement * proxyRate)
+    : opening;
   const closingMnt = isForeign ? closing * lastRate : closing;
 
   const qs = (over: Partial<SearchParams>) => {
