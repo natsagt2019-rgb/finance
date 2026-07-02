@@ -56,7 +56,9 @@ export function FxRevaluationView({
         nature: a.nature,
         type: a.type,
         book_balance: a.bookBalance,
-        fx_balance: 0,
+        // Журналын ханшаар сэргээсэн валютын үлдэгдэл (эерэг хэмжээ) —
+        // хаалтын ханш татахад олз/гарз шууд бодогдоно.
+        fx_balance: Math.abs(a.fxBalance),
         rate: 0,
       })),
     [accounts],
@@ -123,7 +125,7 @@ export function FxRevaluationView({
         nature: a.nature,
         type: a.type,
         book_balance: a.bookBalance,
-        fx_balance: 0,
+        fx_balance: Math.abs(a.fxBalance),
         rate: 0,
       },
     ]);

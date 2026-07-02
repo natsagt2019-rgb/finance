@@ -9,6 +9,7 @@ export type FxAccount = {
   nature: string | null; // 'Актив' | 'Пассив'
   type: string | null; // asset | liability | ...
   bookBalance: number; // одоогийн дэвтрийн үлдэгдэл (дебет-эерэг, MNT)
+  fxBalance: number; // валютын үлдэгдэл (журналын ханшаар сэргээсэн, дебет-эерэг)
 };
 
 // Өмнө хийсэн тэгшитгэлийн товч мөр (түүх).

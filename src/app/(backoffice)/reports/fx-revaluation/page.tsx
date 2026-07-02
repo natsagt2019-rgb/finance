@@ -47,35 +47,68 @@ export default async function FxRevaluationPage() {
   // Валютын дансны одоогийн дэвтрийн үлдэгдэл (дебет-эерэг) — нэгдсэн дэвтэр
   // journal_entries-ээс (банкны постинг + албан журналын тусгал). Тайлантай
   // ижил эх сурвалж: debit_code/credit_code/amount, данс КОДоор.
+  // Мөн валютын үлдэгдэл (fxByCode): гүйлгээ бүрийн валютын дүн = amount ÷ журналын
+  // ханш. Ингэснээр тайлант эцэст хаалтын ханшаар дахин үнэлэхэд валютын үлдэгдлийг
+  // гараар оруулахгүй, автомат бөглөнө (IAS 21 — мөнгөн зүйлс).
   const bookByCode = new Map<string, number>();
+  const fxByCode = new Map<string, number>();
   if (foreign.length > 0) {
     const codes = foreign.map((a) => a.code);
     const codeSet = new Set(codes);
     const { data: jeData } = await supabase
       .from("journal_entries")
-      .select("debit_code, credit_code, amount")
+      .select("debit_code, credit_code, amount, journal_id")
       .or(`debit_code.in.(${codes.join(",")}),credit_code.in.(${codes.join(",")})`)
       .limit(100000);
-    for (const e of (jeData as
-      | { debit_code: string | null; credit_code: string | null; amount: number }[]
-      | null) ?? []) {
+    const jeRows =
+      (jeData as
+        | { debit_code: string | null; credit_code: string | null; amount: number; journal_id: number | null }[]
+        | null) ?? [];
+    // Холбогдох журналуудын ханш (валютын дүнг сэргээхэд).
+    const jIds = [...new Set(jeRows.map((e) => e.journal_id).filter((x): x is number => x != null))];
+    const rateByJournal = new Map<number, number>();
+    if (jIds.length > 0) {
+      const { data: jrows } = await supabase
+        .from("journals")
+        .select("id, exchange_rate")
+        .in("id", jIds)
+        .limit(100000);
+      for (const j of (jrows as { id: number; exchange_rate: number | null }[] | null) ?? [])
+        rateByJournal.set(j.id, Number(j.exchange_rate) || 1);
+    }
+    for (const e of jeRows) {
       const amt = Number(e.amount) || 0;
-      if (e.debit_code && codeSet.has(e.debit_code))
+      const rate = e.journal_id != null ? rateByJournal.get(e.journal_id) ?? 1 : 1;
+      const fx = rate > 0 ? amt / rate : amt;
+      if (e.debit_code && codeSet.has(e.debit_code)) {
         bookByCode.set(e.debit_code, (bookByCode.get(e.debit_code) ?? 0) + amt);
-      if (e.credit_code && codeSet.has(e.credit_code))
+        fxByCode.set(e.debit_code, (fxByCode.get(e.debit_code) ?? 0) + fx);
+      }
+      if (e.credit_code && codeSet.has(e.credit_code)) {
         bookByCode.set(e.credit_code, (bookByCode.get(e.credit_code) ?? 0) - amt);
+        fxByCode.set(e.credit_code, (fxByCode.get(e.credit_code) ?? 0) - fx);
+      }
     }
   }
 
-  const accounts: FxAccount[] = foreign.map((a) => ({
-    id: a.id,
-    code: a.code,
-    name: a.name,
-    currency: (a.currency ?? "").toUpperCase(),
-    nature: a.nature,
-    type: a.type,
-    bookBalance: Math.round((bookByCode.get(a.code) ?? 0) * 100) / 100,
-  }));
+  const accounts: FxAccount[] = foreign.map((a) => {
+    const bookRaw = bookByCode.get(a.code) ?? 0;
+    const fxRaw = fxByCode.get(a.code) ?? 0;
+    // Журналд бодит ханш хэрэглэгдсэн бол (fx ≠ дэвтэр) валютын үлдэгдлийг
+    // автомат авна. Ханш=1 (банкны CASH26 г.м.) бол найдваргүй тул 0 үлдээж,
+    // хэрэглэгч гараар оруулна.
+    const reliable = Math.abs(fxRaw - bookRaw) > 1;
+    return {
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      currency: (a.currency ?? "").toUpperCase(),
+      nature: a.nature,
+      type: a.type,
+      bookBalance: Math.round(bookRaw * 100) / 100,
+      fxBalance: reliable ? Math.round(fxRaw * 100) / 100 : 0,
+    };
+  });
 
   // Тэгшитгэлийн түүх.
   const { data: histData } = await supabase
