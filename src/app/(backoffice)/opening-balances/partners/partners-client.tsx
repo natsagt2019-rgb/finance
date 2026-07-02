@@ -6,8 +6,17 @@ import { savePartnerOpening, type PartnerOpenRow } from "./actions";
 export type AcctOpt = { code: string; name: string };
 
 function parseNum(s: string): number {
-  const n = Number(String(s ?? "").replace(/[, ]/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  // Таслал/зай/валютын тэмдэг хасна. Нягтлан бодох сөрөг тэмдэглэгээ (123.45)
+  // болон хасах тэмдэг (-123.45) хоёуланг сөрөг гэж ойлгоно.
+  let str = String(s ?? "").trim().replace(/[,\s₮]/g, "");
+  let sign = 1;
+  const paren = /^\((.*)\)$/.exec(str);
+  if (paren) {
+    sign = -1;
+    str = paren[1];
+  }
+  const n = Number(str);
+  return Number.isFinite(n) ? n * sign : 0;
 }
 function fmt(n: number): string {
   if (!n) return "0";

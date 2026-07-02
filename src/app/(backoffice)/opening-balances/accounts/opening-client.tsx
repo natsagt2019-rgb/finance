@@ -33,8 +33,17 @@ const TYPE_LABEL: Record<string, string> = {
 const DEBIT_TYPES = new Set(["asset", "expense"]);
 
 function parseNum(s: string): number {
-  const n = Number(String(s ?? "").replace(/[, ]/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  // Таслал/зай/валют хасна. Нягтлан бодох сөрөг (123.45) ба хасах (-123.45)
+  // хоёуланг сөрөг гэж ойлгоно.
+  let str = String(s ?? "").trim().replace(/[,\s₮]/g, "");
+  let sign = 1;
+  const paren = /^\((.*)\)$/.exec(str);
+  if (paren) {
+    sign = -1;
+    str = paren[1];
+  }
+  const n = Number(str);
+  return Number.isFinite(n) ? n * sign : 0;
 }
 function fmt(n: number): string {
   if (!n) return "0";
