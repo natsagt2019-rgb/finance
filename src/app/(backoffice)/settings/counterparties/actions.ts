@@ -17,9 +17,16 @@ export type ImportCpResult =
   | { ok: true; total: number; distinct: number }
   | { ok: false; error: string };
 
-// Excel лавлах → bank_counterparties. Формат: A багана = харилцагчийн нэр,
-// B багана = харьцсан дансны дугаар. Толгой мөрүүд автоматаар алгасагдана
-// (дансны багана тоо биш мөрүүд). Нэг данс олон нэртэй бол ОЛОНХЫН нэрийг авна.
+// Мөрөн дэх үсгэн тэмдэгтийн тоо (нэрийн баганыг таних score).
+function letterCount(s: string): number {
+  return (s.match(/[A-Za-zА-Яа-яЁёӨҮөүÖÜ]/g) || []).length;
+}
+
+// Excel лавлах → bank_counterparties. Багана-хамааралгүй: мөр бүрээс ДАНС
+// (бүхэлдээ 4+ оронтой тоо байх нүд) ба НЭР (үсэг хамгийн ихтэй бусад нүд)-ийг
+// таньж авна — ингэснээр багана шилжсэн (код/нэр/данс) файл ч ажиллана. Бүх
+// sheet-ийг уншина. Толгой мөр автоматаар алгасагдана. Нэг данс олон нэртэй бол
+// ОЛОНХЫН нэрийг авна.
 export async function importCounterparties(
   formData: FormData,
 ): Promise<ImportCpResult> {
@@ -29,12 +36,16 @@ export async function importCounterparties(
   if (!file || typeof file === "string")
     return { ok: false, error: "Файл сонгоогүй байна." };
 
-  let grid: unknown[][];
+  let grids: unknown[][][];
   try {
     const buf = Buffer.from(await (file as File).arrayBuffer());
     const wb = xlsx.read(buf, { type: "buffer" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+    grids = wb.SheetNames.map((sn) =>
+      xlsx.utils.sheet_to_json<unknown[]>(wb.Sheets[sn], {
+        header: 1,
+        defval: null,
+      }),
+    );
   } catch (e) {
     return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
   }
@@ -42,18 +53,34 @@ export async function importCounterparties(
   // Данс тус бүрт нэрсийн давтамж → олонхын нэр.
   const counts = new Map<string, Map<string, number>>();
   let dataRows = 0;
-  for (const row of grid) {
-    const name = String((row?.[0] ?? "")).trim();
-    const acct = String((row?.[1] ?? "")).trim();
-    // Дансны багана нь дор хаяж 4 оронтой тоо байх ёстой (толгой мөр алгасна).
-    if (!name || !/^\d{4,}$/.test(acct)) continue;
-    dataRows++;
-    let g = counts.get(acct);
-    if (!g) {
-      g = new Map();
-      counts.set(acct, g);
+  for (const grid of grids) {
+    for (const row of grid) {
+      const cells = ((row as unknown[]) ?? []).map((c) =>
+        String(c ?? "").trim(),
+      );
+      // Данс: бүхэлдээ 4+ оронтой тоо байх нүд.
+      const acct = cells.find((c) => /^\d{4,}$/.test(c));
+      if (!acct) continue;
+      // Нэр: данс биш, үсэг хамгийн ихтэй нүд (дор хаяж 3 үсэг — код/тоо алгасна).
+      let name = "";
+      let bestLetters = 2;
+      for (const c of cells) {
+        if (c === acct) continue;
+        const lc = letterCount(c);
+        if (lc > bestLetters) {
+          bestLetters = lc;
+          name = c;
+        }
+      }
+      if (!name) continue;
+      dataRows++;
+      let g = counts.get(acct);
+      if (!g) {
+        g = new Map();
+        counts.set(acct, g);
+      }
+      g.set(name, (g.get(name) ?? 0) + 1);
     }
-    g.set(name, (g.get(name) ?? 0) + 1);
   }
 
   if (counts.size === 0)
