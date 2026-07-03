@@ -175,11 +175,13 @@ export async function createReceivableFromVat(input: {
   revCode: string; // орлогын данс (default 610100)
   splitVat: boolean; // НӨАТ-ыг тусад нь өглөгт бичих
   vatAccCode: string; // НӨАТ-ын өглөгийн данс (default 330100)
+  description?: string; // гүйлгээний утга (хоосон бол автомат)
 }): Promise<ActionResult> {
   const supabase = await requireAuth();
   const dr = (input.drCode || "130100").trim();
   const rev = (input.revCode || "610100").trim();
   const vatAcc = (input.vatAccCode || "330100").trim();
+  const desc = (input.description || "").trim();
   if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
 
   const ids = await codeToId(supabase, [dr, rev, vatAcc]);
@@ -217,7 +219,8 @@ export async function createReceivableFromVat(input: {
 
     const res = await postJournal(supabase, {
       date: v.date,
-      description: `Борлуулалт — ${v.partner_name ?? ""}${v.ddtd ? ` (${v.ddtd})` : ""}`,
+      description:
+        desc || `Борлуулалт — ${v.partner_name ?? ""}${v.ddtd ? ` (${v.ddtd})` : ""}`,
       reference: v.ddtd,
       partner_id: input.partnerId,
       source: "receivable",

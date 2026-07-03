@@ -718,6 +718,7 @@ export function VatSalesPanel({
   const [rev, setRev] = useState("610100");
   const [splitVat, setSplitVat] = useState(true);
   const [vatAcc, setVatAcc] = useState("330100");
+  const [desc, setDesc] = useState("");
 
   const [showLink, setShowLink] = useState(false);
   const [unm, setUnm] = useState<UnmatchedRow[]>([]);
@@ -743,6 +744,7 @@ export function VatSalesPanel({
         revCode: rev,
         splitVat,
         vatAccCode: vatAcc,
+        description: desc,
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) setShowSale(false);
@@ -892,6 +894,18 @@ export function VatSalesPanel({
                 className="w-20 rounded border border-zinc-300 px-1 py-0.5 text-xs"
               />
               )
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-zinc-600">
+                Гүйлгээний утга{" "}
+                <span className="font-normal text-zinc-400">(хоосон бол автомат)</span>
+              </span>
+              <input
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Жишээ: 2026 оны борлуулалт"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
             </label>
             <div className="max-h-60 overflow-auto rounded-lg border border-zinc-200">
               <table className="w-full text-xs">
