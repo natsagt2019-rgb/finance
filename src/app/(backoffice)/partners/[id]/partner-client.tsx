@@ -6,6 +6,7 @@ import {
   setTransactionAccounts,
   recordBankExpense,
   createPayableFromVat,
+  createReceivableFromVat,
   linkVatToPartner,
   listUnmatchedVat,
 } from "./actions";
@@ -667,6 +668,321 @@ export function VatPurchasePanel({
                         </td>
                         <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 18)}</td>
                         <td className="px-2 py-1 text-right tabular-nums text-orange-700">{f(v.total_amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-sm text-zinc-500">
+              Сонгосон: <strong>{linkSel.size}</strong> баримт
+            </div>
+            <Msg msg={msg} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowLink(false)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm">
+                Болих
+              </button>
+              <button
+                onClick={submitLink}
+                disabled={pending || linkSel.size === 0}
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {pending ? "…" : "Энэ харилцагчтай холбох"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// eBarimt борлуулалт — авлага/орлого үүсгэх + холбогдоогүй и баримт холбох
+// ════════════════════════════════════════════════════════════════════════════
+export function VatSalesPanel({
+  partnerId,
+  rows,
+  accounts,
+}: {
+  partnerId: number;
+  rows: VatRow[];
+  accounts: Acc[];
+}) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [showSale, setShowSale] = useState(false);
+  const [saleSel, setSaleSel] = useState<Set<number>>(new Set(rows.map((r) => r.id)));
+  const [dr, setDr] = useState("130100");
+  const [rev, setRev] = useState("610100");
+  const [splitVat, setSplitVat] = useState(true);
+  const [vatAcc, setVatAcc] = useState("330100");
+
+  const [showLink, setShowLink] = useState(false);
+  const [unm, setUnm] = useState<UnmatchedRow[]>([]);
+  const [unmLoaded, setUnmLoaded] = useState(false);
+  const [linkSel, setLinkSel] = useState<Set<number>>(new Set());
+  const [q, setQ] = useState("");
+
+  const total = rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+
+  const toggleSale = (id: number) =>
+    setSaleSel((p) => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const submitSale = () => {
+    start(async () => {
+      const r = await createReceivableFromVat({
+        partnerId,
+        vatIds: [...saleSel],
+        drCode: dr,
+        revCode: rev,
+        splitVat,
+        vatAccCode: vatAcc,
+      });
+      setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
+      if (r.ok) setShowSale(false);
+    });
+  };
+
+  const openLink = () => {
+    setShowLink(true);
+    if (!unmLoaded) {
+      start(async () => {
+        const data = await listUnmatchedVat("out");
+        setUnm(data);
+        setUnmLoaded(true);
+      });
+    }
+  };
+
+  const toggleLink = (id: number) =>
+    setLinkSel((p) => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const submitLink = () => {
+    start(async () => {
+      const r = await linkVatToPartner(partnerId, [...linkSel]);
+      setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
+      if (r.ok) {
+        setShowLink(false);
+        setLinkSel(new Set());
+      }
+    });
+  };
+
+  const unmFiltered = unm.filter((v) => {
+    if (!q) return true;
+    const t = q.toLowerCase();
+    return (
+      (v.partner_name || "").toLowerCase().includes(t) ||
+      (v.ddtd || "").includes(q) ||
+      String(v.total_amount).includes(q)
+    );
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-end gap-2 border-b border-zinc-100 px-3 py-1.5">
+        <button
+          onClick={() => setShowSale(true)}
+          disabled={rows.length === 0}
+          className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+        >
+          🧾 Борлуулалт үүсгэх
+        </button>
+        <button
+          onClick={openLink}
+          className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
+        >
+          🔍 И баримт холбох
+        </button>
+      </div>
+
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
+          <tr>
+            <th className="px-3 py-2">Огноо</th>
+            <th className="px-3 py-2">Нэхэмжлэл / ДДТД</th>
+            <th className="px-3 py-2 text-right">НӨАТ-гүй</th>
+            <th className="px-3 py-2 text-right">НӨАТ</th>
+            <th className="px-3 py-2 text-right">Нийт</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100">
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="px-3 py-8 text-center text-sm text-zinc-400">
+                Бичлэг байхгүй
+              </td>
+            </tr>
+          ) : (
+            rows.map((v) => (
+              <tr key={v.id} className="hover:bg-zinc-50">
+                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{d(v.date)}</td>
+                <td className="px-3 py-1.5">
+                  {v.invoice_no && (
+                    <span className="mr-1 rounded border border-zinc-200 px-1 text-xs text-zinc-500">
+                      {v.invoice_no}
+                    </span>
+                  )}
+                  <span className="font-mono text-xs text-zinc-400">{(v.ddtd || "").slice(0, 16)}</span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-600">{f(v.amount)}</td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-400">{f(v.vat_amount)}</td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium tabular-nums text-green-700">
+                  {f(v.total_amount)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+        {rows.length > 0 && (
+          <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
+            <tr>
+              <td colSpan={4} className="px-3 py-2 text-right text-zinc-500">
+                Нийт {rows.length}:
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums text-green-700">{f(total)}</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+
+      {/* Борлуулалт үүсгэх modal */}
+      {showSale && (
+        <Modal title="Гарсан нэхэмжлэл — Борлуулалт (авлага/орлого) үүсгэх" onClose={() => setShowSale(false)}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">Авлагын данс (Дт)</span>
+                <input
+                  list="sale-acc-dl"
+                  value={dr}
+                  onChange={(e) => setDr(e.target.value)}
+                  placeholder="130100…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">Орлогын данс (Кт)</span>
+                <input
+                  list="sale-acc-dl"
+                  value={rev}
+                  onChange={(e) => setRev(e.target.value)}
+                  placeholder="610100…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <AccDatalist id="sale-acc-dl" accounts={accounts} />
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" checked={splitVat} onChange={(e) => setSplitVat(e.target.checked)} />
+              Төлбөл зохих НӨАТ-ыг тусад нь бичих (Кт{" "}
+              <input
+                value={vatAcc}
+                onChange={(e) => setVatAcc(e.target.value)}
+                className="w-20 rounded border border-zinc-300 px-1 py-0.5 text-xs"
+              />
+              )
+            </label>
+            <div className="max-h-60 overflow-auto rounded-lg border border-zinc-200">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-50 text-left text-zinc-500">
+                  <tr>
+                    <th className="px-2 py-1"></th>
+                    <th className="px-2 py-1">Огноо</th>
+                    <th className="px-2 py-1">ДДТД</th>
+                    <th className="px-2 py-1 text-right">Нийт</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((v) => (
+                    <tr key={v.id} className="border-t border-zinc-100">
+                      <td className="px-2 py-1">
+                        <input type="checkbox" checked={saleSel.has(v.id)} onChange={() => toggleSale(v.id)} />
+                      </td>
+                      <td className="px-2 py-1 text-zinc-500">{d(v.date)}</td>
+                      <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 16)}</td>
+                      <td className="px-2 py-1 text-right tabular-nums text-green-700">{f(v.total_amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-sm text-zinc-500">
+              Сонгосон: <strong>{saleSel.size}</strong> баримт
+            </div>
+            <Msg msg={msg} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowSale(false)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm">
+                Болих
+              </button>
+              <button
+                onClick={submitSale}
+                disabled={pending || !dr || !rev || saleSel.size === 0}
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {pending ? "…" : "Борлуулалт үүсгэх"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* И баримт холбох modal */}
+      {showLink && (
+        <Modal title="Холбогдоогүй борлуулалтын И баримтаас сонгох" onClose={() => setShowLink(false)}>
+          <div className="space-y-3">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="ДДТД, дүн, худалдан авагч хайх…"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            />
+            <div className="max-h-72 overflow-auto rounded-lg border border-zinc-200">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-zinc-50 text-left text-zinc-500">
+                  <tr>
+                    <th className="px-2 py-1"></th>
+                    <th className="px-2 py-1">Огноо</th>
+                    <th className="px-2 py-1">Худалдан авагч</th>
+                    <th className="px-2 py-1">ДДТД</th>
+                    <th className="px-2 py-1 text-right">Нийт</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!unmLoaded ? (
+                    <tr>
+                      <td colSpan={5} className="px-2 py-6 text-center text-zinc-400">
+                        Ачааллаж байна…
+                      </td>
+                    </tr>
+                  ) : unmFiltered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-2 py-6 text-center text-zinc-400">
+                        Холбогдоогүй И баримт алга
+                      </td>
+                    </tr>
+                  ) : (
+                    unmFiltered.map((v) => (
+                      <tr key={v.id} className="border-t border-zinc-100">
+                        <td className="px-2 py-1">
+                          <input type="checkbox" checked={linkSel.has(v.id)} onChange={() => toggleLink(v.id)} />
+                        </td>
+                        <td className="px-2 py-1 text-zinc-500">{d(v.date)}</td>
+                        <td className="max-w-[12rem] truncate px-2 py-1" title={v.partner_name ?? ""}>
+                          {v.partner_name || "—"}
+                        </td>
+                        <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 18)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-green-700">{f(v.total_amount)}</td>
                       </tr>
                     ))
                   )}

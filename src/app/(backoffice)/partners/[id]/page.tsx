@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { BankTxnTable, VatPurchasePanel } from "./partner-client";
+import { BankTxnTable, VatPurchasePanel, VatSalesPanel } from "./partner-client";
 
 // Хуучин TumenAccounting3-ийн харилцагчийн дэлгэрэнгүй (partner_view) загвар:
 // нэг харилцагчтай холбоотой eBarimt борлуулалт/худалдан авалт, банкны
@@ -335,7 +335,7 @@ export default async function PartnerDetailPage({
       {/* Эхний хос: eBarimt борлуулалт ↔ Банкны орлого */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="eBarimt борлуулалт" subtitle="(анхны нэхэмжлэл)" tone="green" count={vatOut.length}>
-          <VatTable rows={vatOut} totalLabel={fmt(totalVatOut)} accent="text-green-700" />
+          <VatSalesPanel partnerId={pid} rows={vatOut} accounts={accountsList} />
           {vatOutClosing.length > 0 && (
             <div className="border-t border-zinc-100 px-3 py-2 text-xs text-zinc-400">
               + {vatOutClosing.length} хаалтын баримт (
@@ -498,69 +498,6 @@ function Panel({
       </div>
       <div className="max-h-[420px] overflow-auto">{children}</div>
     </div>
-  );
-}
-
-function VatTable({
-  rows,
-  totalLabel,
-  accent,
-}: {
-  rows: VatRow[];
-  totalLabel: string;
-  accent: string;
-}) {
-  const fmtN = (n: number) => (n ? Math.round(n).toLocaleString("en-US") : "0");
-  return (
-    <table className="w-full text-sm">
-      <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
-        <tr>
-          <th className="px-3 py-2">Огноо</th>
-          <th className="px-3 py-2">Нэхэмжлэл / ДДТД</th>
-          <th className="px-3 py-2 text-right">НӨАТ-гүй</th>
-          <th className="px-3 py-2 text-right">НӨАТ</th>
-          <th className="px-3 py-2 text-right">Нийт</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-zinc-100">
-        {rows.length === 0 ? (
-          <EmptyRow cols={5} />
-        ) : (
-          rows.map((v) => (
-            <tr key={v.id} className="hover:bg-zinc-50">
-              <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{v.date?.slice(0, 10) || "—"}</td>
-              <td className="px-3 py-1.5">
-                {v.invoice_no && (
-                  <span className="mr-1 rounded border border-zinc-200 px-1 text-xs text-zinc-500">
-                    {v.invoice_no}
-                  </span>
-                )}
-                <span className="font-mono text-xs text-zinc-400">{(v.ddtd || "").slice(0, 16)}</span>
-              </td>
-              <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-600">
-                {fmtN(Number(v.amount))}
-              </td>
-              <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-400">
-                {fmtN(Number(v.vat_amount))}
-              </td>
-              <td className={`whitespace-nowrap px-3 py-1.5 text-right font-medium tabular-nums ${accent}`}>
-                {fmtN(Number(v.total_amount))}
-              </td>
-            </tr>
-          ))
-        )}
-      </tbody>
-      {rows.length > 0 && (
-        <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
-          <tr>
-            <td colSpan={4} className="px-3 py-2 text-right text-zinc-500">
-              Нийт {rows.length}:
-            </td>
-            <td className={`px-3 py-2 text-right tabular-nums ${accent}`}>{totalLabel}</td>
-          </tr>
-        </tfoot>
-      )}
-    </table>
   );
 }
 

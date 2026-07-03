@@ -79,8 +79,10 @@ export async function linkVatToPartner(
   return { ok: true, message: `${count ?? vatIds.length} баримт холбогдлоо.` };
 }
 
-// Холбогдоогүй ирсэн eBarimt (partner_id null, type='in').
-export async function listUnmatchedVat(): Promise<
+// Холбогдоогүй eBarimt (partner_id null). type: 'in' худалдан авалт | 'out' борлуулалт.
+export async function listUnmatchedVat(
+  type: "in" | "out" = "in",
+): Promise<
   {
     id: number;
     date: string;
@@ -96,7 +98,7 @@ export async function listUnmatchedVat(): Promise<
     .from("vat_records")
     .select("id, date, partner_name, ddtd, amount, vat_amount, total_amount")
     .is("partner_id", null)
-    .eq("type", "in")
+    .eq("type", type)
     .order("date", { ascending: false })
     .limit(500);
   return (data as never) ?? [];
@@ -163,6 +165,70 @@ export async function createPayableFromVat(input: {
   revalidatePath(`/partners/${input.partnerId}`);
   if (created === 0) return { ok: false, error: "Журнал үүсгэгдсэнгүй." };
   return { ok: true, message: `${created} ирсэн нэхэмжлэл өглөг болж бүртгэгдлээ.` };
+}
+
+// ── 3c. Гарсан нэхэмжлэхээс (eBarimt борлуулалт) авлага/орлого үүсгэх ────────
+export async function createReceivableFromVat(input: {
+  partnerId: number;
+  vatIds: number[];
+  drCode: string; // авлагын данс (default 130100)
+  revCode: string; // орлогын данс (default 610100)
+  splitVat: boolean; // НӨАТ-ыг тусад нь өглөгт бичих
+  vatAccCode: string; // НӨАТ-ын өглөгийн данс (default 330100)
+}): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  const dr = (input.drCode || "130100").trim();
+  const rev = (input.revCode || "610100").trim();
+  const vatAcc = (input.vatAccCode || "330100").trim();
+  if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
+
+  const ids = await codeToId(supabase, [dr, rev, vatAcc]);
+  const drId = ids.get(dr);
+  const revId = ids.get(rev);
+  const vatCrId = ids.get(vatAcc);
+  if (!drId) return { ok: false, error: `Данс ${dr} олдсонгүй.` };
+  if (!revId) return { ok: false, error: `Данс ${rev} олдсонгүй.` };
+
+  const { data: vats } = await supabase
+    .from("vat_records")
+    .select("id, date, partner_name, ddtd, amount, vat_amount")
+    .in("id", input.vatIds);
+  const rows = (vats as
+    | { id: number; date: string; partner_name: string | null; ddtd: string | null; amount: number; vat_amount: number }[]
+    | null) ?? [];
+
+  let created = 0;
+  for (const v of rows) {
+    const net = Number(v.amount) || 0;
+    const vat = Number(v.vat_amount) || 0;
+    const total = net + vat;
+    if (total <= 0) continue;
+
+    // Дт Авлага (нийт) / Кт Орлого (НӨАТ-гүй) / Кт НӨАТ-ын өглөг (НӨАТ).
+    const lines: LineInput[] = [
+      { account_id: drId, debit: total, credit: 0, description: "Авлага" },
+    ];
+    if (input.splitVat && vat > 0 && vatCrId) {
+      lines.push({ account_id: revId, debit: 0, credit: net, description: "Борлуулалтын орлого" });
+      lines.push({ account_id: vatCrId, debit: 0, credit: vat, description: "Төлбөл зохих НӨАТ" });
+    } else {
+      lines.push({ account_id: revId, debit: 0, credit: total, description: "Борлуулалтын орлого" });
+    }
+
+    const res = await postJournal(supabase, {
+      date: v.date,
+      description: `Борлуулалт — ${v.partner_name ?? ""}${v.ddtd ? ` (${v.ddtd})` : ""}`,
+      reference: v.ddtd,
+      partner_id: input.partnerId,
+      source: "receivable",
+      lines,
+    });
+    if (res.ok) created++;
+  }
+
+  revalidatePath(`/partners/${input.partnerId}`);
+  if (created === 0) return { ok: false, error: "Журнал үүсгэгдсэнгүй." };
+  return { ok: true, message: `${created} борлуулалт авлага/орлого болж бүртгэгдлээ.` };
 }
 
 // ── 3b. Банкны зарлагыг зардалд бичих (журнал авто) ────────────────────────
