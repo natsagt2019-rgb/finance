@@ -38,9 +38,11 @@ const EMPTY = { date: "", bank: "", desc: "", partner: "", dt: "", kt: "" };
 export function StatementsTable({
   rows,
   accounts,
+  partnerNames = [],
 }: {
   rows: TxnRow[];
   accounts: AccountOpt[];
+  partnerNames?: string[];
 }) {
   const [filters, setFilters] = useState(EMPTY);
   const [data, setData] = useState<TxnRow[]>(rows);
@@ -88,6 +90,21 @@ export function StatementsTable({
     for (const a of accounts) m.set(a.code, a.name);
     return m;
   }, [accounts]);
+
+  // Харилцагчийн саналын жагсаалт: лавлах/бүртгэлийн нэрс + одоо харагдаж буй
+  // мөрүүдийн нэрс. Том/жижиг үсгийн зөрүүг нэгтгэнэ (лавлахын нэр түрүүлнэ).
+  const cpOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of partnerNames) {
+      const t = n.trim().replace(/\s+/g, " ");
+      if (t) m.set(t.toUpperCase(), t);
+    }
+    for (const r of data) {
+      const t = (r.counterparty ?? "").trim().replace(/\s+/g, " ");
+      if (t && !m.has(t.toUpperCase())) m.set(t.toUpperCase(), t);
+    }
+    return [...m.values()].sort((a, b) => a.localeCompare(b));
+  }, [partnerNames, data]);
 
   const filtered = useMemo(() => {
     const f = filters;
@@ -355,6 +372,7 @@ export function StatementsTable({
                 <td className="px-3 py-2 text-zinc-700">
                   {editing ? (
                     <input
+                      list="cp-list"
                       value={editCp}
                       onChange={(e) => setEditCp(e.target.value)}
                       placeholder="харилцагч"
@@ -399,6 +417,11 @@ export function StatementsTable({
           <option key={a.code} value={a.code}>
             {a.code} — {a.name}
           </option>
+        ))}
+      </datalist>
+      <datalist id="cp-list">
+        {cpOptions.map((n) => (
+          <option key={n} value={n} />
         ))}
       </datalist>
       <div className="border-t border-zinc-100 px-3 py-2 text-xs text-zinc-400">

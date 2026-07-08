@@ -134,6 +134,25 @@ export default async function StatementsPage({
     .limit(5000);
   const accounts = (accRows as AccountOpt[] | null) ?? [];
 
+  // Харилцагчийн нэрийн санал (мөр дээр засахад) — лавлах (данс→нэр) +
+  // бүртгэлтэй харилцагчид. Том/жижиг үсгийн зөрүүг нэгтгэж лавлахын
+  // каноник нэрийг түрүүлж авна.
+  const [{ data: cpRefRows }, { data: partnerRows }] = await Promise.all([
+    supabase.from("bank_counterparties").select("name").limit(20000),
+    supabase.from("partners").select("name").limit(20000),
+  ]);
+  const cpByKey = new Map<string, string>();
+  for (const r of [
+    ...((cpRefRows as { name: string | null }[] | null) ?? []),
+    ...((partnerRows as { name: string | null }[] | null) ?? []),
+  ]) {
+    const n = (r.name ?? "").trim().replace(/\s+/g, " ");
+    if (!n) continue;
+    const k = n.toUpperCase();
+    if (!cpByKey.has(k)) cpByKey.set(k, n);
+  }
+  const partnerNames = [...cpByKey.values()].sort((a, b) => a.localeCompare(b));
+
   // ── Эхний / эцсийн үлдэгдэл ──────────────────────────────────────────
   // Он сонгосон үед account_balances-аас (данс шүүлтэд тохируулан) авна.
   // Гүйлгээт үлдэгдэл тул орлого/зарлага хоёуланг тооцно (dir шүүлтээс үл хамаарна).
@@ -355,7 +374,7 @@ export default async function StatementsPage({
           </div>
         ) : (
           <>
-            <StatementsTable rows={txns} accounts={accounts} />
+            <StatementsTable rows={txns} accounts={accounts} partnerNames={partnerNames} />
             {txns.length === ROW_LIMIT && (
               <div className="border-t border-zinc-100 px-6 py-3 text-xs text-zinc-400">
                 Зөвхөн сүүлийн {ROW_LIMIT} мөр харагдаж байна. Нэгтгэл нь бүх
