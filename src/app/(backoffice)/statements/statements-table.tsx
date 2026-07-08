@@ -47,6 +47,7 @@ export function StatementsTable({
   const [editId, setEditId] = useState<number | null>(null);
   const [editDt, setEditDt] = useState("");
   const [editKt, setEditKt] = useState("");
+  const [editCp, setEditCp] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   // Холболтын дараа «Журналд бичих»-ийг сануулна (тайланд харагдуулахын тулд).
@@ -155,6 +156,7 @@ export function StatementsTable({
     setEditId(r.id);
     setEditDt(r.debit_code ?? "");
     setEditKt(r.credit_code ?? "");
+    setEditCp(r.counterparty ?? "");
     setMsg(null);
   }
 
@@ -179,11 +181,18 @@ export function StatementsTable({
 
   function save(id: number) {
     start(async () => {
-      const res = await updateTxnAccounts(id, editDt || null, editKt || null);
+      const res = await updateTxnAccounts(id, editDt || null, editKt || null, editCp);
       if (res.ok) {
         setData((d) =>
           d.map((r) =>
-            r.id === id ? { ...r, debit_code: editDt || null, credit_code: editKt || null } : r,
+            r.id === id
+              ? {
+                  ...r,
+                  debit_code: editDt || null,
+                  credit_code: editKt || null,
+                  counterparty: editCp.trim() || null,
+                }
+              : r,
           ),
         );
         setEditId(null);
@@ -343,7 +352,18 @@ export function StatementsTable({
                 <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{r.txn_date.slice(0, 10)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-zinc-500">{r.bank}</td>
                 <td className="max-w-xs px-3 py-2 text-zinc-700"><span title={r.description ?? ""}>{r.description}</span></td>
-                <td className="px-3 py-2 text-zinc-700">{r.counterparty}</td>
+                <td className="px-3 py-2 text-zinc-700">
+                  {editing ? (
+                    <input
+                      value={editCp}
+                      onChange={(e) => setEditCp(e.target.value)}
+                      placeholder="харилцагч"
+                      className="w-44 rounded border border-zinc-300 px-2 py-1 text-xs"
+                    />
+                  ) : (
+                    r.counterparty
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-green-700">{fmt(mnt(r.income, r.exchange_rate))}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-red-700">{fmt(mnt(r.expense, r.exchange_rate))}</td>
                 {editing ? (

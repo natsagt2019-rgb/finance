@@ -18,20 +18,27 @@ async function requireAuth() {
   return supabase;
 }
 
-// Гүйлгээний харьцсан данс (Дт/Кт код) гараар засах.
+// Гүйлгээний харьцсан данс (Дт/Кт код) ба харилцагчийн нэрийг гараар засах.
+// counterparty дамжуулаагүй (undefined) бол харилцагчийг хэвээр үлдээнэ.
 export async function updateTxnAccounts(
   id: number,
   debitCode: string | null,
   creditCode: string | null,
+  counterparty?: string | null,
 ): Promise<ActionResult> {
   const supabase = await requireAuth();
   const norm = (s: string | null) => {
     const v = (s ?? "").trim();
     return v === "" ? null : v;
   };
+  const patch: Record<string, string | null> = {
+    debit_code: norm(debitCode),
+    credit_code: norm(creditCode),
+  };
+  if (counterparty !== undefined) patch.counterparty = norm(counterparty);
   const { error } = await supabase
     .from("transactions")
-    .update({ debit_code: norm(debitCode), credit_code: norm(creditCode) })
+    .update(patch)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/statements");
