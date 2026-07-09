@@ -404,6 +404,7 @@ export function VatPurchasePanel({
   const [kt, setKt] = useState("3310");
   const [splitVat, setSplitVat] = useState(true);
   const [vatAcc, setVatAcc] = useState("3152");
+  const [payDesc, setPayDesc] = useState("");
 
   const [showLink, setShowLink] = useState(false);
   const [unm, setUnm] = useState<UnmatchedRow[]>([]);
@@ -429,6 +430,7 @@ export function VatPurchasePanel({
         ktCode: kt,
         splitVat,
         vatAccCode: vatAcc,
+        description: payDesc,
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) setShowPay(false);
@@ -577,6 +579,18 @@ export function VatPurchasePanel({
                 className="w-16 rounded border border-zinc-300 px-1 py-0.5 text-xs"
               />
               )
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-zinc-600">
+                Гүйлгээний утга{" "}
+                <span className="font-normal text-zinc-400">(хоосон бол автомат)</span>
+              </span>
+              <input
+                value={payDesc}
+                onChange={(e) => setPayDesc(e.target.value)}
+                placeholder="Жишээ: 2026 оны худалдан авалт"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
             </label>
             <div className="max-h-60 overflow-auto rounded-lg border border-zinc-200">
               <table className="w-full text-xs">

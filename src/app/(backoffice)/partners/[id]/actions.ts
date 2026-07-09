@@ -112,11 +112,13 @@ export async function createPayableFromVat(input: {
   ktCode: string; // өглөгийн данс (default 3310)
   splitVat: boolean; // НӨАТ-ыг тусдаа өглөгт холбох
   vatAccCode: string; // НӨАТ-ын өглөгийн данс (3152)
+  description?: string; // гүйлгээний утга (хоосон бол автомат)
 }): Promise<ActionResult> {
   const supabase = await requireAuth();
   const dt = input.dtCode.trim();
   const kt = (input.ktCode || "3310").trim();
   const vatAcc = (input.vatAccCode || "3152").trim();
+  const desc = (input.description || "").trim();
   if (!dt) return { ok: false, error: "Зардлын данс (Дт) оруулна уу." };
   if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
 
@@ -136,8 +138,13 @@ export async function createPayableFromVat(input: {
     | { id: number; date: string; partner_name: string | null; ddtd: string | null; amount: number; vat_amount: number }[]
     | null) ?? [];
 
+  // Давхар бичилтээс хамгаалалт: тухайн ДДТД-ээр журнал аль хэдийн байвал алгасна.
+  const journaled = await journaledDdtds(supabase, rows);
+
   let created = 0;
+  let skipped = 0;
   for (const v of rows) {
+    if (v.ddtd && journaled.has(v.ddtd)) { skipped++; continue; }
     const net = Number(v.amount) || 0;
     const vat = Number(v.vat_amount) || 0;
     if (net <= 0 && vat <= 0) continue;
@@ -153,7 +160,8 @@ export async function createPayableFromVat(input: {
 
     const res = await postJournal(supabase, {
       date: v.date,
-      description: `Ирсэн нэхэмжлэл — ${v.partner_name ?? ""}${v.ddtd ? ` (${v.ddtd})` : ""}`,
+      description:
+        desc || `Ирсэн нэхэмжлэл — ${v.partner_name ?? ""}${v.ddtd ? ` (${v.ddtd})` : ""}`,
       reference: v.ddtd,
       partner_id: input.partnerId,
       source: "payable",
@@ -163,8 +171,26 @@ export async function createPayableFromVat(input: {
   }
 
   revalidatePath(`/partners/${input.partnerId}`);
-  if (created === 0) return { ok: false, error: "Журнал үүсгэгдсэнгүй." };
-  return { ok: true, message: `${created} ирсэн нэхэмжлэл өглөг болж бүртгэгдлээ.` };
+  if (created === 0)
+    return {
+      ok: false,
+      error: skipped > 0 ? `Бүгд өмнө нь журналлагдсан (${skipped} алгассан).` : "Журнал үүсгэгдсэнгүй.",
+    };
+  return {
+    ok: true,
+    message: `${created} ирсэн нэхэмжлэл өглөг болж бүртгэгдлээ.${skipped ? ` (${skipped} өмнө нь бичигдсэн — алгассан)` : ""}`,
+  };
+}
+
+// Тухайн ДДТД-ээр аль хэдийн журнал үүссэн эсэх (reference талбараар).
+async function journaledDdtds(
+  supabase: Awaited<ReturnType<typeof requireAuth>>,
+  rows: { ddtd: string | null }[],
+): Promise<Set<string>> {
+  const ddtds = rows.map((v) => v.ddtd).filter((d): d is string => !!d);
+  if (!ddtds.length) return new Set();
+  const { data } = await supabase.from("journals").select("reference").in("reference", ddtds);
+  return new Set(((data as { reference: string | null }[] | null) ?? []).map((j) => j.reference).filter((r): r is string => !!r));
 }
 
 // ── 3c. Гарсан нэхэмжлэхээс (eBarimt борлуулалт) авлага/орлого үүсгэх ────────
@@ -199,8 +225,13 @@ export async function createReceivableFromVat(input: {
     | { id: number; date: string; partner_name: string | null; ddtd: string | null; amount: number; vat_amount: number }[]
     | null) ?? [];
 
+  // Давхар бичилтээс хамгаалалт: тухайн ДДТД-ээр журнал аль хэдийн байвал алгасна.
+  const journaled = await journaledDdtds(supabase, rows);
+
   let created = 0;
+  let skipped = 0;
   for (const v of rows) {
+    if (v.ddtd && journaled.has(v.ddtd)) { skipped++; continue; }
     const net = Number(v.amount) || 0;
     const vat = Number(v.vat_amount) || 0;
     const total = net + vat;
@@ -230,8 +261,15 @@ export async function createReceivableFromVat(input: {
   }
 
   revalidatePath(`/partners/${input.partnerId}`);
-  if (created === 0) return { ok: false, error: "Журнал үүсгэгдсэнгүй." };
-  return { ok: true, message: `${created} борлуулалт авлага/орлого болж бүртгэгдлээ.` };
+  if (created === 0)
+    return {
+      ok: false,
+      error: skipped > 0 ? `Бүгд өмнө нь журналлагдсан (${skipped} алгассан).` : "Журнал үүсгэгдсэнгүй.",
+    };
+  return {
+    ok: true,
+    message: `${created} борлуулалт авлага/орлого болж бүртгэгдлээ.${skipped ? ` (${skipped} өмнө нь бичигдсэн — алгассан)` : ""}`,
+  };
 }
 
 // ── 3b. Банкны зарлагыг зардалд бичих (журнал авто) ────────────────────────
