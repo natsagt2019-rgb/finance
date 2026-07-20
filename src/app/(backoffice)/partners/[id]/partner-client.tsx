@@ -521,7 +521,7 @@ export function VatPurchasePanel({
                       {v.invoice_no}
                     </span>
                   )}
-                  <span className="font-mono text-xs text-zinc-400">{(v.ddtd || "").slice(0, 16)}</span>
+                  <span className="break-all font-mono text-xs text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-600">{f(v.amount)}</td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-400">{f(v.vat_amount)}</td>
@@ -609,7 +609,7 @@ export function VatPurchasePanel({
                         <input type="checkbox" checked={paySel.has(v.id)} onChange={() => togglePay(v.id)} />
                       </td>
                       <td className="px-2 py-1 text-zinc-500">{d(v.date)}</td>
-                      <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 16)}</td>
+                      <td className="break-all px-2 py-1 font-mono text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</td>
                       <td className="px-2 py-1 text-right tabular-nums text-orange-700">{f(v.total_amount)}</td>
                     </tr>
                   ))}
@@ -680,7 +680,7 @@ export function VatPurchasePanel({
                         <td className="max-w-[12rem] truncate px-2 py-1" title={v.partner_name ?? ""}>
                           {v.partner_name || "—"}
                         </td>
-                        <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 18)}</td>
+                        <td className="break-all px-2 py-1 font-mono text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</td>
                         <td className="px-2 py-1 text-right tabular-nums text-orange-700">{f(v.total_amount)}</td>
                       </tr>
                     ))
@@ -849,7 +849,7 @@ export function VatSalesPanel({
                       {v.invoice_no}
                     </span>
                   )}
-                  <span className="font-mono text-xs text-zinc-400">{(v.ddtd || "").slice(0, 16)}</span>
+                  <span className="break-all font-mono text-xs text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-600">{f(v.amount)}</td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-zinc-400">{f(v.vat_amount)}</td>
@@ -938,7 +938,7 @@ export function VatSalesPanel({
                         <input type="checkbox" checked={saleSel.has(v.id)} onChange={() => toggleSale(v.id)} />
                       </td>
                       <td className="px-2 py-1 text-zinc-500">{d(v.date)}</td>
-                      <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 16)}</td>
+                      <td className="break-all px-2 py-1 font-mono text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</td>
                       <td className="px-2 py-1 text-right tabular-nums text-green-700">{f(v.total_amount)}</td>
                     </tr>
                   ))}
@@ -1009,7 +1009,7 @@ export function VatSalesPanel({
                         <td className="max-w-[12rem] truncate px-2 py-1" title={v.partner_name ?? ""}>
                           {v.partner_name || "—"}
                         </td>
-                        <td className="px-2 py-1 font-mono text-zinc-400">{(v.ddtd || "").slice(0, 18)}</td>
+                        <td className="break-all px-2 py-1 font-mono text-zinc-400" title={v.ddtd ?? ""}>{v.ddtd || "—"}</td>
                         <td className="px-2 py-1 text-right tabular-nums text-green-700">{f(v.total_amount)}</td>
                       </tr>
                     ))
