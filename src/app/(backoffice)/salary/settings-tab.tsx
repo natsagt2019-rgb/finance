@@ -9,6 +9,7 @@ import {
   VACATION_DAY_TIERS,
   SH_RATE,
   SH_CEILING,
+  EMPLOYER_SH_RATE,
   PIT_RATE,
   ADVANCE_RATE,
   HOURS_PER_DAY,
@@ -119,6 +120,17 @@ export function SettingsTab({
               step="1"
               min="0"
               defaultValue={String(settings?.sh_ceiling ?? SH_CEILING)}
+              className={`${inputCls} text-right tabular-nums`}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Ажил олгогчийн ЭМНДШ хувь (0.145 = 14.5%)</label>
+            <input
+              type="number"
+              name="employer_sh_rate"
+              step="0.001"
+              min="0"
+              defaultValue={String(settings?.employer_sh_rate ?? EMPLOYER_SH_RATE)}
               className={`${inputCls} text-right tabular-nums`}
             />
           </div>

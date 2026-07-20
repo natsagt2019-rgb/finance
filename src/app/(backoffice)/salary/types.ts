@@ -20,13 +20,14 @@ export type EmployeeRow = {
   hired_date: string | null; // YYYY-MM-DD
   experience_years: number; // туршлага (жил) — ЭА хоногт
   disabled: boolean; // хөгжлийн бэрхшээлтэй — ХХОАТ чөлөөлөгдөнө (22.1.2)
+  occupation_code: string | null; // ажил, мэргэжлийн ангилал (ND-8; ҮОМШӨ ангилал)
   status: EmployeeStatus;
   is_active: boolean;
 };
 
 export const EMPLOYEE_SELECT =
   "id, name, last_name, first_name, company, department, position, salary_type, base_salary, phone_allowance, " +
-  "register, tin, bank_account, hired_date, experience_years, disabled, status, is_active";
+  "register, tin, bank_account, hired_date, experience_years, disabled, occupation_code, status, is_active";
 
 // ── Цалингийн мөр ─────────────────────────────────────────────────────────────
 export type SalaryRow = {
@@ -63,6 +64,7 @@ export type SalaryRow = {
   computed_salary: number;
   gross: number;
   sh_insurance: number;
+  employer_sh: number; // ажил олгогчийн ЭМНДШ
   pit: number;
   advance: number;
   net: number;
@@ -75,7 +77,7 @@ export const SALARY_SELECT =
   "phone_allowance, bonus, vacation_amount, transport_allowance, meal_allowance, " +
   "fuel_allowance, tenure_allowance, overtime_pay, holiday_overtime_pay, " +
   "late_deduction, savings_deduction, discipline_deduction, other_deduction, " +
-  "computed_salary, gross, sh_insurance, pit, advance, net, is_active";
+  "computed_salary, gross, sh_insurance, employer_sh, pit, advance, net, is_active";
 
 // ── Тохиргоо ─────────────────────────────────────────────────────────────────
 export type SalarySettings = {
@@ -84,13 +86,14 @@ export type SalarySettings = {
   month_hours: number[];
   sh_rate: number;
   sh_ceiling: number;
+  employer_sh_rate: number;
   pit_rate: number;
   advance_rate: number;
   pit_tiers: PitTier[] | null;
 };
 
 export const SETTINGS_SELECT =
-  "id, year, month_hours, sh_rate, sh_ceiling, pit_rate, advance_rate, pit_tiers";
+  "id, year, month_hours, sh_rate, sh_ceiling, employer_sh_rate, pit_rate, advance_rate, pit_tiers";
 
 // ── Туслах ─────────────────────────────────────────────────────────────────
 // Нийтлэг build — компанийн тогтмол утга байхгүй (шаардвал энд нэмнэ).

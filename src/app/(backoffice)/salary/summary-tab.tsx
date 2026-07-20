@@ -10,6 +10,7 @@ type MonthAgg = {
   cnt: number;
   gross: number;
   sh: number;
+  employerSh: number;
   pit: number;
   advance: number;
   net: number;
@@ -28,6 +29,7 @@ export function SummaryTab({
     cnt: 0,
     gross: 0,
     sh: 0,
+    employerSh: 0,
     pit: 0,
     advance: 0,
     net: 0,
@@ -38,6 +40,7 @@ export function SummaryTab({
     a.cnt += 1;
     a.gross += Number(r.gross) || 0;
     a.sh += Number(r.sh_insurance) || 0;
+    a.employerSh += Number(r.employer_sh) || 0;
     a.pit += Number(r.pit) || 0;
     a.advance += Number(r.advance) || 0;
     a.net += Number(r.net) || 0;
@@ -48,11 +51,12 @@ export function SummaryTab({
     (s, a) => ({
       gross: s.gross + a.gross,
       sh: s.sh + a.sh,
+      employerSh: s.employerSh + a.employerSh,
       pit: s.pit + a.pit,
       advance: s.advance + a.advance,
       net: s.net + a.net,
     }),
-    { gross: 0, sh: 0, pit: 0, advance: 0, net: 0 },
+    { gross: 0, sh: 0, employerSh: 0, pit: 0, advance: 0, net: 0 },
   );
 
   const exportRows: SummaryExportRow[] = shown.map((a) => ({
@@ -60,6 +64,7 @@ export function SummaryTab({
     cnt: a.cnt,
     gross: a.gross,
     sh: a.sh,
+    employerSh: a.employerSh,
     pit: a.pit,
     advance: a.advance,
     net: a.net,
@@ -87,7 +92,8 @@ export function SummaryTab({
                 <th className="px-4 py-2">Сар</th>
                 <th className="px-4 py-2 text-right">Ажилтан</th>
                 <th className="px-4 py-2 text-right">Нийт цалин</th>
-                <th className="px-4 py-2 text-right">ЭМНДШ</th>
+                <th className="px-4 py-2 text-right">ЭМНДШ (ажилтан)</th>
+                <th className="px-4 py-2 text-right">ЭМНДШ (ажил олгогч)</th>
                 <th className="px-4 py-2 text-right">ХХОАТ</th>
                 <th className="px-4 py-2 text-right">Урьдчилгаа</th>
                 <th className="px-4 py-2 text-right">Гарт олгох</th>
@@ -107,6 +113,9 @@ export function SummaryTab({
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                     {fmt(a.sh)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-orange-700">
+                    {fmt(a.employerSh)}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                     {fmt(a.pit)}
@@ -130,6 +139,9 @@ export function SummaryTab({
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                   {fmt(totals.sh)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums text-orange-700">
+                  {fmt(totals.employerSh)}
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                   {fmt(totals.pit)}

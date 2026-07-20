@@ -41,8 +41,9 @@ export const DEFAULT_MONTH_HOURS_2026 = [
   136, 152, 168, 176, 160, 168, 184, 168, 176, 184, 160, 184,
 ];
 
-export const SH_RATE = 0.115; // ЭМНДШ хувь
-export const SH_CEILING = 7_920_000; // ЭМНДШ дээд хязгаар (2026)
+export const SH_RATE = 0.115; // ЭМНДШ хувь (ажилтан/даатгуулагч)
+export const SH_CEILING = 7_920_000; // ЭМНДШ дээд хязгаар (2026, 10×хмдх)
+export const EMPLOYER_SH_RATE = 0.145; // Ажил олгогчийн ЭМНДШ хувь (2026, дээд хязгааргүй)
 export const PIT_RATE = 0.1; // ХХОАТ хувь
 export const ADVANCE_RATE = 0.4; // урьдчилгаа = үндсэн × 40%
 
@@ -60,6 +61,7 @@ export const DEFAULT_PIT_TIERS: PitTier[] = [
 export type SalaryParams = {
   shRate: number;
   shCeiling: number;
+  employerShRate: number; // ажил олгогчийн ЭМНДШ хувь
   pitRate: number;
   advanceRate: number;
   pitTiers: PitTier[];
@@ -68,6 +70,7 @@ export type SalaryParams = {
 export const DEFAULT_PARAMS: SalaryParams = {
   shRate: SH_RATE,
   shCeiling: SH_CEILING,
+  employerShRate: EMPLOYER_SH_RATE,
   pitRate: PIT_RATE,
   advanceRate: ADVANCE_RATE,
   pitTiers: DEFAULT_PIT_TIERS,
@@ -111,9 +114,14 @@ export function computedSalaryByType(
   }
 }
 
-// ЭМНДШ = MIN(Нийт цалин, дээд хязгаар) × хувь.
+// ЭМНДШ (ажилтан) = MIN(Нийт цалин, дээд хязгаар) × хувь.
 export function shInsurance(gross: number, params = DEFAULT_PARAMS): number {
   return round(Math.min(gross, params.shCeiling) * params.shRate);
+}
+
+// Ажил олгогчийн ЭМНДШ = Нийт цалин × хувь (2026-д дээд хязгааргүй; ND-8-аар).
+export function employerShInsurance(gross: number, params = DEFAULT_PARAMS): number {
+  return round(gross * params.employerShRate);
 }
 
 // Арт.23.1 хасагдуулга — gross аль шатлалд багтахаас хамаарна.
@@ -185,7 +193,8 @@ export type SalaryInput = {
 export type SalaryComputed = {
   computed_salary: number; // бодогдсон цалин
   gross: number; // нийт цалин
-  sh_insurance: number; // ЭМНДШ
+  sh_insurance: number; // ЭМНДШ (ажилтан)
+  employer_sh: number; // ЭМНДШ (ажил олгогч)
   pit: number; // ХХОАТ
   advance: number; // урьдчилгаа
   net: number; // гарт олгох
@@ -226,6 +235,7 @@ export function computeRow(
   );
   const gross = round(computed + allowances);
   const sh = shInsurance(gross, params);
+  const employerSh = employerShInsurance(gross, params);
   const tax = pit(gross, sh, params, {
     foreign: input.foreign,
     disabled: input.disabled,
@@ -238,6 +248,7 @@ export function computeRow(
     computed_salary: computed,
     gross,
     sh_insurance: sh,
+    employer_sh: employerSh,
     pit: tax,
     advance: adv,
     net,
@@ -328,6 +339,7 @@ export function computeVacation(
 export function paramsFromSettings(s: {
   sh_rate?: number | null;
   sh_ceiling?: number | null;
+  employer_sh_rate?: number | null;
   pit_rate?: number | null;
   advance_rate?: number | null;
   pit_tiers?: PitTier[] | null;
@@ -336,6 +348,7 @@ export function paramsFromSettings(s: {
   return {
     shRate: s.sh_rate ?? SH_RATE,
     shCeiling: s.sh_ceiling ?? SH_CEILING,
+    employerShRate: s.employer_sh_rate ?? EMPLOYER_SH_RATE,
     pitRate: s.pit_rate ?? PIT_RATE,
     advanceRate: s.advance_rate ?? ADVANCE_RATE,
     pitTiers:

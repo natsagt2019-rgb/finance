@@ -280,7 +280,7 @@ async function loadParams(
 ): Promise<{ params: SalaryParams; monthHours: number[] }> {
   const { data } = await supabase
     .from("salary_settings")
-    .select("sh_rate, sh_ceiling, pit_rate, advance_rate, pit_tiers, month_hours")
+    .select("sh_rate, sh_ceiling, employer_sh_rate, pit_rate, advance_rate, pit_tiers, month_hours")
     .eq("year", year)
     .maybeSingle();
 
@@ -634,6 +634,7 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
 
   const shRate = num(formData.get("sh_rate"));
   const shCeiling = num(formData.get("sh_ceiling"));
+  const employerShRate = num(formData.get("employer_sh_rate"));
   const pitRate = num(formData.get("pit_rate"));
   const advanceRate = num(formData.get("advance_rate"));
 
@@ -643,6 +644,7 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
       month_hours: monthHours,
       sh_rate: shRate,
       sh_ceiling: shCeiling,
+      employer_sh_rate: employerShRate,
       pit_rate: pitRate,
       advance_rate: advanceRate,
     },
