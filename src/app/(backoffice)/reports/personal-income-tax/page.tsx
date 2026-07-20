@@ -4,6 +4,7 @@ import { loadCompany } from "@/lib/company";
 import { buildPitReport, pitReportYears } from "@/lib/pit-report";
 import { Tt11ExportButton } from "./tt11-export";
 import { NonResidentExportButton } from "./nonresident-export";
+import { DisabledExportButton } from "./disabled-export";
 
 type SearchParams = { year?: string; period?: string };
 
@@ -172,6 +173,11 @@ export default async function PersonalIncomeTaxPage({
           />
           <NonResidentExportButton
             rows={foreignRows}
+            year={selYear}
+            periodLabel={r.monthLabel}
+          />
+          <DisabledExportButton
+            rows={disabledRows}
             year={selYear}
             periodLabel={r.monthLabel}
           />
