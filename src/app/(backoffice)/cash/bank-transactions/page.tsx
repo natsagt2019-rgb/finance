@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { loadRegistry, displayMap, currencyMap } from "@/lib/bank-registry";
 import { PrintButton } from "@/components/print-button";
+import { CounterpartyCell } from "./counterparty-cell";
 
 type SearchParams = { acc?: string; from?: string; to?: string };
 
@@ -132,6 +133,24 @@ export default async function BankTransactionsPage({
     allTxns.push(...page);
     if (page.length < PAGE) break;
   }
+
+  // Харилцагчийн нэрийн санал (нүд дээр засахад) — лавлах (bank_counterparties)
+  // + бүртгэлтэй харилцагчид. Том/жижиг үсгийн зөрүүг нэгтгэж каноник нэрийг авна.
+  const [{ data: cpRefRows }, { data: partnerRows }] = await Promise.all([
+    supabase.from("bank_counterparties").select("name").limit(20000),
+    supabase.from("partners").select("name").limit(20000),
+  ]);
+  const cpByKey = new Map<string, string>();
+  for (const r of [
+    ...((cpRefRows as { name: string | null }[] | null) ?? []),
+    ...((partnerRows as { name: string | null }[] | null) ?? []),
+  ]) {
+    const n = (r.name ?? "").trim().replace(/\s+/g, " ");
+    if (!n) continue;
+    const k = n.toUpperCase();
+    if (!cpByKey.has(k)) cpByKey.set(k, n);
+  }
+  const partnerNames = [...cpByKey.values()].sort((a, b) => a.localeCompare(b));
   // Мужийн өмнөх (эхний үлдэгдэлд нэмэх) ба мужийн доторх гэж хуваана.
   let preMovement = 0;
   const rows: {
@@ -357,7 +376,12 @@ export default async function BankTransactionsPage({
                         {t.description || "—"}
                       </td>
                       <td className="whitespace-nowrap border border-zinc-200 px-3 py-1.5 text-zinc-500">
-                        {t.counterparty || "—"}
+                        <span className="print:hidden">
+                          <CounterpartyCell id={t.id} name={t.counterparty} />
+                        </span>
+                        <span className="hidden print:inline">
+                          {t.counterparty || "—"}
+                        </span>
                       </td>
                       <td className="border border-zinc-200 px-3 py-1.5 text-right tabular-nums text-zinc-500">
                         {fmtRate(t.exchange_rate)}
@@ -426,6 +450,12 @@ export default async function BankTransactionsPage({
           </div>
         </div>
       )}
+
+      <datalist id="bank-cp-list">
+        {partnerNames.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
     </div>
   );
 }
