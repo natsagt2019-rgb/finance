@@ -122,10 +122,11 @@ export async function createPayableFromVat(input: {
   if (!dt) return { ok: false, error: "Зардлын данс (Дт) оруулна уу." };
   if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
 
-  const ids = await codeToId(supabase, [dt, kt, vatAcc, "1352"]);
+  // Оруулсан НӨАТ-ын (буцаан авах) данс — 130600 «НӨАТ-ын авлага».
+  const ids = await codeToId(supabase, [dt, kt, vatAcc, "130600"]);
   const dtId = ids.get(dt);
   const ktId = ids.get(kt);
-  const vatDrId = ids.get("1352");
+  const vatDrId = ids.get("130600");
   const vatCrId = input.splitVat ? ids.get(vatAcc) : ktId;
   if (!dtId) return { ok: false, error: `Данс ${dt} олдсонгүй.` };
   if (!ktId) return { ok: false, error: `Данс ${kt} олдсонгүй.` };
@@ -288,10 +289,10 @@ export async function recordBankExpense(input: {
   if (!dt) return { ok: false, error: "Зардлын данс (Дт) оруулна уу." };
   if (!input.txnIds.length) return { ok: false, error: "Гүйлгээ сонгоно уу." };
 
-  const ids = await codeToId(supabase, [dt, kt, vatAcc, "1352"]);
+  const ids = await codeToId(supabase, [dt, kt, vatAcc, "130600"]);
   const dtId = ids.get(dt);
   const ktId = ids.get(kt);
-  const vatDrId = ids.get("1352");
+  const vatDrId = ids.get("130600");
   const vatCrId = ids.get(vatAcc);
   if (!dtId) return { ok: false, error: `Данс ${dt} олдсонгүй.` };
   if (!ktId) return { ok: false, error: `Данс ${kt} олдсонгүй.` };

@@ -119,9 +119,9 @@ export function BankTxnTable({
   const [showExp, setShowExp] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [dt, setDt] = useState("");
-  const [kt, setKt] = useState("3310");
+  const [kt, setKt] = useState("310100");
   const [hasVat, setHasVat] = useState(false);
-  const [vatAcc, setVatAcc] = useState("3152");
+  const [vatAcc, setVatAcc] = useState("330100");
 
   const total = rows.reduce(
     (s, t) => s + (Number(isExpense ? t.expense : t.income) || 0),
@@ -342,7 +342,7 @@ export function BankTxnTable({
             <AccDatalist id="exp-acc-dl" accounts={accounts} />
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" checked={hasVat} onChange={(e) => setHasVat(e.target.checked)} />
-              Нийт дүнд НӨАТ багтсан (1/11) — Дт 1352 / Кт{" "}
+              Нийт дүнд НӨАТ багтсан (1/11) — Дт 130600 / Кт{" "}
               <input
                 value={vatAcc}
                 onChange={(e) => setVatAcc(e.target.value)}
@@ -401,9 +401,9 @@ export function VatPurchasePanel({
   const [showPay, setShowPay] = useState(false);
   const [paySel, setPaySel] = useState<Set<number>>(new Set(rows.map((r) => r.id)));
   const [dt, setDt] = useState("");
-  const [kt, setKt] = useState("3310");
-  const [splitVat, setSplitVat] = useState(true);
-  const [vatAcc, setVatAcc] = useState("3152");
+  const [kt, setKt] = useState("310100");
+  const [splitVat, setSplitVat] = useState(false);
+  const [vatAcc, setVatAcc] = useState("330100");
   const [payDesc, setPayDesc] = useState("");
 
   const [showLink, setShowLink] = useState(false);
@@ -572,7 +572,7 @@ export function VatPurchasePanel({
             <AccDatalist id="pay-acc-dl" accounts={accounts} />
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" checked={splitVat} onChange={(e) => setSplitVat(e.target.checked)} />
-              НӨАТ-ыг тусдаа өглөгт холбох (Дт 1352 / Кт{" "}
+              НӨАТ-ыг тусдаа өглөгт холбох (Дт 130600 / Кт{" "}
               <input
                 value={vatAcc}
                 onChange={(e) => setVatAcc(e.target.value)}
