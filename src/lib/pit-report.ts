@@ -17,6 +17,7 @@ export type PitReportRow = {
   name: string;
   lastName: string; // овог
   firstName: string; // нэр
+  foreign: boolean; // резидент бус (гадаад) — 20%, НДШ хасахгүй, хөнгөлөлтгүй
   months: number; // тооцоонд орсон сарын тоо
   gross: number; // нийт орлого
   shInsurance: number; // ЭМНДШ (татвар ногдох орлогоос хасагдана)
@@ -153,6 +154,7 @@ export async function buildPitReport(
         name: emp?.name || r.employee_name || "—",
         lastName: emp?.lastName ?? "",
         firstName: emp?.firstName ?? "",
+        foreign,
         months: 0,
         gross: 0,
         shInsurance: 0,

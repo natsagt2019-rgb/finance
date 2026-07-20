@@ -137,10 +137,10 @@ export function Tt11ExportButton({
       type="button"
       onClick={exportExcel}
       disabled={busy || exportRows.length === 0}
-      title="e-Tax-д ачаалах ХМ-11 Resource файл (тайлантай тааруулсан)"
+      title="e-Tax резидент суутгагчийн ХМ-11 Resource файл (тайлантай тааруулсан)"
       className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
     >
-      {busy ? "Бэлдэж байна…" : "↧ e-Tax XM-11 татах"}
+      {busy ? "Бэлдэж байна…" : "↧ e-Tax резидент (XM-11)"}
     </button>
   );
 }

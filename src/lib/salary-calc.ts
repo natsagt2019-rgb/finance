@@ -124,18 +124,25 @@ export function pitDeduction(gross: number, tiers: PitTier[]): number {
   return 0;
 }
 
-// ХХОАТ = MAX(0, суурь × хувь − хасагдуулга).
-//   Дотоод (монгол): суурь = Нийт − ЭМНДШ.
-//   Гадаад ажилтан (foreign): суурь = Нийт (ЭМНДШ хасахгүй).
+// Резидент бус (гадаад) татвар төлөгчийн ХХОАТ хувь (ХХОАТ хууль 21.2.5).
+export const NON_RESIDENT_PIT_RATE = 0.2;
+
+// ХХОАТ тооцоо:
+//   Резидент (монгол): (Нийт − ЭМНДШ) × 10% − шатлалт хөнгөлөлт.
+//     Хөнгөлөлтийн шатлалыг ТАТВАР НОГДУУЛАХ ОРЛОГООР (Нийт − ЭМНДШ) сонгоно (23.1).
+//   Резидент бус (гадаад): Нийт цалин × 20% (ЭМНДШ хасахгүй, хөнгөлөлтгүй; 20.1, 21.2.5).
 export function pit(
   gross: number,
   sh: number,
   params = DEFAULT_PARAMS,
   opts?: { foreign?: boolean },
 ): number {
-  const ded = pitDeduction(gross, params.pitTiers);
-  const base = opts?.foreign ? gross : gross - sh;
-  return round(Math.max(0, base * params.pitRate - ded));
+  if (opts?.foreign) {
+    return round(gross * NON_RESIDENT_PIT_RATE);
+  }
+  const taxable = gross - sh;
+  const ded = pitDeduction(taxable, params.pitTiers);
+  return round(Math.max(0, taxable * params.pitRate - ded));
 }
 
 // Урьдчилгаа = Үндсэн цалин × хувь (ажилласан өдрөөс үл хамаарна).
