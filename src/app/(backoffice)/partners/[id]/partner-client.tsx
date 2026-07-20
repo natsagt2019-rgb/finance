@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   setTransactionAccounts,
@@ -48,6 +48,137 @@ function AccDatalist({ id, accounts }: { id: string; accounts: Acc[] }) {
         </option>
       ))}
     </datalist>
+  );
+}
+
+// ── Дансны хайлттай сонгогч (код ЭСВЭЛ нэрээр) ───────────────────────────────
+// Бүх төрлийн данс (зардал/тооцоо/авлага/өглөг…) кодоор ч, нэрээр ч хайгдана.
+// Кодыг шууд бичихэд ч ажиллана (хуучин зан төлөв хэвээр).
+function AccountPicker({
+  value,
+  onChange,
+  accounts,
+  placeholder,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  accounts: Acc[];
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const focused = useRef(false);
+
+  // Гадны утга өөрчлөгдвөл (default кодыг эцэг нь солих) фокусгүй үед тэгшитгэнэ.
+  useEffect(() => {
+    if (!focused.current) setQuery(value);
+  }, [value]);
+
+  // Гадуур дарахад хаах.
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  // Код-эхлэл → нэр-эхлэл → код-агуулах → нэр-агуулах гэсэн эрэмбээр.
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return accounts.slice(0, 50);
+    return accounts
+      .map((a) => {
+        const code = a.code.toLowerCase();
+        const name = (a.name ?? "").toLowerCase();
+        let score = -1;
+        if (code.startsWith(q)) score = 0;
+        else if (name.startsWith(q)) score = 1;
+        else if (code.includes(q)) score = 2;
+        else if (name.includes(q)) score = 3;
+        return { a, score };
+      })
+      .filter((x) => x.score >= 0)
+      .sort((x, y) => x.score - y.score)
+      .slice(0, 50)
+      .map((x) => x.a);
+  }, [accounts, query]);
+
+  const selName = accounts.find((a) => a.code === query.trim())?.name ?? "";
+
+  function pick(a: Acc) {
+    setQuery(a.code);
+    onChange(a.code);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative" ref={boxRef}>
+      <input
+        value={query}
+        onFocus={() => {
+          focused.current = true;
+          setOpen(true);
+          setHi(0);
+        }}
+        onBlur={() => {
+          focused.current = false;
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value);
+          setOpen(true);
+          setHi(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setHi((h) => Math.min(h + 1, results.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHi((h) => Math.max(h - 1, 0));
+          } else if (e.key === "Enter") {
+            if (open && results[hi]) {
+              e.preventDefault();
+              pick(results[hi]);
+            }
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+      />
+      {!open && selName && (
+        <div className="mt-0.5 truncate text-xs text-zinc-400">{selName}</div>
+      )}
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg">
+          {results.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-zinc-400">Данс олдсонгүй</div>
+          ) : (
+            results.map((a, i) => (
+              <button
+                type="button"
+                key={a.code}
+                onMouseEnter={() => setHi(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(a)}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${
+                  i === hi ? "bg-zinc-100" : "hover:bg-zinc-50"
+                }`}
+              >
+                <span className="font-mono text-zinc-700">{a.code}</span>
+                <span className="truncate text-zinc-500">{a.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -550,26 +681,27 @@ export function VatPurchasePanel({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-600">Зардлын данс (Дт)</span>
-                <input
-                  list="pay-acc-dl"
+                <span className="mb-1 block font-medium text-zinc-600">
+                  Дебет данс (Дт){" "}
+                  <span className="font-normal text-zinc-400">зардал/тооцоо/авлага/өглөг</span>
+                </span>
+                <AccountPicker
                   value={dt}
-                  onChange={(e) => setDt(e.target.value)}
-                  placeholder="7190, 7316…"
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  onChange={setDt}
+                  accounts={accounts}
+                  placeholder="код эсвэл нэрээр хайх…"
                 />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-600">Кт данс (өглөг)</span>
-                <input
-                  list="pay-acc-dl"
+                <span className="mb-1 block font-medium text-zinc-600">Кредит данс (Кт)</span>
+                <AccountPicker
                   value={kt}
-                  onChange={(e) => setKt(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  onChange={setKt}
+                  accounts={accounts}
+                  placeholder="код эсвэл нэрээр хайх…"
                 />
               </label>
             </div>
-            <AccDatalist id="pay-acc-dl" accounts={accounts} />
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" checked={splitVat} onChange={(e) => setSplitVat(e.target.checked)} />
               НӨАТ-ыг тусдаа өглөгт холбох (Дт 130600 / Кт{" "}
@@ -878,27 +1010,30 @@ export function VatSalesPanel({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-600">Авлагын данс (Дт)</span>
-                <input
-                  list="sale-acc-dl"
+                <span className="mb-1 block font-medium text-zinc-600">
+                  Дебет данс (Дт){" "}
+                  <span className="font-normal text-zinc-400">авлага/тооцоо/данс</span>
+                </span>
+                <AccountPicker
                   value={dr}
-                  onChange={(e) => setDr(e.target.value)}
-                  placeholder="130100…"
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  onChange={setDr}
+                  accounts={accounts}
+                  placeholder="код эсвэл нэрээр хайх…"
                 />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-zinc-600">Орлогын данс (Кт)</span>
-                <input
-                  list="sale-acc-dl"
+                <span className="mb-1 block font-medium text-zinc-600">
+                  Кредит данс (Кт){" "}
+                  <span className="font-normal text-zinc-400">орлого/тооцоо/өглөг</span>
+                </span>
+                <AccountPicker
                   value={rev}
-                  onChange={(e) => setRev(e.target.value)}
-                  placeholder="610100…"
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  onChange={setRev}
+                  accounts={accounts}
+                  placeholder="код эсвэл нэрээр хайх…"
                 />
               </label>
             </div>
-            <AccDatalist id="sale-acc-dl" accounts={accounts} />
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" checked={splitVat} onChange={(e) => setSplitVat(e.target.checked)} />
               Төлбөл зохих НӨАТ-ыг тусад нь бичих (Кт{" "}
