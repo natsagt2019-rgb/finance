@@ -57,7 +57,10 @@ export default async function EditJournalPage({
       | { account_id: number | null; debit: number; credit: number; description: string | null }[]
       | null) ?? [];
 
-  const isManual = jrn.source === "manual";
+  // Гар бичилт ба харилцагчийн хуудсаас (eBarimt/банк) үүсгэсэн журнал засагдана.
+  const isManual = ["manual", "payable", "receivable", "expense"].includes(
+    jrn.source as string,
+  );
 
   // Валют/ханш — журналын мөр ₮-өөр хадгалагддаг тул валютын журналыг харуулахдаа
   // ханшид хувааж, оруулсан валютын дүнг сэргээнэ.

@@ -269,7 +269,7 @@ export default async function JournalsPage({
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      {j.source === "manual" && (
+                      {["manual", "payable", "receivable", "expense"].includes(j.source) && (
                         <Link
                           href={`/journals/${j.id}`}
                           className="mr-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"

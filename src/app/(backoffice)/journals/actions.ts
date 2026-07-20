@@ -198,17 +198,20 @@ export async function updateJournal(
   const supabase = await requireAuth();
   if (!input.date) return { ok: false, error: "Огноо заавал шаардлагатай." };
 
-  // Зөвхөн гараар үүсгэсэн журнал засагдана (автомат журналыг модуль удирдана).
+  // Гар бичилт ба харилцагчийн хуудсаас (eBarimt/банк) үүсгэсэн журнал засагдана.
+  // Бусад автомат модулийн (НӨАТ/цалин/ҮХ/бараа/банкны нэгдсэн) журналыг эх
+  // модулиар нь засна.
+  const EDITABLE_SOURCES = new Set(["manual", "payable", "receivable", "expense"]);
   const { data: existing, error: ge } = await supabase
     .from("journals")
     .select("id, number, source")
     .eq("id", id)
     .single();
   if (ge || !existing) return { ok: false, error: "Журнал олдсонгүй." };
-  if (existing.source !== "manual")
+  if (!EDITABLE_SOURCES.has(existing.source))
     return {
       ok: false,
-      error: "Зөвхөн гар бичилт (manual) засагдана. Автомат журналыг эх модулиар нь засна.",
+      error: "Энэ журнал автомат модулиас үүссэн тул энд засагдахгүй. Эх модулиар нь засна.",
     };
 
   const fx = resolveFx(input.currency, input.exchange_rate);
@@ -263,7 +266,7 @@ export async function updateJournal(
       date: input.date,
       description: input.description.trim() || null,
       partner_name: await partnerNameById(supabase, input.partner_id),
-      source: "manual",
+      source: existing.source,
       journalId: id,
       lines: mntLines,
     });
