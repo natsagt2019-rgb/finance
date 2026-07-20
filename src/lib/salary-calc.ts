@@ -128,6 +128,7 @@ export function pitDeduction(gross: number, tiers: PitTier[]): number {
 export const NON_RESIDENT_PIT_RATE = 0.2;
 
 // ХХОАТ тооцоо:
+//   Хөгжлийн бэрхшээлтэй (disabled): орлого албан татвараас ЧӨЛӨӨЛӨГДӨНӨ = 0 (22.1.2).
 //   Резидент (монгол): (Нийт − ЭМНДШ) × 10% − шатлалт хөнгөлөлт.
 //     Хөнгөлөлтийн шатлалыг ТАТВАР НОГДУУЛАХ ОРЛОГООР (Нийт − ЭМНДШ) сонгоно (23.1).
 //   Резидент бус (гадаад): Нийт цалин × 20% (ЭМНДШ хасахгүй, хөнгөлөлтгүй; 20.1, 21.2.5).
@@ -135,8 +136,11 @@ export function pit(
   gross: number,
   sh: number,
   params = DEFAULT_PARAMS,
-  opts?: { foreign?: boolean },
+  opts?: { foreign?: boolean; disabled?: boolean },
 ): number {
+  if (opts?.disabled) {
+    return 0;
+  }
   if (opts?.foreign) {
     return round(gross * NON_RESIDENT_PIT_RATE);
   }
@@ -174,6 +178,8 @@ export type SalaryInput = {
   otherDeduction?: number; // бусад
   // Гадаад ажилтан — ХХОАТ-ыг НДШ хасахгүй нийт цалингаас бодно.
   foreign?: boolean;
+  // Хөгжлийн бэрхшээлтэй — орлого албан татвараас чөлөөлөгдөнө (22.1.2).
+  disabled?: boolean;
 };
 
 export type SalaryComputed = {
@@ -220,7 +226,10 @@ export function computeRow(
   );
   const gross = round(computed + allowances);
   const sh = shInsurance(gross, params);
-  const tax = pit(gross, sh, params, { foreign: input.foreign });
+  const tax = pit(gross, sh, params, {
+    foreign: input.foreign,
+    disabled: input.disabled,
+  });
   // Урьдчилгаа (үндсэн × хувь) зөвхөн тогтмол цалинд утгатай.
   const adv = type === "fixed" ? advance(input.base, params) : 0;
   const net = round(gross - sh - tax - adv - deductions);

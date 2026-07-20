@@ -18,6 +18,7 @@ export type PitReportRow = {
   lastName: string; // овог
   firstName: string; // нэр
   foreign: boolean; // резидент бус (гадаад) — 20%, НДШ хасахгүй, хөнгөлөлтгүй
+  disabled: boolean; // хөгжлийн бэрхшээлтэй — орлого албан татвараас чөлөөлөгдөнө (22.1.2)
   months: number; // тооцоонд орсон сарын тоо
   gross: number; // нийт орлого
   shInsurance: number; // ЭМНДШ (татвар ногдох орлогоос хасагдана)
@@ -106,11 +107,18 @@ export async function buildPitReport(
   // Ажилтны регистр (ДД), ТТД, овог/нэр.
   const { data: empRows } = await supabase
     .from("employees")
-    .select("id, name, register, tin, last_name, first_name")
+    .select("id, name, register, tin, last_name, first_name, disabled")
     .limit(20000);
   const empById = new Map<
     number,
-    { name: string; register: string; tin: string; lastName: string; firstName: string }
+    {
+      name: string;
+      register: string;
+      tin: string;
+      lastName: string;
+      firstName: string;
+      disabled: boolean;
+    }
   >();
   for (const e of (empRows as
     | {
@@ -120,6 +128,7 @@ export async function buildPitReport(
         tin: string | null;
         last_name: string | null;
         first_name: string | null;
+        disabled: boolean | null;
       }[]
     | null) ?? []) {
     empById.set(e.id, {
@@ -128,6 +137,7 @@ export async function buildPitReport(
       tin: e.tin ?? "",
       lastName: e.last_name ?? "",
       firstName: e.first_name ?? "",
+      disabled: e.disabled === true,
     });
   }
 
@@ -140,11 +150,13 @@ export async function buildPitReport(
 
     const key = r.employee_id != null ? `e${r.employee_id}` : `n:${r.employee_name ?? ""}`;
     const emp = r.employee_id != null ? empById.get(r.employee_id) : undefined;
+    const disabled = emp?.disabled ?? false;
     // Гадаад ажилтан: татвар ногдох орлого = нийт цалин (НДШ хасахгүй).
+    // Хөгжлийн бэрхшээлтэй: орлого чөлөөлөгдөх тул татвар ногдуулах = 0.
     const foreign = isForeignRegister(emp?.register);
-    const taxable = foreign ? gross : gross - sh;
+    const taxable = disabled ? 0 : foreign ? gross : gross - sh;
     // Хэрэглэсэн хөнгөлөлт = татвар ногдох × хувь − ногдсон ХХОАТ (≥0).
-    const relief = Math.max(0, round2(taxable * pitRate - pit));
+    const relief = disabled ? 0 : Math.max(0, round2(taxable * pitRate - pit));
     const cur =
       byEmp.get(key) ??
       ({
@@ -155,6 +167,7 @@ export async function buildPitReport(
         lastName: emp?.lastName ?? "",
         firstName: emp?.firstName ?? "",
         foreign,
+        disabled,
         months: 0,
         gross: 0,
         shInsurance: 0,

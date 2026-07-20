@@ -55,6 +55,7 @@ type EditRow = {
   other_deduction: number;
   staff_inv_settle: number; // энэ удаа барагдуулах БМ авлага (other_deduction-д орсон)
   foreign: boolean; // гадаад ажилтан — ХХОАТ-ыг НДШ хасахгүй бодно
+  disabled: boolean; // хөгжлийн бэрхшээлтэй — ХХОАТ чөлөөлөгдөнө
 };
 
 // Цалингийн төрлийн богино шошго (хүснэгтэд).
@@ -134,6 +135,7 @@ export function CalcTab({
         other_deduction: numOr(rec?.other_deduction),
         staff_inv_settle: 0,
         foreign: isForeignRegister(e.register),
+        disabled: e.disabled,
       };
     });
     // employees/records/monthHours өөрчлөгдөхөд л дахин бодно.
@@ -237,6 +239,7 @@ export function CalcTab({
           disciplineDeduction: r.discipline_deduction,
           otherDeduction: r.other_deduction,
           foreign: r.foreign,
+          disabled: r.disabled,
         },
         params,
       ),

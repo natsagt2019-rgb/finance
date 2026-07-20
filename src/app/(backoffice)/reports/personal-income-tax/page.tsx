@@ -88,9 +88,11 @@ export default async function PersonalIncomeTaxPage({
 
   const r = await buildPitReport(supabase, selYear, fromMonth, toMonth);
 
-  // Резидент (10%, хөнгөлөлттэй) ба резидент бус гадаад (20%) гэсэн 2 бүлэг.
-  const residentRows = r.rows.filter((x) => !x.foreign);
-  const foreignRows = r.rows.filter((x) => x.foreign);
+  // 3 бүлэг: резидент (10%, хөнгөлөлттэй), резидент бус гадаад (20%),
+  // хөгжлийн бэрхшээлтэй (орлого чөлөөлөгдөх — 22.1.2).
+  const residentRows = r.rows.filter((x) => !x.foreign && !x.disabled);
+  const foreignRows = r.rows.filter((x) => x.foreign && !x.disabled);
+  const disabledRows = r.rows.filter((x) => x.disabled);
   const sumBy = (
     rows: typeof r.rows,
     key: "gross" | "shInsurance" | "taxable" | "reliefApplied" | "pit",
@@ -109,6 +111,11 @@ export default async function PersonalIncomeTaxPage({
   const forCount = foreignRows.length;
   const forGross = sumBy(foreignRows, "gross");
   const forPit = sumBy(foreignRows, "pit");
+
+  // Хөгжлийн бэрхшээлтэй — орлого чөлөөлөгдөх (ХХОАТ = 0).
+  const disCount = disabledRows.length;
+  const disGross = sumBy(disabledRows, "gross");
+  const disSh = sumBy(disabledRows, "shInsurance");
 
   type Tt11Row = {
     no: string;
@@ -309,11 +316,54 @@ export default async function PersonalIncomeTaxPage({
           </>
         )}
 
+        {/* Хөгжлийн бэрхшээлтэй ажилтан — орлого чөлөөлөгдөх (22.1.2) */}
+        {disCount > 0 && (
+          <>
+            <h3 className="mt-6 text-[12px] font-semibold text-zinc-700">
+              Хөгжлийн бэрхшээлтэй ажилтан — орлого албан татвараас чөлөөлөгдөнө ({disCount})
+            </h3>
+            <table className="mt-1 w-full border-collapse text-[12px]">
+              <thead>
+                <tr className="bg-zinc-100 text-center text-zinc-600">
+                  <th className="w-8 border border-zinc-300 px-2 py-1.5">№</th>
+                  <th className="w-28 border border-zinc-300 px-2 py-1.5">Регистр (ДД)</th>
+                  <th className="border border-zinc-300 px-2 py-1.5 text-left">Овог, нэр</th>
+                  <th className="w-32 border border-zinc-300 px-2 py-1.5 text-right">Нийт орлого</th>
+                  <th className="w-28 border border-zinc-300 px-2 py-1.5 text-right">ЭМНДШ</th>
+                  <th className="w-32 border border-zinc-300 px-2 py-1.5 text-right">Ногдуулсан ХХОАТ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disabledRows.map((row, i) => (
+                  <tr key={row.employeeId ?? `d${i}`} className="text-center">
+                    <td className="border border-zinc-300 px-2 py-1 text-zinc-500">{i + 1}</td>
+                    <td className="border border-zinc-300 px-2 py-1 tabular-nums">{row.register || "—"}</td>
+                    <td className="border border-zinc-300 px-2 py-1 text-left">{row.name}</td>
+                    <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.gross)}</td>
+                    <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{fmt(row.shInsurance)}</td>
+                    <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums font-medium text-green-700">чөлөөлөгдсөн (0)</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-zinc-50 text-center font-semibold">
+                  <td className="border border-zinc-300 px-2 py-1.5" colSpan={3}>Нийт ({disCount} ажилтан)</td>
+                  <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(disGross)}</td>
+                  <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{fmt(disSh)}</td>
+                  <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums text-green-700">0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </>
+        )}
+
         <p className="mt-2 text-[11px] text-zinc-500">
           <b>Резидент:</b> Татвар ногдох орлого = Нийт − ЭМНДШ; ХХОАТ = татвар
           ногдуулах × 10% − шатлалт хөнгөлөлт (Хуулийн 23.1, хөнгөлөлтийг татвар
           ногдуулах орлогоор тодорхойлно). <b>Резидент бус (гадаад):</b> ХХОАТ =
-          нийт цалин × 20% (Хуулийн 20.1, 21.2.5; ЭМНДШ хасахгүй, хөнгөлөлтгүй).
+          нийт цалин × 20% (Хуулийн 20.1, 21.2.5; ЭМНДШ хасахгүй, хөнгөлөлтгүй).{" "}
+          <b>Хөгжлийн бэрхшээлтэй:</b> орлого албан татвараас чөлөөлөгдөнө
+          (Хуулийн 22.1.2, ХХОАТ = 0).
         </p>
 
         {/* Гарын үсэг */}

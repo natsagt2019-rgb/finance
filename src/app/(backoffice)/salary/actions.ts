@@ -58,6 +58,7 @@ function readEmployee(formData: FormData) {
     bank_account: get("bank_account") || null,
     hired_date: get("hired_date") || null,
     experience_years: num(formData.get("experience_years")),
+    disabled: ["on", "true", "1"].includes(get("disabled").toLowerCase()),
     status: statusRaw === "inactive" ? "inactive" : "active",
   };
 }
@@ -416,15 +417,19 @@ export async function saveSalary(
   const mh = monthHours[month - 1] ?? 0;
 
   // Гадаад ажилтан (регистрээр) — ХХОАТ-ыг НДШ хасахгүй нийт цалингаас бодно.
+  // Хөгжлийн бэрхшээлтэй — орлого албан татвараас чөлөөлөгдөнө (22.1.2).
   const empIds = rows.map((r) => r.employee_id).filter((v): v is number => v != null);
   const foreignById = new Map<number, boolean>();
+  const disabledById = new Map<number, boolean>();
   if (empIds.length > 0) {
     const { data: empRegs } = await supabase
       .from("employees")
-      .select("id, register")
+      .select("id, register, disabled")
       .in("id", empIds);
-    for (const e of (empRegs as { id: number; register: string | null }[] | null) ?? [])
+    for (const e of (empRegs as { id: number; register: string | null; disabled: boolean | null }[] | null) ?? []) {
       foreignById.set(e.id, isForeignRegister(e.register));
+      disabledById.set(e.id, e.disabled === true);
+    }
   }
 
   const records = rows.map((r) => {
@@ -450,6 +455,7 @@ export async function saveSalary(
         disciplineDeduction: r.discipline_deduction,
         otherDeduction: r.other_deduction,
         foreign: foreignById.get(r.employee_id) ?? false,
+        disabled: disabledById.get(r.employee_id) ?? false,
       },
       params,
     );

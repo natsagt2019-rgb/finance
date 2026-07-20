@@ -19,13 +19,14 @@ export type EmployeeRow = {
   bank_account: string | null;
   hired_date: string | null; // YYYY-MM-DD
   experience_years: number; // туршлага (жил) — ЭА хоногт
+  disabled: boolean; // хөгжлийн бэрхшээлтэй — ХХОАТ чөлөөлөгдөнө (22.1.2)
   status: EmployeeStatus;
   is_active: boolean;
 };
 
 export const EMPLOYEE_SELECT =
   "id, name, last_name, first_name, company, department, position, salary_type, base_salary, phone_allowance, " +
-  "register, tin, bank_account, hired_date, experience_years, status, is_active";
+  "register, tin, bank_account, hired_date, experience_years, disabled, status, is_active";
 
 // ── Цалингийн мөр ─────────────────────────────────────────────────────────────
 export type SalaryRow = {

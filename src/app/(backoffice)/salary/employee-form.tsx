@@ -227,6 +227,17 @@ export function EmployeeForm({ mode, employee }: Props) {
             <option value="inactive">Идэвхгүй</option>
           </select>
         </div>
+        <div className="flex items-end">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
+            <input
+              type="checkbox"
+              name="disabled"
+              defaultChecked={employee?.disabled ?? false}
+              className="h-4 w-4 rounded border-zinc-300"
+            />
+            Хөгжлийн бэрхшээлтэй (ХХОАТ чөлөөлөгдөнө)
+          </label>
+        </div>
       </div>
 
       {error && (
