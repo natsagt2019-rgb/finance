@@ -275,6 +275,7 @@ export default async function SalaryPage({
                 (!company || r.company === company) &&
                 (!department || (r.department ?? "") === department),
             )}
+            employees={allEmployees}
             year={year}
           />
         )}

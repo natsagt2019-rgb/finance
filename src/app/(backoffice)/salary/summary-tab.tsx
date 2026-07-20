@@ -1,5 +1,6 @@
 import { SalaryToolbar, type SummaryExportRow } from "./salary-toolbar";
-import type { SalaryRow } from "./types";
+import { Nd8ExportButton } from "./nd8-export";
+import type { EmployeeRow, SalaryRow } from "./types";
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-US");
@@ -18,9 +19,11 @@ type MonthAgg = {
 
 export function SummaryTab({
   records,
+  employees,
   year,
 }: {
   records: SalaryRow[];
+  employees: EmployeeRow[];
   year: number;
 }) {
   // Сар бүрээр нэгтгэнэ (1-12).
@@ -97,6 +100,7 @@ export function SummaryTab({
                 <th className="px-4 py-2 text-right">ХХОАТ</th>
                 <th className="px-4 py-2 text-right">Урьдчилгаа</th>
                 <th className="px-4 py-2 text-right">Гарт олгох</th>
+                <th className="no-print px-4 py-2 text-center">НД-8</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -126,6 +130,14 @@ export function SummaryTab({
                   <td className="px-4 py-2 text-right tabular-nums font-semibold text-green-700">
                     {fmt(a.net)}
                   </td>
+                  <td className="no-print px-4 py-2 text-center">
+                    <Nd8ExportButton
+                      monthRecords={records.filter((r) => r.month === a.month)}
+                      employees={employees}
+                      year={year}
+                      month={a.month}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -152,6 +164,7 @@ export function SummaryTab({
                 <td className="px-4 py-2 text-right tabular-nums text-green-700">
                   {fmt(totals.net)}
                 </td>
+                <td className="no-print" />
               </tr>
             </tfoot>
           </table>
