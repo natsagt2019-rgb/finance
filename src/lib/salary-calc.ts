@@ -27,6 +27,15 @@ export function normalizeSalaryType(v: unknown): SalaryType {
   return v === "hourly" || v === "manual" ? v : "fixed";
 }
 
+// Гадаад ажилтан эсэхийг регистрээр тодорхойлно.
+// Монгол иргэний регистр = 2 кирилл үсэг + 8 орон (жишээ КВ83121519).
+// Бусад (жишээ CN771122308Z2) → гадаад: ХХОАТ-ыг НДШ хасахгүй нийт цалингаас бодно.
+export function isForeignRegister(register: string | null | undefined): boolean {
+  const s = String(register ?? "").replace(/\s/g, "").toUpperCase();
+  if (!s) return false;
+  return !/^[А-ЯЁӨҮ]{2}\d{8}$/.test(s);
+}
+
 // 2026 оны анхдагч тогтмол (settings байхгүй үед fallback).
 export const DEFAULT_MONTH_HOURS_2026 = [
   136, 152, 168, 176, 160, 168, 184, 168, 176, 184, 160, 184,
@@ -115,14 +124,18 @@ export function pitDeduction(gross: number, tiers: PitTier[]): number {
   return 0;
 }
 
-// ХХОАТ = MAX(0, (Нийт − ЭМНДШ) × хувь − хасагдуулга).
+// ХХОАТ = MAX(0, суурь × хувь − хасагдуулга).
+//   Дотоод (монгол): суурь = Нийт − ЭМНДШ.
+//   Гадаад ажилтан (foreign): суурь = Нийт (ЭМНДШ хасахгүй).
 export function pit(
   gross: number,
   sh: number,
   params = DEFAULT_PARAMS,
+  opts?: { foreign?: boolean },
 ): number {
   const ded = pitDeduction(gross, params.pitTiers);
-  return round(Math.max(0, (gross - sh) * params.pitRate - ded));
+  const base = opts?.foreign ? gross : gross - sh;
+  return round(Math.max(0, base * params.pitRate - ded));
 }
 
 // Урьдчилгаа = Үндсэн цалин × хувь (ажилласан өдрөөс үл хамаарна).
@@ -152,6 +165,8 @@ export type SalaryInput = {
   savingsDeduction?: number; // хуримтлал
   disciplineDeduction?: number; // сахилгын шийтгэл
   otherDeduction?: number; // бусад
+  // Гадаад ажилтан — ХХОАТ-ыг НДШ хасахгүй нийт цалингаас бодно.
+  foreign?: boolean;
 };
 
 export type SalaryComputed = {
@@ -198,7 +213,7 @@ export function computeRow(
   );
   const gross = round(computed + allowances);
   const sh = shInsurance(gross, params);
-  const tax = pit(gross, sh, params);
+  const tax = pit(gross, sh, params, { foreign: input.foreign });
   // Урьдчилгаа (үндсэн × хувь) зөвхөн тогтмол цалинд утгатай.
   const adv = type === "fixed" ? advance(input.base, params) : 0;
   const net = round(gross - sh - tax - adv - deductions);

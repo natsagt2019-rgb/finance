@@ -6,13 +6,17 @@
 // 10%, salary-calc.ts-ээр бодогдсон) + employees (регистр/ДД).
 
 import type { createClient } from "@/lib/supabase/server";
+import { isForeignRegister } from "@/lib/salary-calc";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export type PitReportRow = {
   employeeId: number | null;
   register: string; // ДД / регистр
+  tin: string; // ТТД — татвар төлөгчийн дугаар (e-Tax XM-11)
   name: string;
+  lastName: string; // овог
+  firstName: string; // нэр
   months: number; // тооцоонд орсон сарын тоо
   gross: number; // нийт орлого
   shInsurance: number; // ЭМНДШ (татвар ногдох орлогоос хасагдана)
@@ -98,14 +102,32 @@ export async function buildPitReport(
         }[]
       | null) ?? [];
 
-  // Ажилтны регистр (ДД).
+  // Ажилтны регистр (ДД), ТТД, овог/нэр.
   const { data: empRows } = await supabase
     .from("employees")
-    .select("id, name, register")
+    .select("id, name, register, tin, last_name, first_name")
     .limit(20000);
-  const empById = new Map<number, { name: string; register: string }>();
-  for (const e of (empRows as { id: number; name: string | null; register: string | null }[] | null) ?? []) {
-    empById.set(e.id, { name: e.name ?? "", register: e.register ?? "" });
+  const empById = new Map<
+    number,
+    { name: string; register: string; tin: string; lastName: string; firstName: string }
+  >();
+  for (const e of (empRows as
+    | {
+        id: number;
+        name: string | null;
+        register: string | null;
+        tin: string | null;
+        last_name: string | null;
+        first_name: string | null;
+      }[]
+    | null) ?? []) {
+    empById.set(e.id, {
+      name: e.name ?? "",
+      register: e.register ?? "",
+      tin: e.tin ?? "",
+      lastName: e.last_name ?? "",
+      firstName: e.first_name ?? "",
+    });
   }
 
   // Ажилтнаар нэгтгэх.
@@ -114,18 +136,23 @@ export async function buildPitReport(
     const gross = Number(r.gross) || 0;
     const sh = Number(r.sh_insurance) || 0;
     const pit = Number(r.pit) || 0;
-    const taxable = gross - sh;
-    // Хэрэглэсэн хөнгөлөлт = татвар ногдох × хувь − ногдсон ХХОАТ (≥0).
-    const relief = Math.max(0, round2(taxable * pitRate - pit));
 
     const key = r.employee_id != null ? `e${r.employee_id}` : `n:${r.employee_name ?? ""}`;
     const emp = r.employee_id != null ? empById.get(r.employee_id) : undefined;
+    // Гадаад ажилтан: татвар ногдох орлого = нийт цалин (НДШ хасахгүй).
+    const foreign = isForeignRegister(emp?.register);
+    const taxable = foreign ? gross : gross - sh;
+    // Хэрэглэсэн хөнгөлөлт = татвар ногдох × хувь − ногдсон ХХОАТ (≥0).
+    const relief = Math.max(0, round2(taxable * pitRate - pit));
     const cur =
       byEmp.get(key) ??
       ({
         employeeId: r.employee_id,
         register: emp?.register ?? "",
+        tin: emp?.tin ?? "",
         name: emp?.name || r.employee_name || "—",
+        lastName: emp?.lastName ?? "",
+        firstName: emp?.firstName ?? "",
         months: 0,
         gross: 0,
         shInsurance: 0,

@@ -195,6 +195,17 @@ export function EmployeeForm({ mode, employee }: Props) {
         </div>
 
         <div>
+          <label className={labelCls}>ТТД (Татвар төлөгчийн дугаар)</label>
+          <input
+            type="text"
+            name="tin"
+            defaultValue={employee?.tin ?? ""}
+            placeholder="12345678"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
           <label className={labelCls}>Дансны дугаар</label>
           <input
             type="text"

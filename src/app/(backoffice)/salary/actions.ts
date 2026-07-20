@@ -11,6 +11,7 @@ import {
   tenureYears,
   paramsFromSettings,
   normalizeSalaryType,
+  isForeignRegister,
   DEFAULT_MONTH_HOURS_2026,
   type SalaryParams,
   type SalaryType,
@@ -53,6 +54,7 @@ function readEmployee(formData: FormData) {
     base_salary: num(formData.get("base_salary")),
     phone_allowance: num(formData.get("phone_allowance")),
     register: get("register") || null,
+    tin: get("tin") || null,
     bank_account: get("bank_account") || null,
     hired_date: get("hired_date") || null,
     experience_years: num(formData.get("experience_years")),
@@ -166,6 +168,7 @@ export async function importEmployeesExcel(
     base: find("үндсэн", "цалин"),
     phone: find("утас"),
     register: find("регистр", "дд"),
+    tin: find("ттд", "татвар"),
     bank: find("данс"),
     status: find("төлөв"),
   };
@@ -219,6 +222,7 @@ export async function importEmployeesExcel(
       base_salary: idx.base >= 0 ? cellNum(row[idx.base]) : 0,
       phone_allowance: idx.phone >= 0 ? cellNum(row[idx.phone]) : 0,
       register: register || null,
+      tin: at(row, idx.tin) || null,
       bank_account: at(row, idx.bank) || null,
       status: statusRaw.includes("идэвхгүй") ? "inactive" : "active",
       is_active: true,
@@ -411,6 +415,18 @@ export async function saveSalary(
   const { params, monthHours } = await loadParams(supabase, year);
   const mh = monthHours[month - 1] ?? 0;
 
+  // Гадаад ажилтан (регистрээр) — ХХОАТ-ыг НДШ хасахгүй нийт цалингаас бодно.
+  const empIds = rows.map((r) => r.employee_id).filter((v): v is number => v != null);
+  const foreignById = new Map<number, boolean>();
+  if (empIds.length > 0) {
+    const { data: empRegs } = await supabase
+      .from("employees")
+      .select("id, register")
+      .in("id", empIds);
+    for (const e of (empRegs as { id: number; register: string | null }[] | null) ?? [])
+      foreignById.set(e.id, isForeignRegister(e.register));
+  }
+
   const records = rows.map((r) => {
     const salaryType = normalizeSalaryType(r.salary_type);
     const c = computeRow(
@@ -433,6 +449,7 @@ export async function saveSalary(
         savingsDeduction: r.savings_deduction,
         disciplineDeduction: r.discipline_deduction,
         otherDeduction: r.other_deduction,
+        foreign: foreignById.get(r.employee_id) ?? false,
       },
       params,
     );

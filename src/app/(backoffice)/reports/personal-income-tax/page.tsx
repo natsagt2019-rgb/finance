@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
 import { loadCompany } from "@/lib/company";
 import { buildPitReport, pitReportYears } from "@/lib/pit-report";
+import { Tt11ExportButton } from "./tt11-export";
 
 type SearchParams = { year?: string; period?: string };
 
@@ -90,6 +91,11 @@ export default async function PersonalIncomeTaxPage({
   const count = r.rows.length;
   const taxGross = Math.round(r.total.taxable * r.pitRate * 100) / 100;
   const relief = Math.round((taxGross - r.total.pit) * 100) / 100;
+  // Татвар ногдох орлогоос ХАСАГДСАН НДШ = Нийт − Татвар ногдуулах орлого.
+  // Гадаад ажилтны НДШ хасагдахгүй тул энэ нь нийт НДШ-ээс бага байж болно.
+  const deductibleSh = Math.round((r.total.gross - r.total.taxable) * 100) / 100;
+  // Хасагдаагүй НДШ (гол төлөв гадаад ажилтных) — мөр 12.
+  const nonDeductibleSh = Math.round((r.total.shInsurance - deductibleSh) * 100) / 100;
   type Tt11Row = {
     no: string;
     label: string;
@@ -103,7 +109,8 @@ export default async function PersonalIncomeTaxPage({
     { no: "2", label: "1.1. Хөдөлмөрийн гэрээгээр авч буй цалин, хөлс, нэмэгдэл, шагнал, амралтын олговор г.м.", count, value: r.total.gross, indent: true },
     { no: "10", label: "Татвар ногдох орлого (1−9)", count, value: r.total.gross, strong: true },
     { no: "11", label: "Эрүүл мэндийн болон нийгмийн даатгалын шимтгэл", value: r.total.shInsurance },
-    { no: "13", label: "Татвар ногдох орлогоос хасагдах НДШ (11−12)", value: r.total.shInsurance },
+    { no: "12", label: "Үүнээс: татвар ногдох орлогоос хасагдахгүй НДШ (гадаад ажилтан)", value: nonDeductibleSh, indent: true },
+    { no: "13", label: "Татвар ногдох орлогоос хасагдах НДШ (11−12)", value: deductibleSh },
     { no: "14", label: "Татвар ногдуулах орлого (10−13)", count, value: r.total.taxable, strong: true },
     { no: "15", label: `Ногдуулсан албан татвар (14 × ${(r.pitRate * 100).toFixed(0)}%)`, value: taxGross },
     { no: "16", label: "Хуулийн 23.1-д заасан татварын хөнгөлөлт", value: relief },
@@ -138,6 +145,11 @@ export default async function PersonalIncomeTaxPage({
               Шинэчлэх
             </button>
           </form>
+          <Tt11ExportButton
+            rows={r.rows}
+            year={selYear}
+            periodLabel={r.monthLabel}
+          />
           <PrintButton />
         </div>
       </div>
@@ -240,7 +252,8 @@ export default async function PersonalIncomeTaxPage({
 
         <p className="mt-2 text-[11px] text-zinc-500">
           Татвар ногдох орлого = Нийт орлого − ЭМНДШ. Ногдуулсан ХХОАТ нь
-          Арт.23.1 шатлалт хасагдуулгыг тооцсон цэвэр дүн.
+          Арт.23.1 шатлалт хасагдуулгыг тооцсон цэвэр дүн. Гадаад ажилтны хувьд
+          ХХОАТ-ыг ЭМНДШ хасахгүй нийт цалингаас тооцно (татвар ногдох = нийт цалин).
         </p>
 
         {/* Гарын үсэг */}

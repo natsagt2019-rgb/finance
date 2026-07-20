@@ -15,6 +15,7 @@ export type EmployeeRow = {
   base_salary: number;
   phone_allowance: number;
   register: string | null;
+  tin: string | null; // ТТД — татвар төлөгчийн дугаар
   bank_account: string | null;
   hired_date: string | null; // YYYY-MM-DD
   experience_years: number; // туршлага (жил) — ЭА хоногт
@@ -24,7 +25,7 @@ export type EmployeeRow = {
 
 export const EMPLOYEE_SELECT =
   "id, name, last_name, first_name, company, department, position, salary_type, base_salary, phone_allowance, " +
-  "register, bank_account, hired_date, experience_years, status, is_active";
+  "register, tin, bank_account, hired_date, experience_years, status, is_active";
 
 // ── Цалингийн мөр ─────────────────────────────────────────────────────────────
 export type SalaryRow = {

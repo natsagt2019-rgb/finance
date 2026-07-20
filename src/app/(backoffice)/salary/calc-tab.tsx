@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   computeRow,
   normalizeSalaryType,
+  isForeignRegister,
   SALARY_TYPE_LABELS,
   type SalaryParams,
   type SalaryType,
@@ -25,6 +26,8 @@ function fmt(n: number): string {
 type EditRow = {
   employee_id: number;
   employee_name: string;
+  last_name: string | null;
+  first_name: string | null;
   company: string | null;
   department: string | null;
   salary_type: SalaryType;
@@ -51,6 +54,7 @@ type EditRow = {
   discipline_deduction: number;
   other_deduction: number;
   staff_inv_settle: number; // энэ удаа барагдуулах БМ авлага (other_deduction-д орсон)
+  foreign: boolean; // гадаад ажилтан — ХХОАТ-ыг НДШ хасахгүй бодно
 };
 
 // Цалингийн төрлийн богино шошго (хүснэгтэд).
@@ -84,6 +88,8 @@ export function CalcTab({
   const [isPending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // Цалин бодоогүй (нийт цалин = 0) мөрийг нуух эсэх.
+  const [hideEmpty, setHideEmpty] = useState(false);
 
   // Эхний төлөв: ажилтан бүрд хадгалсан мөр байвал түүнээс, үгүй бол анхдагч.
   const initial: EditRow[] = useMemo(() => {
@@ -96,6 +102,8 @@ export function CalcTab({
       return {
         employee_id: e.id,
         employee_name: e.name,
+        last_name: e.last_name,
+        first_name: e.first_name,
         company: e.company,
         department: e.department,
         salary_type: salaryType,
@@ -125,6 +133,7 @@ export function CalcTab({
         discipline_deduction: numOr(rec?.discipline_deduction),
         other_deduction: numOr(rec?.other_deduction),
         staff_inv_settle: 0,
+        foreign: isForeignRegister(e.register),
       };
     });
     // employees/records/monthHours өөрчлөгдөхөд л дахин бодно.
@@ -227,6 +236,7 @@ export function CalcTab({
           savingsDeduction: r.savings_deduction,
           disciplineDeduction: r.discipline_deduction,
           otherDeduction: r.other_deduction,
+          foreign: r.foreign,
         },
         params,
       ),
@@ -245,6 +255,12 @@ export function CalcTab({
     }),
     { allow: 0, gross: 0, sh: 0, pit: 0, adv: 0, ded: 0, net: 0 },
   );
+
+  // Харагдах мөрүүд — "хоосон нуух" идэвхтэй бол зөвхөн нийт цалинтай (>0) мөр.
+  const visible = hideEmpty
+    ? computed.filter(({ c }) => c.gross > 0)
+    : computed;
+  const hiddenCount = computed.length - visible.length;
 
   function handleSave() {
     setMsg(null);
@@ -298,7 +314,7 @@ export function CalcTab({
     );
   }
 
-  const COLSPAN = 9;
+  const COLSPAN = 10;
 
   return (
     <div>
@@ -311,6 +327,18 @@ export function CalcTab({
           </span>
         </p>
         <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-600 select-none">
+            <input
+              type="checkbox"
+              checked={hideEmpty}
+              onChange={(e) => setHideEmpty(e.target.checked)}
+              className="h-4 w-4 rounded border-zinc-300"
+            />
+            Зөвхөн цалинтай мөр
+            {hideEmpty && hiddenCount > 0 && (
+              <span className="text-zinc-400">({hiddenCount} нуусан)</span>
+            )}
+          </label>
           {msg && <span className="text-sm text-zinc-600">{msg}</span>}
           <button
             type="button"
@@ -327,7 +355,8 @@ export function CalcTab({
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
             <tr>
-              <th className="px-3 py-2">Ажилтан</th>
+              <th className="px-3 py-2">Овог</th>
+              <th className="px-3 py-2">Нэр</th>
               <th className="px-3 py-2 text-right">Бодогдсон</th>
               <th className="px-3 py-2 text-right">Нэмэгдэл</th>
               <th className="px-3 py-2 text-right">Нийт</th>
@@ -339,7 +368,14 @@ export function CalcTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {computed.map(({ row: r, c, allowTotal, dedTotal }) => {
+            {visible.length === 0 ? (
+              <tr>
+                <td colSpan={COLSPAN} className="px-4 py-8 text-center text-sm text-zinc-400">
+                  Энэ сард цалинтай ажилтан алга.
+                </td>
+              </tr>
+            ) : null}
+            {visible.map(({ row: r, c, allowTotal, dedTotal }) => {
               const isOpen = expanded.has(r.employee_id);
               const open = staffReceivables[r.employee_id] ?? 0;
               return (
@@ -355,7 +391,12 @@ export function CalcTab({
                         {isOpen ? "▾" : "▸"}
                       </button>
                       <span className="font-medium text-zinc-800">
-                        {r.employee_name}
+                        {r.last_name || "—"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className="font-medium text-zinc-800">
+                        {r.first_name || r.employee_name}
                       </span>
                       {r.salary_type !== "fixed" && (
                         <span
@@ -365,9 +406,11 @@ export function CalcTab({
                           {TYPE_BADGE[r.salary_type]}
                         </span>
                       )}
-                      <div className="ml-6 text-xs text-zinc-400">
-                        {[r.company, r.department].filter(Boolean).join(" · ") || "—"}
-                      </div>
+                      {(r.company || r.department) && (
+                        <div className="text-xs text-zinc-400">
+                          {[r.company, r.department].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-zinc-800">
                       {r.salary_type === "manual" ? (
@@ -556,8 +599,10 @@ export function CalcTab({
           </tbody>
           <tfoot className="border-t border-zinc-200 bg-zinc-50 text-sm font-semibold">
             <tr>
-              <td className="px-3 py-2 text-right text-zinc-500">
-                Нийт {rows.length} ажилтан:
+              <td colSpan={2} className="px-3 py-2 text-right text-zinc-500">
+                {hideEmpty
+                  ? `Цалинтай ${visible.length} / ${rows.length} ажилтан:`
+                  : `Нийт ${rows.length} ажилтан:`}
               </td>
               <td />
               <td className="px-3 py-2 text-right tabular-nums text-zinc-600">

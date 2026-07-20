@@ -102,6 +102,7 @@ export function EmployeesTab({
                   <th className="px-4 py-2">Албан тушаал</th>
                   <th className="px-4 py-2 text-right">Үндсэн цалин</th>
                   <th className="px-4 py-2">ДД / Регистр</th>
+                  <th className="px-4 py-2">ТТД</th>
                   <th className="px-4 py-2">Төлөв</th>
                   <th className="no-print px-4 py-2 text-right">Үйлдэл</th>
                 </tr>
@@ -123,6 +124,9 @@ export function EmployeesTab({
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
                       {e.register || "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-zinc-500">
+                      {e.tin || "—"}
                     </td>
                     <td className="px-4 py-2">
                       <span
