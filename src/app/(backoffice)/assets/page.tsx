@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { AssetsTab } from "./assets-tab";
 import { DepreciationTab } from "./depreciation-tab";
+import { VatDeferTab } from "./vat-defer-tab";
 import { SummaryTab } from "./summary-tab";
 import { LocationsTab } from "./locations-tab";
 import { SettingsTab } from "./settings-tab";
@@ -28,6 +29,7 @@ type SearchParams = {
 const TAB_LABELS: Record<Tab, string> = {
   assets: "Хөрөнгийн бүртгэл",
   depreciation: "Элэгдэл тооцоо",
+  "vat-defer": "Хойшлогдсон НӨАТ",
   summary: "Нэгтгэл",
   locations: "Байршил / баар код",
   settings: "Ангилал/тохиргоо",
@@ -116,7 +118,7 @@ export default async function AssetsPage({
 
   const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const showCompanyFilter = tab !== "settings";
-  const showPeriod = tab === "depreciation" || tab === "summary";
+  const showPeriod = tab === "depreciation" || tab === "vat-defer" || tab === "summary";
 
   return (
     <div>
@@ -232,6 +234,14 @@ export default async function AssetsPage({
             key={`${year}-${month}-${company}`}
             assets={activeAssets}
             categories={categories}
+            year={year}
+            month={month}
+          />
+        )}
+        {tab === "vat-defer" && (
+          <VatDeferTab
+            key={`vd-${year}-${month}-${company}`}
+            assets={activeAssets}
             year={year}
             month={month}
           />

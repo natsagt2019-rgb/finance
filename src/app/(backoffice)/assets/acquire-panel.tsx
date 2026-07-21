@@ -26,6 +26,12 @@ const ACC_NAMES: Record<string, string> = {
   "110200": "Харилцах",
 };
 
+// Гаалийн тооцооны данс (импортын гаалийн татвар, хураамж + НӨАТ-ын төлбөр).
+const CUSTOMS_SETTLEMENT_OPTS = [
+  { code: "310100", label: "310100 — Өглөгөөр (дараа төлнө)" },
+  { code: "110200", label: "110200 — Харилцах данснаас төлсөн" },
+];
+
 // Худалдан авалтын НӨАТ данс: шууд хасах эсвэл хойшлуулах.
 const VAT_ACCT_OPTS = [
   { code: "130600", label: "130600 — Шууд хасах (НӨАТ авлага)" },
@@ -54,9 +60,13 @@ export function AcquirePanel({
   const [noVat, setNoVat] = useState(false);
   const [settlement, setSettlement] = useState("310100");
   const [vatAccount, setVatAccount] = useState("130600");
+  const [vatMonths, setVatMonths] = useState("60"); // хойшлол: тоног 60 / барилга 120
+  const [customsStr, setCustomsStr] = useState("");
+  const [customsSettlement, setCustomsSettlement] = useState("310100");
 
   const assetAcc = category?.account_code ?? null;
   const acquired = asset.acquisition_journal_id != null;
+  const customs = Number(customsStr) || 0;
 
   const preview = useMemo(() => {
     if (!assetAcc) return null;
@@ -64,10 +74,11 @@ export function AcquirePanel({
     const built = buildAcquisitionJournal({
       cost: Number(asset.cost) || 0,
       vat,
-      accounts: { asset: assetAcc, inputVat: vatAccount, settlement },
+      customs,
+      accounts: { asset: assetAcc, inputVat: vatAccount, settlement, customsSettlement },
     });
     return { vat, built };
-  }, [assetAcc, noVat, isVatPayer, asset.cost, settlement, vatAccount]);
+  }, [assetAcc, noVat, isVatPayer, asset.cost, settlement, vatAccount, customs, customsSettlement]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -78,6 +89,9 @@ export function AcquirePanel({
     fd.set("no_vat", noVat ? "1" : "0");
     fd.set("settlement_code", settlement);
     fd.set("vat_account", vatAccount);
+    fd.set("vat_months", vatMonths);
+    fd.set("customs", customsStr);
+    fd.set("customs_settlement", customsSettlement);
     startTransition(async () => {
       const res = await acquireAsset(asset.id, fd);
       if (!res.ok) { setError(res.error); return; }
@@ -104,6 +118,7 @@ export function AcquirePanel({
             <p className="text-sm font-semibold text-blue-900">Худалдан авалт бүртгэгдсэн</p>
             <p className="mt-1 text-xs text-blue-700">
               Өртөг: {fmt(asset.cost)}₮
+              {asset.acquisition_customs > 0 && <> · үүнээс гааль: {fmt(asset.acquisition_customs)}₮</>}
               {asset.acquisition_vat > 0 && <> · НӨАТ: {fmt(asset.acquisition_vat)}₮</>}
               {" "}· GL журнал бичигдсэн
             </p>
@@ -160,6 +175,42 @@ export function AcquirePanel({
             </select>
           </div>
         )}
+        {!noVat && isVatPayer && vatAccount === "180500" && (
+          <div>
+            <label className={labelCls}>НӨАТ хасах хугацаа</label>
+            <select value={vatMonths} onChange={(e) => setVatMonths(e.target.value)} className={inputCls}>
+              <option value="60">60 сар — тоног төхөөрөмж</option>
+              <option value="120">120 сар — барилга байгууламж</option>
+            </select>
+            <p className="mt-1 text-xs text-zinc-400">Хойшлогдсон НӨАТ-ыг «Хойшлогдсон НӨАТ» табаас сар бүр хасна.</p>
+          </div>
+        )}
+        <div>
+          <label className={labelCls}>Үүнээс: гаалийн татвар, хураамж (₮)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={customsStr}
+            onChange={(e) => setCustomsStr(e.target.value)}
+            placeholder="0 — импорт биш бол хоосон"
+            className={`${inputCls} text-right tabular-nums`}
+          />
+          <p className="mt-1 text-xs text-zinc-400">
+            Импортын хөрөнгөд: өртөгт шингэсэн гаалийн татвар, хураамжийн дүн.
+            Кредит тал нийлүүлэгч/гааль гэж хуваагдана.
+          </p>
+        </div>
+        {customs > 0 && (
+          <div>
+            <label className={labelCls}>Гаалийн тооцооны данс</label>
+            <select value={customsSettlement} onChange={(e) => setCustomsSettlement(e.target.value)} className={inputCls}>
+              {CUSTOMS_SETTLEMENT_OPTS.map((o) => (
+                <option key={o.code} value={o.code}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label className={labelCls}>Тэмдэглэл / нийлүүлэгч</label>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Нэхэмжлэх №, нийлүүлэгч" className={inputCls} />
@@ -175,8 +226,9 @@ export function AcquirePanel({
       {/* Preview */}
       {preview?.built.ok && (
         <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-          <div className="grid grid-cols-3 gap-2 text-sm">
-            <Stat label="Цэвэр өртөг" value={fmt(preview.built.cost)} />
+          <div className={`grid gap-2 text-sm ${customs > 0 ? "grid-cols-4" : "grid-cols-3"}`}>
+            <Stat label="Өртөг" value={fmt(preview.built.cost)} />
+            {customs > 0 && <Stat label="үүнээс гааль" value={fmt(preview.built.customs)} />}
             <Stat label={`НӨАТ (${vatAccount})`} value={fmt(preview.vat)} />
             <Stat label="Нийт төлбөр" value={fmt(preview.built.gross)} />
           </div>
