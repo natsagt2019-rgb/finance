@@ -12,17 +12,21 @@ import {
 } from "./actions";
 
 type Props =
-  | { mode: "create"; partner?: undefined }
-  | { mode: "edit"; partner: PartnerRow };
+  | { mode: "create"; partner?: undefined; nextCode?: string }
+  | { mode: "edit"; partner: PartnerRow; nextCode?: undefined };
 
 const inputCls =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900";
 const labelCls = "mb-1 block text-xs font-medium text-zinc-600";
 
-export function PartnerForm({ mode, partner }: Props) {
+export function PartnerForm({ mode, partner, nextCode }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Код олгох горим: шинээр нэмэхэд анхдагчаар "автомат", засахад "гараас".
+  const [codeMode, setCodeMode] = useState<"auto" | "manual">(
+    mode === "create" ? "auto" : "manual",
+  );
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -89,13 +93,57 @@ export function PartnerForm({ mode, partner }: Props) {
 
         <div>
           <label className={labelCls}>Код</label>
-          <input
-            type="text"
-            name="code"
-            defaultValue={partner?.code ?? ""}
-            placeholder="C10001-01"
-            className={inputCls}
-          />
+          {/* Автомат / Гараас сонголт — зөвхөн шинээр нэмэхэд */}
+          {mode === "create" && (
+            <div className="mb-2 inline-flex rounded-lg border border-zinc-200 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setCodeMode("auto")}
+                className={`rounded-md px-3 py-1 font-medium ${
+                  codeMode === "auto"
+                    ? "bg-zinc-900 text-white"
+                    : "text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                Автомат
+              </button>
+              <button
+                type="button"
+                onClick={() => setCodeMode("manual")}
+                className={`rounded-md px-3 py-1 font-medium ${
+                  codeMode === "manual"
+                    ? "bg-zinc-900 text-white"
+                    : "text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                Гараас
+              </button>
+            </div>
+          )}
+
+          <input type="hidden" name="code_mode" value={codeMode} />
+
+          {codeMode === "auto" ? (
+            <>
+              <input
+                type="text"
+                readOnly
+                value={nextCode ?? "Автоматаар олгогдоно"}
+                className={`${inputCls} bg-zinc-50 text-zinc-500`}
+              />
+              <p className="mt-1 text-xs text-zinc-400">
+                Хадгалахад дараагийн дугаар автоматаар олгогдоно.
+              </p>
+            </>
+          ) : (
+            <input
+              type="text"
+              name="code"
+              defaultValue={partner?.code ?? ""}
+              placeholder="C10001-01"
+              className={inputCls}
+            />
+          )}
         </div>
 
         <div>

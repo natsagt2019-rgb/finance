@@ -32,6 +32,33 @@ async function requireAuth() {
   return { supabase, user };
 }
 
+// Дараагийн харилцагчийн код: одоо байгаа "C{дугаар}-01" хэлбэрийн дундаж
+// дугаарын дээдийг +1 болгож үүсгэнэ (эхлэл C10001-01).
+async function computeNextPartnerCode(
+  supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
+): Promise<string> {
+  const { data } = await supabase
+    .from("partners")
+    .select("code")
+    .not("code", "is", null)
+    .limit(100000);
+  let max = 10000;
+  for (const r of (data as { code: string | null }[] | null) ?? []) {
+    const m = /^C(\d+)-\d+$/.exec((r.code ?? "").trim());
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+  }
+  return `C${max + 1}-01`;
+}
+
+// Форм дээр дараагийн кодыг урьдчилан харуулахад ашиглана.
+export async function getNextPartnerCode(): Promise<string> {
+  const { supabase } = await requireAuth();
+  return computeNextPartnerCode(supabase);
+}
+
 function readForm(formData: FormData) {
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const typeRaw = get("type").toLowerCase();
@@ -55,21 +82,34 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
 
   if (!v.name) return { ok: false, error: "Нэр заавал шаардлагатай." };
 
-  const { data, error } = await supabase
-    .from("partners")
-    .insert(v)
-    .select("id, name")
-    .single();
+  // Код: "auto" сонголт эсвэл хоосон бол автоматаар олгоно.
+  const auto =
+    String(formData.get("code_mode") ?? "").trim() === "auto" || !v.code;
 
-  if (error) {
-    const msg = /duplicate|unique/i.test(error.message)
-      ? `"${v.code}" код аль хэдийн бүртгэлтэй байна.`
-      : error.message;
-    return { ok: false, error: msg };
+  // Автомат үед давхардвал (зэрэг үүсгэлт) дугаарыг ахиулж дахин оролдоно.
+  for (let attempt = 0; ; attempt++) {
+    if (auto) v.code = await computeNextPartnerCode(supabase);
+
+    const { data, error } = await supabase
+      .from("partners")
+      .insert(v)
+      .select("id, name")
+      .single();
+
+    if (!error) {
+      revalidatePath("/partners");
+      return { ok: true, id: data.id as number, name: data.name as string };
+    }
+
+    const dup = /duplicate|unique/i.test(error.message);
+    if (auto && dup && attempt < 5) continue; // дугаар ахиулж дахин оролдоно
+    return {
+      ok: false,
+      error: dup
+        ? `"${v.code}" код аль хэдийн бүртгэлтэй байна.`
+        : error.message,
+    };
   }
-
-  revalidatePath("/partners");
-  return { ok: true, id: data.id as number, name: data.name as string };
 }
 
 // ── Харилцагч устгах ──────────────────────────────────────────────────────
