@@ -16,6 +16,7 @@ import {
   computeVacationAmount,
   type SalaryInputRow,
 } from "./actions";
+import { SalaryImport } from "./salary-import";
 import type { EmployeeRow, SalaryRow } from "./types";
 
 function fmt(n: number): string {
@@ -352,6 +353,10 @@ export function CalcTab({
             {isPending ? "Хадгалж байна…" : "Хадгалах"}
           </button>
         </div>
+      </div>
+
+      <div className="mb-3">
+        <SalaryImport year={year} month={month} />
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">

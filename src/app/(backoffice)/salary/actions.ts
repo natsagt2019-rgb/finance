@@ -668,6 +668,125 @@ async function settleStaffReceivables(
   return warnings.length ? warnings.join("; ") : undefined;
 }
 
+// ── Цалин: Excel-ээс тухайн сарын мөрүүдийг бөөнөөр оруулах ───────────────────
+export type SalaryImportResult =
+  | { ok: true; saved: number; skipped: number; warning?: string }
+  | { ok: false; error: string };
+
+// Excel (цалингийн загвар) → тухайн сарын salary_records. Регистрээр ажилтан
+// тааруулж, «Бодогдсон цалин» (manual) + нэмэгдэл + суутгалыг saveSalary-д өгнө.
+export async function importSalaryExcel(
+  year: number,
+  month: number,
+  formData: FormData,
+): Promise<SalaryImportResult> {
+  const { supabase } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+
+  const file = formData.get("file");
+  if (!file || typeof file === "string")
+    return { ok: false, error: "Файл сонгоогүй байна." };
+
+  let grid: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = xlsx.read(buf, { type: "buffer", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    grid = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
+  } catch (e) {
+    return { ok: false, error: `Уншихад алдаа: ${(e as Error).message}` };
+  }
+
+  const headerRow = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const find = (...keys: string[]) =>
+    headerRow.findIndex((h) => keys.some((k) => h.includes(k)));
+  const idx = {
+    register: find("регистр", "дд"),
+    last: find("овог"),
+    first: find("нэр"),
+    computed: find("бодогдсон", "үндсэн", "цалин"),
+    allowance: find("нэмэгдэл"),
+    deduction: find("суутгал"),
+  };
+  if (idx.computed < 0 && idx.register < 0)
+    return {
+      ok: false,
+      error: "«Регистр» ба «Бодогдсон цалин» багана олдсонгүй. Загварыг ашиглана уу.",
+    };
+
+  // Ажилтнууд — регистр/нэрээр тааруулах.
+  type EmpMini = {
+    id: number;
+    name: string | null;
+    company: string | null;
+    department: string | null;
+    register: string | null;
+  };
+  const { data: empRows } = await supabase
+    .from("employees")
+    .select("id, name, company, department, register")
+    .limit(20000);
+  const cReg = (s: unknown) => String(s ?? "").replace(/[\r\n\s]+/g, "").toUpperCase();
+  const cName = (s: unknown) => String(s ?? "").replace(/[\r\n\s]+/g, "").toUpperCase();
+  const byReg = new Map<string, EmpMini>();
+  const byName = new Map<string, EmpMini>();
+  for (const e of (empRows as EmpMini[] | null) ?? []) {
+    if (e.register) byReg.set(cReg(e.register), e);
+    if (e.name) byName.set(cName(e.name), e);
+  }
+
+  const at = (row: unknown[], i: number) => (i >= 0 ? row[i] : null);
+  const rows: SalaryInputRow[] = [];
+  let skipped = 0;
+  for (let i = 1; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const reg = cReg(at(row, idx.register));
+    const nameKey = cName(
+      `${String(at(row, idx.last) ?? "")} ${String(at(row, idx.first) ?? "")}`,
+    );
+    const emp = (reg && byReg.get(reg)) || (nameKey && byName.get(nameKey)) || null;
+    const computed = cellNum(at(row, idx.computed));
+    if (!emp || computed <= 0) {
+      if (reg || nameKey.trim()) skipped++;
+      continue;
+    }
+    rows.push({
+      employee_id: emp.id,
+      employee_name: emp.name ?? "",
+      company: emp.company,
+      department: emp.department,
+      salary_type: "manual",
+      base_salary: 0,
+      worked_hours: 0,
+      manual_amount: computed,
+      overtime_hours: 0,
+      holiday_overtime_hours: 0,
+      late_minutes: 0,
+      phone_allowance: 0,
+      bonus: cellNum(at(row, idx.allowance)),
+      vacation_amount: 0,
+      transport_allowance: 0,
+      meal_allowance: 0,
+      fuel_allowance: 0,
+      tenure_allowance: 0,
+      overtime_pay: 0,
+      holiday_overtime_pay: 0,
+      late_deduction: 0,
+      savings_deduction: 0,
+      discipline_deduction: 0,
+      other_deduction: cellNum(at(row, idx.deduction)),
+      staff_inv_settle: 0,
+    });
+  }
+
+  if (rows.length === 0)
+    return { ok: false, error: "Оруулах мөр олдсонгүй (ажилтан тохирсонгүй эсвэл цалин 0)." };
+
+  const res = await saveSalary(year, month, rows);
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, saved: rows.length, skipped, warning: res.warning };
+}
+
 // ── Тохиргоо хадгалах ────────────────────────────────────────────────────────
 export async function saveSettings(formData: FormData): Promise<ActionResult> {
   const { supabase } = await requireAuth();
