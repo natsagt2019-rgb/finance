@@ -34,6 +34,15 @@ export default async function AssetCustomsImportPage() {
     (catData as { id: number; name: string; account_code: string | null }[] | null) ?? []
   ).filter((c) => c.account_code) as AssetCat[];
 
+  // Нийлүүлэгч (харилцагч) — Нийлүүлэгч талбарт сонгоно.
+  const { data: partData } = await supabase
+    .from("partners")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true })
+    .limit(5000);
+  const partners = (partData as { id: number; name: string }[] | null) ?? [];
+
   return (
     <div>
       <div className="mb-4 print:hidden">
@@ -55,6 +64,7 @@ export default async function AssetCustomsImportPage() {
           items={[]}
           accounts={accounts}
           assetCats={assetCats}
+          partners={partners}
           defaultMode="asset"
           lockMode
         />

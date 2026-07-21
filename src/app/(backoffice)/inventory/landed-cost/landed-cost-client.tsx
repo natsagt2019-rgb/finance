@@ -25,6 +25,7 @@ export type PickItem = {
 };
 export type AccountOpt = { id: number; code: string; name: string };
 export type AssetCat = { id: number; name: string; account_code: string };
+export type PartnerOpt = { id: number; name: string };
 
 // itemId — БМ горим; name/categoryId — ҮХ горим.
 type Line = {
@@ -53,12 +54,14 @@ export function LandedCostClient({
   items,
   accounts,
   assetCats,
+  partners = [],
   defaultMode = "inv",
   lockMode = false,
 }: {
   items: PickItem[];
   accounts: AccountOpt[];
   assetCats: AssetCat[];
+  partners?: PartnerOpt[];
   defaultMode?: "inv" | "asset";
   lockMode?: boolean; // true бол горим сонголтын товч харагдахгүй (тусгай хуудсанд)
 }) {
@@ -93,6 +96,13 @@ export function LandedCostClient({
   const [date, setDate] = useState(todayISO());
   const [docNo, setDocNo] = useState("");
   const [supplier, setSupplier] = useState("");
+  const [supplierId, setSupplierId] = useState<number | null>(null);
+  // Нийлүүлэгчийн нэр өөрчлөгдөхөд партнерын id-г нэрээр тааруулна.
+  function onSupplierChange(name: string) {
+    setSupplier(name);
+    const p = partners.find((x) => x.name.trim().toLowerCase() === name.trim().toLowerCase());
+    setSupplierId(p?.id ?? null);
+  }
   const [company, setCompany] = useState("");
   const [currency, setCurrency] = useState("CNY");
   const [rate, setRate] = useState(490);
@@ -379,6 +389,7 @@ export function LandedCostClient({
       date,
       docNo,
       supplier: supplier.trim() || null,
+      supplierId,
       company: company.trim() || null,
       bankAccountId: Number(bank),
       fobMnt: calc.fobMntTotal,
@@ -454,8 +465,14 @@ export function LandedCostClient({
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Мэдүүлгийн дугаар</span>
           <input value={docNo} onChange={(e) => setDocNo(e.target.value)} placeholder="ГААЛЬ-… (авто)" className={inputCls} /></label>
-        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Нийлүүлэгч</span>
-          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Хятад нийлүүлэгч" className={inputCls} /></label>
+        <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">
+            Нийлүүлэгч{supplierId ? <span className="ml-1 text-green-600">✓ харилцагч</span> : partners.length > 0 ? <span className="ml-1 text-zinc-400">(жагсаалтаас сонго)</span> : null}
+          </span>
+          <input list="landed-partners" value={supplier} onChange={(e) => onSupplierChange(e.target.value)} placeholder="Харилцагч сонгох / бичих" className={inputCls} />
+          <datalist id="landed-partners">
+            {partners.map((p) => <option key={p.id} value={p.name} />)}
+          </datalist>
+        </label>
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Компани (заавал биш)</span>
           <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} /></label>
       </div>

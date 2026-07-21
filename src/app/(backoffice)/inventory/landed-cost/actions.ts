@@ -18,6 +18,7 @@ export type LandedPostInput = {
   date: string;
   docNo: string;
   supplier: string | null;
+  supplierId?: number | null; // нийлүүлэгч харилцагчийн id (журналд partner_id)
   company: string | null;
   bankAccountId: number; // импортын НӨАТ + дугуйралт төлсөн данс (банк/касс)
   fobMnt: number; // FOB нийт (₮) → нийлүүлэгчийн өглөг
@@ -151,7 +152,7 @@ export async function postLandedImport(input: LandedPostInput): Promise<LandedPo
     date: input.date,
     description: `Гаалийн импорт landed-cost${input.supplier ? ` — ${input.supplier}` : ""}`,
     reference: docNo,
-    partner_id: null,
+    partner_id: input.supplierId ?? null,
     source: "inventory",
     lines: jLines,
   });
@@ -319,7 +320,7 @@ export async function postLandedAssetImport(
     date: input.date,
     description: `Гаалийн импорт ҮХ landed-cost${input.supplier ? ` — ${input.supplier}` : ""}`,
     reference: docNo,
-    partner_id: null,
+    partner_id: input.supplierId ?? null,
     source: "asset",
     lines: jLines,
   });
