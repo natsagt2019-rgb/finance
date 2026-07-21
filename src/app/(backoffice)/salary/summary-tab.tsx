@@ -1,3 +1,9 @@
+import {
+  isForeignRegister,
+  pitDeduction,
+  DEFAULT_PIT_TIERS,
+  PIT_RATE,
+} from "@/lib/salary-calc";
 import { SalaryToolbar, type SummaryExportRow } from "./salary-toolbar";
 import { Nd8ExportButton } from "./nd8-export";
 import { PostJournalButton } from "./post-journal-button";
@@ -14,6 +20,7 @@ type MonthAgg = {
   sh: number;
   employerSh: number;
   pit: number;
+  reliefDiff: number; // өссөн дүнгийн хөнгөлөлт − сарын хөнгөлөлт (резидент)
   advance: number;
   net: number;
 };
@@ -30,6 +37,7 @@ export function SummaryTab({
   year: number;
 }) {
   const postedSet = new Set(postedMonths);
+  const empById = new Map(employees.map((e) => [e.id, e]));
   // Сар бүрээр нэгтгэнэ (1-12).
   const agg: MonthAgg[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
@@ -38,6 +46,7 @@ export function SummaryTab({
     sh: 0,
     employerSh: 0,
     pit: 0,
+    reliefDiff: 0,
     advance: 0,
     net: 0,
   }));
@@ -51,6 +60,17 @@ export function SummaryTab({
     a.pit += Number(r.pit) || 0;
     a.advance += Number(r.advance) || 0;
     a.net += Number(r.net) || 0;
+
+    // Хөнгөлөлтийн зөрүү (зөвхөн резидент — гадаад/хөгж.бэрхшээлтэйд хамаарахгүй).
+    // Хэрэглэсэн хөнгөлөлт (өссөн дүнгээр, хадгалсан pit-ээс) − сарын шатлалт хөнгөлөлт.
+    const e = r.employee_id != null ? empById.get(r.employee_id) : undefined;
+    const resident = !!e && !isForeignRegister(e.register) && !e.disabled;
+    if (resident) {
+      const taxable = (Number(r.gross) || 0) - (Number(r.sh_insurance) || 0);
+      const applied = Math.max(0, taxable * PIT_RATE - (Number(r.pit) || 0));
+      const monthly = pitDeduction(taxable, DEFAULT_PIT_TIERS);
+      a.reliefDiff += applied - monthly;
+    }
   }
 
   const shown = agg.filter((a) => a.cnt > 0);
@@ -60,10 +80,11 @@ export function SummaryTab({
       sh: s.sh + a.sh,
       employerSh: s.employerSh + a.employerSh,
       pit: s.pit + a.pit,
+      reliefDiff: s.reliefDiff + a.reliefDiff,
       advance: s.advance + a.advance,
       net: s.net + a.net,
     }),
-    { gross: 0, sh: 0, employerSh: 0, pit: 0, advance: 0, net: 0 },
+    { gross: 0, sh: 0, employerSh: 0, pit: 0, reliefDiff: 0, advance: 0, net: 0 },
   );
 
   const exportRows: SummaryExportRow[] = shown.map((a) => ({
@@ -73,6 +94,7 @@ export function SummaryTab({
     sh: a.sh,
     employerSh: a.employerSh,
     pit: a.pit,
+    reliefDiff: a.reliefDiff,
     advance: a.advance,
     net: a.net,
   }));
@@ -102,6 +124,7 @@ export function SummaryTab({
                 <th className="px-4 py-2 text-right">ЭМНДШ (ажилтан)</th>
                 <th className="px-4 py-2 text-right">ЭМНДШ (ажил олгогч)</th>
                 <th className="px-4 py-2 text-right">ХХОАТ</th>
+                <th className="px-4 py-2 text-right">Хөнгөлөлтийн зөрүү</th>
                 <th className="px-4 py-2 text-right">Урьдчилгаа</th>
                 <th className="px-4 py-2 text-right">Гарт олгох</th>
                 <th className="no-print px-4 py-2 text-center">НД-8</th>
@@ -128,6 +151,9 @@ export function SummaryTab({
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                     {fmt(a.pit)}
+                  </td>
+                  <td className={`px-4 py-2 text-right tabular-nums ${a.reliefDiff < 0 ? "text-rose-600" : "text-purple-600"}`}>
+                    {a.reliefDiff ? fmt(a.reliefDiff) : "—"}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-blue-700">
                     {fmt(a.advance)}
@@ -169,6 +195,9 @@ export function SummaryTab({
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums text-amber-700">
                   {fmt(totals.pit)}
+                </td>
+                <td className={`px-4 py-2 text-right tabular-nums ${totals.reliefDiff < 0 ? "text-rose-600" : "text-purple-600"}`}>
+                  {fmt(totals.reliefDiff)}
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums text-blue-700">
                   {fmt(totals.advance)}

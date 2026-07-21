@@ -9,6 +9,7 @@ export type SummaryExportRow = {
   sh: number;
   employerSh: number;
   pit: number;
+  reliefDiff: number;
   advance: number;
   net: number;
 };
@@ -34,6 +35,7 @@ export function SalaryToolbar({
         "ЭМНДШ (ажилтан)",
         "ЭМНДШ (ажил олгогч)",
         "ХХОАТ",
+        "Хөнгөлөлтийн зөрүү",
         "Урьдчилгаа",
         "Гарт олгох",
       ];
@@ -44,6 +46,7 @@ export function SalaryToolbar({
         r.sh,
         r.employerSh,
         r.pit,
+        r.reliefDiff,
         r.advance,
         r.net,
       ]);
@@ -53,10 +56,11 @@ export function SalaryToolbar({
           sh: s.sh + r.sh,
           employerSh: s.employerSh + r.employerSh,
           pit: s.pit + r.pit,
+          reliefDiff: s.reliefDiff + r.reliefDiff,
           advance: s.advance + r.advance,
           net: s.net + r.net,
         }),
-        { gross: 0, sh: 0, employerSh: 0, pit: 0, advance: 0, net: 0 },
+        { gross: 0, sh: 0, employerSh: 0, pit: 0, reliefDiff: 0, advance: 0, net: 0 },
       );
       body.push([
         "Жилийн дүн",
@@ -65,6 +69,7 @@ export function SalaryToolbar({
         tot.sh,
         tot.employerSh,
         tot.pit,
+        tot.reliefDiff,
         tot.advance,
         tot.net,
       ]);
@@ -77,6 +82,7 @@ export function SalaryToolbar({
         { wch: 16 },
         { wch: 18 },
         { wch: 14 },
+        { wch: 16 },
         { wch: 14 },
         { wch: 16 },
       ];
