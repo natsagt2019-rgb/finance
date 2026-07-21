@@ -273,6 +273,60 @@ export async function createReceivableFromVat(input: {
   };
 }
 
+// ── 3d. Холбогдоогүй eBarimt-ыг сонгосон харилцагчид холбоод журнал үүсгэх ───
+// Холбогдоогүй баримтыг (partner_id null) сонгосон харилцагчид оноож, дараа нь
+// зардал/өглөг (in) эсвэл авлага/орлого (out) журнал үүсгэнэ. Данс хоосон бол
+// зөвхөн холбоно (журнал үүсгэхгүй).
+export async function processUnmatchedVat(input: {
+  partnerId: number;
+  vatIds: number[];
+  kind: "in" | "out";
+  dtCode: string; // in: зардлын данс | out: авлагын данс
+  ktCode: string; // in: өглөгийн данс | out: орлогын данс
+  splitVat: boolean;
+  vatAccCode: string;
+  description?: string;
+}): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
+  if (!input.partnerId) return { ok: false, error: "Харилцагч сонгоно уу." };
+
+  // 1) Сонгосон харилцагчид холбоно.
+  const { error: le } = await supabase
+    .from("vat_records")
+    .update({ partner_id: input.partnerId })
+    .in("id", input.vatIds);
+  if (le) return { ok: false, error: `Холбоход алдаа: ${le.message}` };
+
+  // 2) Данс өгсөн бол журнал үүсгэнэ.
+  const hasAccounts = input.dtCode.trim() && input.ktCode.trim();
+  if (!hasAccounts) {
+    revalidatePath(`/partners/${input.partnerId}`);
+    return { ok: true, message: `${input.vatIds.length} баримт холбогдлоо (журнал үүсгээгүй).` };
+  }
+
+  if (input.kind === "in") {
+    return createPayableFromVat({
+      partnerId: input.partnerId,
+      vatIds: input.vatIds,
+      dtCode: input.dtCode,
+      ktCode: input.ktCode,
+      splitVat: input.splitVat,
+      vatAccCode: input.vatAccCode,
+      description: input.description,
+    });
+  }
+  return createReceivableFromVat({
+    partnerId: input.partnerId,
+    vatIds: input.vatIds,
+    drCode: input.dtCode,
+    revCode: input.ktCode,
+    splitVat: input.splitVat,
+    vatAccCode: input.vatAccCode,
+    description: input.description,
+  });
+}
+
 // ── 3b. Банкны зарлагыг зардалд бичих (журнал авто) ────────────────────────
 export async function recordBankExpense(input: {
   partnerId: number;

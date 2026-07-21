@@ -7,9 +7,11 @@ import {
   recordBankExpense,
   createPayableFromVat,
   createReceivableFromVat,
-  linkVatToPartner,
   listUnmatchedVat,
+  processUnmatchedVat,
 } from "./actions";
+
+export type Partner = { id: number; name: string };
 
 export type TxnRow = {
   id: number;
@@ -521,10 +523,12 @@ export function VatPurchasePanel({
   partnerId,
   rows,
   accounts,
+  partners = [],
 }: {
   partnerId: number;
   rows: VatRow[];
   accounts: Acc[];
+  partners?: Partner[];
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -542,6 +546,11 @@ export function VatPurchasePanel({
   const [unmLoaded, setUnmLoaded] = useState(false);
   const [linkSel, setLinkSel] = useState<Set<number>>(new Set());
   const [q, setQ] = useState("");
+  // И баримт холбохдоо: сонгосон харилцагч + журналын данс (хоосон бол зөвхөн холбоно).
+  const [linkPartner, setLinkPartner] = useState(String(partnerId));
+  const [linkDt, setLinkDt] = useState("");
+  const [linkKt, setLinkKt] = useState("310100");
+  const [linkSplitVat, setLinkSplitVat] = useState(false);
 
   const total = rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 
@@ -588,7 +597,16 @@ export function VatPurchasePanel({
 
   const submitLink = () => {
     start(async () => {
-      const r = await linkVatToPartner(partnerId, [...linkSel]);
+      const r = await processUnmatchedVat({
+        partnerId: Number(linkPartner) || partnerId,
+        vatIds: [...linkSel],
+        kind: "in",
+        dtCode: linkDt,
+        ktCode: linkKt,
+        splitVat: linkSplitVat,
+        vatAccCode: "330100",
+        description: "",
+      });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) {
         setShowLink(false);
@@ -770,8 +788,49 @@ export function VatPurchasePanel({
 
       {/* И баримт холбох modal */}
       {showLink && (
-        <Modal title="Холбогдоогүй И баримтаас сонгох" onClose={() => setShowLink(false)}>
+        <Modal title="Холбогдоогүй И баримтыг холбох + бүртгэх" onClose={() => setShowLink(false)}>
           <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 rounded-lg bg-zinc-50 p-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium text-zinc-600">Харилцагч</span>
+                <select
+                  value={linkPartner}
+                  onChange={(e) => setLinkPartner(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  {partners.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">
+                  Зардлын данс (Дт) <span className="font-normal text-zinc-400">— хоосон бол зөвхөн холбоно</span>
+                </span>
+                <input
+                  list="link-acc-dl"
+                  value={linkDt}
+                  onChange={(e) => setLinkDt(e.target.value)}
+                  placeholder="720701…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">Кт данс (өглөг)</span>
+                <input
+                  list="link-acc-dl"
+                  value={linkKt}
+                  onChange={(e) => setLinkKt(e.target.value)}
+                  placeholder="310100…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <AccDatalist id="link-acc-dl" accounts={accounts} />
+              <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-2">
+                <input type="checkbox" checked={linkSplitVat} onChange={(e) => setLinkSplitVat(e.target.checked)} />
+                НӨАТ-ыг тусдаа өглөгт холбох (Дт 130600 / Кт 330100)
+              </label>
+            </div>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -833,7 +892,7 @@ export function VatPurchasePanel({
                 disabled={pending || linkSel.size === 0}
                 className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
               >
-                {pending ? "…" : "Энэ харилцагчтай холбох"}
+                {pending ? "…" : linkDt.trim() ? "Холбоод өглөг үүсгэх" : "Холбох"}
               </button>
             </div>
           </div>
@@ -850,10 +909,12 @@ export function VatSalesPanel({
   partnerId,
   rows,
   accounts,
+  partners = [],
 }: {
   partnerId: number;
   rows: VatRow[];
   accounts: Acc[];
+  partners?: Partner[];
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -865,6 +926,11 @@ export function VatSalesPanel({
   const [splitVat, setSplitVat] = useState(true);
   const [vatAcc, setVatAcc] = useState("330100");
   const [desc, setDesc] = useState("");
+  // И баримт холбохдоо: сонгосон харилцагч + журналын данс (хоосон бол зөвхөн холбоно).
+  const [linkPartner, setLinkPartner] = useState(String(partnerId));
+  const [linkDr, setLinkDr] = useState("130100");
+  const [linkRev, setLinkRev] = useState("610100");
+  const [linkSplitVat, setLinkSplitVat] = useState(true);
 
   const [showLink, setShowLink] = useState(false);
   const [unm, setUnm] = useState<UnmatchedRow[]>([]);
@@ -917,7 +983,16 @@ export function VatSalesPanel({
 
   const submitLink = () => {
     start(async () => {
-      const r = await linkVatToPartner(partnerId, [...linkSel]);
+      const r = await processUnmatchedVat({
+        partnerId: Number(linkPartner) || partnerId,
+        vatIds: [...linkSel],
+        kind: "out",
+        dtCode: linkDr,
+        ktCode: linkRev,
+        splitVat: linkSplitVat,
+        vatAccCode: "330100",
+        description: "",
+      });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) {
         setShowLink(false);
@@ -1102,8 +1177,49 @@ export function VatSalesPanel({
 
       {/* И баримт холбох modal */}
       {showLink && (
-        <Modal title="Холбогдоогүй борлуулалтын И баримтаас сонгох" onClose={() => setShowLink(false)}>
+        <Modal title="Холбогдоогүй борлуулалтын И баримтыг холбох + бүртгэх" onClose={() => setShowLink(false)}>
           <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 rounded-lg bg-zinc-50 p-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium text-zinc-600">Харилцагч</span>
+                <select
+                  value={linkPartner}
+                  onChange={(e) => setLinkPartner(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  {partners.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">
+                  Авлагын данс (Дт) <span className="font-normal text-zinc-400">— хоосон бол зөвхөн холбоно</span>
+                </span>
+                <input
+                  list="link-sale-acc-dl"
+                  value={linkDr}
+                  onChange={(e) => setLinkDr(e.target.value)}
+                  placeholder="130100…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-zinc-600">Орлогын данс (Кт)</span>
+                <input
+                  list="link-sale-acc-dl"
+                  value={linkRev}
+                  onChange={(e) => setLinkRev(e.target.value)}
+                  placeholder="610100…"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <AccDatalist id="link-sale-acc-dl" accounts={accounts} />
+              <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-2">
+                <input type="checkbox" checked={linkSplitVat} onChange={(e) => setLinkSplitVat(e.target.checked)} />
+                Төлбөл зохих НӨАТ-ыг тусад нь бичих (Кт 330100)
+              </label>
+            </div>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -1165,7 +1281,7 @@ export function VatSalesPanel({
                 disabled={pending || linkSel.size === 0}
                 className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
               >
-                {pending ? "…" : "Энэ харилцагчтай холбох"}
+                {pending ? "…" : linkDr.trim() ? "Холбоод борлуулалт үүсгэх" : "Холбох"}
               </button>
             </div>
           </div>

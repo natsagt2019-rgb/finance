@@ -116,9 +116,13 @@ export default async function PartnerDetailPage({
     }
   }
   const vatAll = [...vatById.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
-  // Зөвхөн анхны борлуулалт (parent_ddtd хоосон) = бодит орлого.
-  const vatOut = vatAll.filter((v) => v.type === "out" && !v.parent_ddtd);
-  const vatOutClosing = vatAll.filter((v) => v.type === "out" && v.parent_ddtd);
+  // Бодит орлого = анхны нэхэмжлэл (parent_ddtd хоосон), эсвэл эцэг нь
+  // устгагдсан/олдоогүй хаалтын баримт (давхардал цэвэрлэгээний дараа дэд нь
+  // цор ганц мөр болно). Эцэгтэйгээ хамт байгаа хаалтын баримт л тоологдохгүй.
+  const ddtdSet = new Set(vatAll.map((v) => v.ddtd).filter(Boolean));
+  const isPrimaryVat = (v: VatRow) => !v.parent_ddtd || !ddtdSet.has(v.parent_ddtd);
+  const vatOut = vatAll.filter((v) => v.type === "out" && isPrimaryVat(v));
+  const vatOutClosing = vatAll.filter((v) => v.type === "out" && !isPrimaryVat(v));
   const vatIn = vatAll.filter((v) => v.type === "in");
 
   // ── Банкны гүйлгээ (transactions) ────────────────────────────────────────
@@ -172,6 +176,15 @@ export default async function PartnerDetailPage({
     .order("code")
     .limit(5000);
   const accountsList = (accListData as { code: string; name: string }[] | null) ?? [];
+
+  // Идэвхтэй харилцагчид (И баримт холбохдоо харилцагч сонгоход).
+  const { data: partListData } = await supabase
+    .from("partners")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name")
+    .limit(5000);
+  const partnersList = (partListData as { id: number; name: string }[] | null) ?? [];
 
   // ── Нийт дүнгүүд ─────────────────────────────────────────────────────────
   // Гадаад валютыг төгрөгт хөрвүүлж нэгтгэнэ (eBarimt-тай тулгалт MNT-ээр).
@@ -335,7 +348,7 @@ export default async function PartnerDetailPage({
       {/* Эхний хос: eBarimt борлуулалт ↔ Банкны орлого */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="eBarimt борлуулалт" subtitle="(анхны нэхэмжлэл)" tone="green" count={vatOut.length}>
-          <VatSalesPanel partnerId={pid} rows={vatOut} accounts={accountsList} />
+          <VatSalesPanel partnerId={pid} rows={vatOut} accounts={accountsList} partners={partnersList} />
           {vatOutClosing.length > 0 && (
             <div className="border-t border-zinc-100 px-3 py-2 text-xs text-zinc-400">
               + {vatOutClosing.length} хаалтын баримт (
@@ -378,7 +391,7 @@ export default async function PartnerDetailPage({
       {/* Хоёр дахь хос: eBarimt худалдан авалт ↔ Банкны зарлага */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="eBarimt худалдан авалт" subtitle="(ирсэн нэхэмжлэл)" tone="orange" count={vatIn.length}>
-          <VatPurchasePanel partnerId={pid} rows={vatIn} accounts={accountsList} />
+          <VatPurchasePanel partnerId={pid} rows={vatIn} accounts={accountsList} partners={partnersList} />
         </Panel>
 
         <Panel title="Банкны зарлага" tone="zinc" count={bankExpense.length}>
