@@ -15,6 +15,7 @@ import {
 import { EmployeesTab } from "./employees-tab";
 import { CalcTab } from "./calc-tab";
 import { SummaryTab } from "./summary-tab";
+import { InsuranceTab } from "./insurance-tab";
 import { SettingsTab } from "./settings-tab";
 
 type SearchParams = {
@@ -29,6 +30,7 @@ const TAB_LABELS: Record<Tab, string> = {
   employees: "Ажилтнууд",
   calc: "Цалин тооцоо",
   summary: "Нэгтгэл",
+  insurance: "ЭМНД тайлан",
   settings: "Тохиргоо",
 };
 
@@ -142,7 +144,7 @@ export default async function SalaryPage({
 
   const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const showCompanyFilter = tab !== "settings";
-  const showPeriod = tab === "calc" || tab === "summary";
+  const showPeriod = tab === "calc" || tab === "summary" || tab === "insurance";
 
   return (
     <div>
@@ -277,6 +279,19 @@ export default async function SalaryPage({
             )}
             employees={allEmployees}
             year={year}
+          />
+        )}
+        {tab === "insurance" && (
+          <InsuranceTab
+            monthRecords={records.filter(
+              (r) =>
+                r.month === month &&
+                (!company || r.company === company) &&
+                (!department || (r.department ?? "") === department),
+            )}
+            employees={allEmployees}
+            year={year}
+            month={month}
           />
         )}
         {tab === "settings" && <SettingsTab settings={settings} year={year} />}

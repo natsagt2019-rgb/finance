@@ -98,5 +98,5 @@ export const SETTINGS_SELECT =
 // ── Туслах ─────────────────────────────────────────────────────────────────
 // Нийтлэг build — компанийн тогтмол утга байхгүй (шаардвал энд нэмнэ).
 export const COMPANIES: readonly string[] = [];
-export const TABS = ["employees", "calc", "summary", "settings"] as const;
+export const TABS = ["employees", "calc", "summary", "insurance", "settings"] as const;
 export type Tab = (typeof TABS)[number];
