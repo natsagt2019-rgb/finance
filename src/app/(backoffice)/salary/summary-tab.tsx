@@ -1,5 +1,6 @@
 import { SalaryToolbar, type SummaryExportRow } from "./salary-toolbar";
 import { Nd8ExportButton } from "./nd8-export";
+import { PostJournalButton } from "./post-journal-button";
 import type { EmployeeRow, SalaryRow } from "./types";
 
 function fmt(n: number): string {
@@ -20,12 +21,15 @@ type MonthAgg = {
 export function SummaryTab({
   records,
   employees,
+  postedMonths,
   year,
 }: {
   records: SalaryRow[];
   employees: EmployeeRow[];
+  postedMonths: number[];
   year: number;
 }) {
+  const postedSet = new Set(postedMonths);
   // Сар бүрээр нэгтгэнэ (1-12).
   const agg: MonthAgg[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
@@ -101,6 +105,7 @@ export function SummaryTab({
                 <th className="px-4 py-2 text-right">Урьдчилгаа</th>
                 <th className="px-4 py-2 text-right">Гарт олгох</th>
                 <th className="no-print px-4 py-2 text-center">НД-8</th>
+                <th className="no-print px-4 py-2 text-center">Журнал</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -138,6 +143,13 @@ export function SummaryTab({
                       month={a.month}
                     />
                   </td>
+                  <td className="no-print px-4 py-2 text-center">
+                    <PostJournalButton
+                      year={year}
+                      month={a.month}
+                      posted={postedSet.has(a.month)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -164,6 +176,7 @@ export function SummaryTab({
                 <td className="px-4 py-2 text-right tabular-nums text-green-700">
                   {fmt(totals.net)}
                 </td>
+                <td className="no-print" />
                 <td className="no-print" />
               </tr>
             </tfoot>

@@ -293,8 +293,9 @@ async function loadParams(
 }
 
 // Тухайн сарын цалингийн журнал (нэгтгэсэн) — journal_entries (тайлангийн эх сурвалж).
-//   Дт 700101 (нийт цалин) / Кт 310501 НДШ + Кт 310401 ХХОАТ
-//                         + Кт 120601 урьдчилгаа/бусад суутгал + Кт 310201 цэвэр өглөг
+//   Дт 720100 Цалин зардал (нийт) + Дт 720200 ЭМНДШ зардал (ажил олгогч)
+//   Кт 320200 ЭМНДШ өглөг (ажилтан+ажил олгогч) + Кт 320300 ХХОАТ
+//   Кт 130400 урьдчилгаа/бусад суутгал + Кт 320100 цэвэр цалингийн өглөг
 // idempotent: тухайн сарын source='salary' бичилтийг солино.
 async function postSalaryJournal(
   supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
@@ -303,6 +304,7 @@ async function postSalaryJournal(
   records: {
     gross: number;
     sh_insurance: number;
+    employer_sh: number;
     pit: number;
     advance: number;
     net: number;
@@ -318,6 +320,7 @@ async function postSalaryJournal(
   const gross = r2(sum("gross"));
   if (gross <= 0) return;
   const sh = r2(sum("sh_insurance"));
+  const employerSh = r2(sum("employer_sh"));
   const pit = r2(sum("pit"));
   // Урьдчилгаа + бүх нэмэлт суутгал (хоцролт/хуримтлал/сахилга/бусад).
   const advOther = r2(
@@ -337,18 +340,61 @@ async function postSalaryJournal(
   await supabase.from("journal_entries").delete().eq("source", "salary").eq("txn_date", date);
 
   const rows: Record<string, unknown>[] = [];
-  const push = (amt: number, kt: string, desc: string) => {
+  const push = (amt: number, dt: string, kt: string, desc: string) => {
     if (r2(amt) > 0)
       rows.push({
         txn_date: date, description: desc, amount: r2(amt),
-        debit_code: "720100", credit_code: kt, is_opening: false, source: "salary",
+        debit_code: dt, credit_code: kt, is_opening: false, source: "salary",
       });
   };
-  push(sh, "320200", `${tag} цалин: НДШ суутгал`);
-  push(pit, "320300", `${tag} цалин: ХХОАТ суутгал`);
-  push(advOther, "130400", `${tag} цалин: урьдчилгаа/бусад суутгал`);
-  push(net, "320100", `${tag} цалин: цэвэр өглөг`);
+  // Ажилтны тал: Дт 720100 (нийт цалин) / Кт суутгал + цэвэр өглөг.
+  push(sh, "720100", "320200", `${tag} цалин: НДШ суутгал`);
+  push(pit, "720100", "320300", `${tag} цалин: ХХОАТ суутгал`);
+  push(advOther, "720100", "130400", `${tag} цалин: урьдчилгаа/бусад суутгал`);
+  push(net, "720100", "320100", `${tag} цалин: цэвэр өглөг`);
+  // Ажил олгогчийн тал: Дт 720200 ЭМНДШ зардал / Кт 320200 ЭМНДШ өглөг.
+  push(employerSh, "720200", "320200", `${tag} цалин: ажил олгогчийн ЭМНДШ`);
   if (rows.length > 0) await supabase.from("journal_entries").insert(rows);
+}
+
+// Нэгтгэл табаас: тухайн сарын хадгалсан цалингаас GL журнал бичих (идемпотент).
+export async function postSalaryMonthJournal(
+  year: number,
+  month: number,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+
+  const { data, error } = await supabase
+    .from("salary_records")
+    .select(
+      "gross, sh_insurance, employer_sh, pit, advance, net, late_deduction, savings_deduction, discipline_deduction, other_deduction",
+    )
+    .eq("year", year)
+    .eq("month", month)
+    .eq("is_active", true)
+    .limit(20000);
+  if (error) return { ok: false, error: error.message };
+
+  const records = (data ?? []).map((r) => ({
+    gross: Number(r.gross) || 0,
+    sh_insurance: Number(r.sh_insurance) || 0,
+    employer_sh: Number(r.employer_sh) || 0,
+    pit: Number(r.pit) || 0,
+    advance: Number(r.advance) || 0,
+    net: Number(r.net) || 0,
+    late_deduction: Number(r.late_deduction) || 0,
+    savings_deduction: Number(r.savings_deduction) || 0,
+    discipline_deduction: Number(r.discipline_deduction) || 0,
+    other_deduction: Number(r.other_deduction) || 0,
+  }));
+  if (records.length === 0)
+    return { ok: false, error: "Энэ сард хадгалсан цалин алга." };
+
+  await postSalaryJournal(supabase, year, month, records);
+  revalidatePath("/journals");
+  revalidatePath("/salary");
+  return { ok: true, id: records.length };
 }
 
 // ── Хугацаа хаалтын шалгалт ──────────────────────────────────────────────────

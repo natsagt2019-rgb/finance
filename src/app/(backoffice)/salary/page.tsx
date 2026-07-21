@@ -99,6 +99,20 @@ export default async function SalaryPage({
     .limit(5000);
   const records = (recData as SalaryRow[] | null) ?? [];
 
+  // Аль сард цалингийн журнал GL-д бичигдсэнийг тогтоох (Нэгтгэл таб).
+  const { data: salJournal } = await supabase
+    .from("journal_entries")
+    .select("txn_date")
+    .eq("source", "salary")
+    .gte("txn_date", `${year}-01-01`)
+    .lte("txn_date", `${year}-12-31`)
+    .limit(5000);
+  const postedMonths = [
+    ...new Set(
+      (salJournal ?? []).map((j) => Number(String(j.txn_date).slice(5, 7))),
+    ),
+  ];
+
   // Нээлттэй ажилчдын авлага (БМ дутагдал) — ажилтан тус бүрийн үлдэгдэл.
   const { data: srData } = await supabase
     .from("staff_receivables")
@@ -278,6 +292,7 @@ export default async function SalaryPage({
                 (!department || (r.department ?? "") === department),
             )}
             employees={allEmployees}
+            postedMonths={postedMonths}
             year={year}
           />
         )}
