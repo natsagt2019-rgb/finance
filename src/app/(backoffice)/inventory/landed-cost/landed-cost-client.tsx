@@ -6,7 +6,13 @@ import { useRouter } from "next/navigation";
 
 import { fmt, fmtQty } from "@/lib/inventory-calc";
 import { PrintButton } from "@/components/print-button";
-import { postLandedImport, getAccountBalance, type LandedPostResult } from "./actions";
+import {
+  postLandedImport,
+  postLandedAssetImport,
+  getAccountBalance,
+  type LandedPostResult,
+  type LandedAssetPostResult,
+} from "./actions";
 
 export type PickItem = {
   id: number;
@@ -16,8 +22,17 @@ export type PickItem = {
   unit: string;
 };
 export type AccountOpt = { id: number; code: string; name: string };
+export type AssetCat = { id: number; name: string; account_code: string };
 
-type Line = { key: number; itemId: number; qty: number; fobUnit: number };
+// itemId — БМ горим; name/categoryId — ҮХ горим.
+type Line = {
+  key: number;
+  itemId: number;
+  name: string;
+  categoryId: number;
+  qty: number;
+  fobUnit: number;
+};
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -35,11 +50,16 @@ const CURRENCIES: { code: string; rate: number }[] = [
 export function LandedCostClient({
   items,
   accounts,
+  assetCats,
 }: {
   items: PickItem[];
   accounts: AccountOpt[];
+  assetCats: AssetCat[];
 }) {
   const router = useRouter();
+  // Орлого авах төрөл: бараа материал (inv) эсвэл үндсэн хөрөнгө (asset).
+  const [mode, setMode] = useState<"inv" | "asset">("inv");
+  const catById = useMemo(() => new Map(assetCats.map((c) => [c.id, c])), [assetCats]);
   const fileRef = useRef<HTMLInputElement>(null);
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   // Excel импортод бараа тааруулах (SKU / нэрээр).
@@ -74,15 +94,16 @@ export function LandedCostClient({
   const [storageAcct, setStorageAcct] = useState(acctId("140200") || acctId("110200"));
   const [pullBusy, setPullBusy] = useState("");
 
-  const [lines, setLines] = useState<Line[]>([{ key: 1, itemId: 0, qty: 0, fobUnit: 0 }]);
-  const [result, setResult] = useState<LandedPostResult | null>(null);
+  const newLine = (key: number): Line => ({ key, itemId: 0, name: "", categoryId: 0, qty: 0, fobUnit: 0 });
+  const [lines, setLines] = useState<Line[]>([newLine(1)]);
+  const [result, setResult] = useState<LandedPostResult | LandedAssetPostResult | null>(null);
   const [pending, start] = useTransition();
 
   function setLine(key: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
   function addLine() {
-    setLines((ls) => [...ls, { key: (ls.at(-1)?.key ?? 0) + 1, itemId: 0, qty: 0, fobUnit: 0 }]);
+    setLines((ls) => [...ls, newLine((ls.at(-1)?.key ?? 0) + 1)]);
   }
   function removeLine(key: number) {
     setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
@@ -130,7 +151,7 @@ export function LandedCostClient({
           (code && lookup.name.get(code.toLowerCase())) ||
           null;
         if (!it) { missed++; continue; }
-        fresh.push({ key: ++key, itemId: it.id, qty, fobUnit: fob });
+        fresh.push({ key: ++key, itemId: it.id, name: "", categoryId: 0, qty, fobUnit: fob });
         matched++;
       }
       if (fresh.length) {
@@ -155,7 +176,7 @@ export function LandedCostClient({
       "Гааль", "Тээвэр", "Хадгалалт", "Landed нэгж", "Landed нийт",
     ];
     const body = calc.rows.map((r) => [
-      r.it.name, r.it.sku ?? "", r.line.qty, r2(r.line.qty * r.line.fobUnit),
+      r.label, r.sku ?? "", r.line.qty, r2(r.line.qty * r.line.fobUnit),
       r.fobMnt, r.duty, r.freight, r.storage, r.landedUnit, r.landed,
     ]);
     body.push([
@@ -185,7 +206,9 @@ export function LandedCostClient({
 
   // ── Тооцоо (landed cost allocation) ──
   const calc = useMemo(() => {
-    const valid = lines.filter((l) => l.itemId > 0 && l.qty > 0);
+    const valid = lines.filter((l) =>
+      (mode === "inv" ? l.itemId > 0 : l.categoryId > 0 && l.name.trim()) && l.qty > 0,
+    );
     const fobMntOf = (l: Line) => r2(l.qty * l.fobUnit * rate);
     const fobMntTotal = r2(valid.reduce((s, l) => s + fobMntOf(l), 0));
     const qtyTotal = valid.reduce((s, l) => s + l.qty, 0);
@@ -199,7 +222,11 @@ export function LandedCostClient({
     const share = (total: number, l: Line, last: boolean, acc: number) =>
       last ? r2(total - acc) : baseTotal > 0 ? r2(total * (base(l) / baseTotal)) : 0;
     const rows = valid.map((l, idx) => {
-      const it = itemById.get(l.itemId)!;
+      const it = mode === "inv" ? itemById.get(l.itemId) : undefined;
+      const cat = mode === "asset" ? catById.get(l.categoryId) : undefined;
+      const label = mode === "inv" ? it?.name ?? "" : l.name.trim();
+      const sku = mode === "inv" ? it?.sku ?? null : null;
+      const categoryCode = mode === "inv" ? it?.category_code ?? "" : cat?.account_code ?? "";
       const fobMnt = fobMntOf(l);
       const last = idx === valid.length - 1;
       const duty = share(dutyTotal, l, last, accDuty);
@@ -214,7 +241,7 @@ export function LandedCostClient({
       const landedUnit = l.qty > 0 ? r2(landed / l.qty) : 0;
       const landedAdj = r2(l.qty * landedUnit); // = total_cost (post-той ижил)
       return {
-        line: l, it, fobMnt, duty, freight: frShare, storage: stShare,
+        line: l, label, sku, categoryCode, fobMnt, duty, freight: frShare, storage: stShare,
         landed: landedAdj, landedUnit,
       };
     });
@@ -222,7 +249,7 @@ export function LandedCostClient({
     const importVat = r2((fobMntTotal + dutyTotal) * (vatPct / 100));
     const addlTotal = r2(dutyTotal + freight + storage);
     return { rows, fobMntTotal, dutyTotal, freight, storage, importVat, landedTotal, addlTotal, qtyTotal };
-  }, [lines, rate, dutyPct, dutyAmount, freight, storage, vatPct, allocBy, itemById]);
+  }, [lines, rate, dutyPct, dutyAmount, freight, storage, vatPct, allocBy, itemById, mode, catById]);
 
   function post() {
     if (calc.rows.length === 0) {
@@ -234,29 +261,44 @@ export function LandedCostClient({
       return;
     }
     setResult(null);
+    const common = {
+      date,
+      docNo,
+      supplier: supplier.trim() || null,
+      company: company.trim() || null,
+      bankAccountId: Number(bank),
+      fobMnt: calc.fobMntTotal,
+      importVat: calc.importVat,
+      duty: calc.dutyTotal,
+      freight: calc.freight,
+      storage: calc.storage,
+      dutyAccountId: dutyAcct ? Number(dutyAcct) : null,
+      freightAccountId: freightAcct ? Number(freightAcct) : null,
+      storageAccountId: storageAcct ? Number(storageAcct) : null,
+    };
     start(async () => {
-      const res = await postLandedImport({
-        date,
-        docNo,
-        supplier: supplier.trim() || null,
-        company: company.trim() || null,
-        bankAccountId: Number(bank),
-        fobMnt: calc.fobMntTotal,
-        importVat: calc.importVat,
-        duty: calc.dutyTotal,
-        freight: calc.freight,
-        storage: calc.storage,
-        dutyAccountId: dutyAcct ? Number(dutyAcct) : null,
-        freightAccountId: freightAcct ? Number(freightAcct) : null,
-        storageAccountId: storageAcct ? Number(storageAcct) : null,
-        lines: calc.rows.map((r) => ({
-          itemId: r.line.itemId,
-          categoryCode: r.it.category_code,
-          qty: r.line.qty,
-          landedUnit: r.landedUnit,
-          landed: r.landed,
-        })),
-      });
+      const res =
+        mode === "inv"
+          ? await postLandedImport({
+              ...common,
+              lines: calc.rows.map((r) => ({
+                itemId: r.line.itemId,
+                categoryCode: r.categoryCode,
+                qty: r.line.qty,
+                landedUnit: r.landedUnit,
+                landed: r.landed,
+              })),
+            })
+          : await postLandedAssetImport({
+              ...common,
+              lines: calc.rows.map((r) => ({
+                name: r.label,
+                categoryId: r.line.categoryId,
+                qty: r.line.qty,
+                landedUnit: r.landedUnit,
+                landed: r.landed,
+              })),
+            });
       setResult(res);
       if (res.ok) router.refresh();
     });
@@ -269,6 +311,29 @@ export function LandedCostClient({
 
   return (
     <div className="space-y-6">
+      {/* ── Орлого авах төрөл ── */}
+      <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm print:hidden">
+        {([
+          { v: "inv" as const, label: "📦 Бараа материал" },
+          { v: "asset" as const, label: "🏗 Үндсэн хөрөнгө" },
+        ]).map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            onClick={() => {
+              setMode(o.v);
+              setLines([newLine(1)]);
+              setResult(null);
+            }}
+            className={`rounded-md px-4 py-1.5 font-medium transition-colors ${
+              mode === o.v ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Толгой ── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 print:hidden">
         <label className="flex flex-col gap-1"><span className="text-xs font-medium text-zinc-600">Огноо</span>
@@ -330,8 +395,8 @@ export function LandedCostClient({
         <p className="mt-2 text-xs text-zinc-500">«Үлдэгдэл татах» нь сонгосон дансны (УТЗ/УТТ г.м) одоогийн үлдэгдлийг дүнд бичнэ. Орлогод авахад тухайн данс кредитлэгдэнэ.</p>
       </div>
 
-      {/* ── Excel хэрэгсэл ── */}
-      <div className="flex flex-wrap items-center gap-2 print:hidden">
+      {/* ── Excel хэрэгсэл (зөвхөн БМ горим) ── */}
+      <div className={`flex flex-wrap items-center gap-2 print:hidden ${mode === "asset" ? "hidden" : ""}`}>
         <a href="/inventory/landed-cost/template"
           className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
           ↓ Excel загвар
@@ -353,8 +418,8 @@ export function LandedCostClient({
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
-              <th className="px-2 py-2 text-left">Бараа</th>
-              <th className="px-2 py-2 text-right">Тоо хэмжээ</th>
+              <th className="px-2 py-2 text-left">{mode === "inv" ? "Бараа" : "Хөрөнгийн нэр + ангилал"}</th>
+              <th className="px-2 py-2 text-right">{mode === "inv" ? "Тоо хэмжээ" : "Тоо (ширхэг)"}</th>
               <th className="px-2 py-2 text-right">FOB нэгж үнэ ({currency})</th>
               <th className="px-2 py-2"></th>
             </tr>
@@ -363,10 +428,25 @@ export function LandedCostClient({
             {lines.map((l) => (
               <tr key={l.key} className="border-t border-zinc-100">
                 <td className="px-2 py-1.5">
-                  <select value={l.itemId} onChange={(e) => setLine(l.key, { itemId: Number(e.target.value) })} className={inputCls + " w-full"}>
-                    <option value={0}>— бараа сонгох —</option>
-                    {items.map((i) => <option key={i.id} value={i.id}>{i.sku ? i.sku + " · " : ""}{i.name}</option>)}
-                  </select>
+                  {mode === "inv" ? (
+                    <select value={l.itemId} onChange={(e) => setLine(l.key, { itemId: Number(e.target.value) })} className={inputCls + " w-full"}>
+                      <option value={0}>— бараа сонгох —</option>
+                      {items.map((i) => <option key={i.id} value={i.id}>{i.sku ? i.sku + " · " : ""}{i.name}</option>)}
+                    </select>
+                  ) : (
+                    <div className="flex flex-col gap-1 sm:flex-row">
+                      <input
+                        value={l.name}
+                        onChange={(e) => setLine(l.key, { name: e.target.value })}
+                        placeholder="Хөрөнгийн нэр (ж. Экскаватор)"
+                        className={inputCls + " w-full sm:flex-1"}
+                      />
+                      <select value={l.categoryId} onChange={(e) => setLine(l.key, { categoryId: Number(e.target.value) })} className={inputCls + " w-full sm:w-56"}>
+                        <option value={0}>— ангилал —</option>
+                        {assetCats.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </td>
                 <td className="px-2 py-1.5 w-32"><input type="number" value={l.qty || ""} onChange={(e) => setLine(l.key, { qty: Number(e.target.value) || 0 })} className={numCls} /></td>
                 <td className="px-2 py-1.5 w-36"><input type="number" value={l.fobUnit || ""} onChange={(e) => setLine(l.key, { fobUnit: Number(e.target.value) || 0 })} className={numCls} /></td>
@@ -411,7 +491,7 @@ export function LandedCostClient({
                 <tr><td colSpan={9} className="border border-zinc-300 px-2 py-4 text-center text-zinc-400">Бараа + тоо хэмжээ + FOB үнэ оруулна уу.</td></tr>
               ) : calc.rows.map((r) => (
                 <tr key={r.line.key} className="text-right">
-                  <td className="border border-zinc-300 px-2 py-1 text-left">{r.it.sku ? <span className="font-mono text-zinc-400">{r.it.sku} </span> : ""}{r.it.name}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-left">{r.sku ? <span className="font-mono text-zinc-400">{r.sku} </span> : ""}{r.label}</td>
                   <td className="border border-zinc-300 px-2 py-1 tabular-nums">{fmtQty(r.line.qty)}</td>
                   <td className="border border-zinc-300 px-2 py-1 tabular-nums">{fmt(r.line.qty * r.line.fobUnit)}</td>
                   <td className="border border-zinc-300 px-2 py-1 tabular-nums">{fmt(r.fobMnt)}</td>
@@ -458,19 +538,33 @@ export function LandedCostClient({
           className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40">
           {pending ? "Хадгалж байна…" : "✓ Орлогод авах + журнал бичих"}
         </button>
-        <span className="text-xs text-zinc-500">Бараа бүрт landed нэгж өртгөөр орлого + нэг гаалийн ваучер бичигдэнэ.</span>
+        <span className="text-xs text-zinc-500">
+          {mode === "inv"
+            ? "Бараа бүрт landed нэгж өртгөөр орлого + нэг гаалийн ваучер бичигдэнэ."
+            : "Ширхэг бүрд хөрөнгийн карт (landed өртгөөр) + нэг гаалийн ваучер бичигдэнэ."}
+        </span>
       </div>
 
       {result && (
         <div className={`rounded-xl border px-5 py-4 text-sm ${result.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-700"}`}>
           {result.ok ? (
-            <div className="space-y-2">
-              <p className="font-medium">✓ {result.inserted} бараа орлогод авлаа. Баримт: <span className="font-mono">{result.docNo}</span></p>
-              <Link href={`/inventory/document/bm-2?doc=${encodeURIComponent(result.docNo)}`}
-                className="inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
-                🖨 Орлогын баримт хэвлэх (БМ-2)
-              </Link>
-            </div>
+            "assets" in result ? (
+              <div className="space-y-2">
+                <p className="font-medium">✓ {result.assets} хөрөнгө бүртгэлээ. Баримт: <span className="font-mono">{result.docNo}</span></p>
+                <Link href="/assets"
+                  className="inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+                  🏗 Хөрөнгийн бүртгэл харах
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="font-medium">✓ {result.inserted} бараа орлогод авлаа. Баримт: <span className="font-mono">{result.docNo}</span></p>
+                <Link href={`/inventory/document/bm-2?doc=${encodeURIComponent(result.docNo)}`}
+                  className="inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+                  🖨 Орлогын баримт хэвлэх (БМ-2)
+                </Link>
+              </div>
+            )
           ) : <p>{result.error}</p>}
         </div>
       )}

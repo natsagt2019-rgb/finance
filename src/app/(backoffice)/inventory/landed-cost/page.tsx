@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { ITEM_SELECT, type ItemRow } from "../types";
-import { LandedCostClient, type PickItem, type AccountOpt } from "./landed-cost-client";
+import { LandedCostClient, type PickItem, type AccountOpt, type AssetCat } from "./landed-cost-client";
 
 export const metadata = { title: "Гаалийн өртөг тооцоо" };
 
@@ -36,6 +36,16 @@ export default async function LandedCostPage() {
     .limit(3000);
   const accounts = (accData as AccountOpt[] | null) ?? [];
 
+  // Үндсэн хөрөнгийн ангилал (данс кодтой) — «Үндсэн хөрөнгө» горимд ашиглана.
+  const { data: catData } = await supabase
+    .from("asset_categories")
+    .select("id, name, account_code")
+    .order("code", { ascending: true })
+    .limit(500);
+  const assetCats = (
+    (catData as { id: number; name: string; account_code: string | null }[] | null) ?? []
+  ).filter((c) => c.account_code) as AssetCat[];
+
   return (
     <div>
       <div className="mb-4 print:hidden">
@@ -51,7 +61,7 @@ export default async function LandedCostPage() {
       </p>
 
       <div className="mt-6">
-        <LandedCostClient items={picks} accounts={accounts} />
+        <LandedCostClient items={picks} accounts={accounts} assetCats={assetCats} />
       </div>
     </div>
   );

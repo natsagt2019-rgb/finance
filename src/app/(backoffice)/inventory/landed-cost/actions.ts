@@ -166,6 +166,173 @@ export async function postLandedImport(input: LandedPostInput): Promise<LandedPo
   return { ok: true, docNo, inserted: moveIds.length, journalId: posted.id };
 }
 
+// ── Гаалийн импорт → ҮНДСЭН ХӨРӨНГӨ (landed-cost) ─────────────────────────
+export type LandedAssetLineInput = {
+  name: string; // хөрөнгийн нэр
+  categoryId: number; // asset_categories.id
+  qty: number; // ширхэг (тус бүрд тусдаа карт)
+  landedUnit: number; // ₮ нэгж (ширхэг) landed өртөг
+  landed: number; // ₮ нийт landed (= qty × landedUnit)
+};
+
+export type LandedAssetPostInput = Omit<LandedPostInput, "lines"> & {
+  lines: LandedAssetLineInput[];
+};
+
+export type LandedAssetPostResult =
+  | { ok: true; docNo: string; assets: number; journalId: number }
+  | { ok: false; error: string };
+
+// Импортоор худалдан авсан үндсэн хөрөнгийг landed-cost-оор орлогод авна:
+//   • Ширхэг бүрт assets карт (landed нэгж өртгөөр)
+//   • Нэг гаалийн ваучер: Дт хөрөнгийн данс (ангиллаар) + Дт 130600 НӨАТ /
+//     Кт 310100 өглөг (FOB) + Кт банк/гааль (татвар+тээвэр+хадгалалт+импортын НӨАТ)
+export async function postLandedAssetImport(
+  input: LandedAssetPostInput,
+): Promise<LandedAssetPostResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Нэвтрэх шаардлагатай." };
+
+  if (!ISO.test(input.date)) return { ok: false, error: "Огноо буруу." };
+  const lines = (input.lines ?? []).filter(
+    (l) => l.categoryId > 0 && l.qty > 0 && l.landed > 0 && (l.name ?? "").trim(),
+  );
+  if (lines.length === 0) return { ok: false, error: "Орлогод авах мөр алга (нэр/ангилал/тоо/өртөг)." };
+  if (!(input.bankAccountId > 0)) return { ok: false, error: "Төлбөрийн данс (банк/касс) сонгоно уу." };
+
+  const docNo =
+    input.docNo.trim() ||
+    `ГААЛЬ-ҮХ-${input.date.replace(/-/g, "")}-${Date.now().toString().slice(-4)}`;
+
+  // ── Ангилал → хөрөнгийн данс код, ашиглалтын хугацаа ──
+  const catIds = [...new Set(lines.map((l) => l.categoryId))];
+  const { data: catData } = await supabase
+    .from("asset_categories")
+    .select("id, name, account_code, useful_life_years")
+    .in("id", catIds);
+  const cats = new Map(
+    ((catData as { id: number; name: string; account_code: string | null; useful_life_years: number | null }[] | null) ?? []).map(
+      (c) => [c.id, c],
+    ),
+  );
+  for (const id of catIds) {
+    const c = cats.get(id);
+    if (!c) return { ok: false, error: `Ангилал (id ${id}) олдсонгүй.` };
+    if (!c.account_code) return { ok: false, error: `«${c.name}» ангиллын хөрөнгийн данс тохируулаагүй.` };
+  }
+
+  // ── Нийлүүлэгчийн өглөг ба НӨАТ-ын авлагын данс ──
+  const { data: setData } = await supabase
+    .from("inv_settings")
+    .select(SETTINGS_SELECT)
+    .eq("id", 1)
+    .maybeSingle();
+  const settings = (setData as InvSettings | null) ?? null;
+  const apId = settings?.ap_account_id ?? null;
+  if (apId == null) return { ok: false, error: "Нийлүүлэгчийн өглөгийн данс тохируулаагүй (БМ тохиргоо)." };
+
+  // Дансны код → id (хөрөнгийн данс + НӨАТ авлага).
+  const wantCodes = [
+    ...new Set([
+      ...[...cats.values()].map((c) => c.account_code!),
+      "130600",
+    ]),
+  ];
+  const { data: accRows } = await supabase
+    .from("accounts")
+    .select("id, code")
+    .in("code", wantCodes);
+  const idByCode = new Map(
+    ((accRows as { id: number; code: string }[] | null) ?? []).map((a) => [a.code, a.id]),
+  );
+  const vatInId = idByCode.get("130600") ?? null;
+
+  // ── Журналын мөрүүд ── (өртгийн тал — ангиллаар нэгтгэсэн хөрөнгийн данс)
+  const assetByCode = new Map<string, number>();
+  for (const l of lines) {
+    const code = cats.get(l.categoryId)!.account_code!;
+    assetByCode.set(code, r2((assetByCode.get(code) ?? 0) + l.landed));
+  }
+  const jLines: { account_id: number; debit: number; credit: number; description: string }[] = [];
+  for (const [code, val] of assetByCode) {
+    const aid = idByCode.get(code);
+    if (aid == null) return { ok: false, error: `Хөрөнгийн данс ${code} бүртгэлд олдсонгүй.` };
+    jLines.push({ account_id: aid, debit: val, credit: 0, description: `Гаалийн импорт ҮХ — ${code}` });
+  }
+  const landedTotal = r2(lines.reduce((s, l) => s + l.landed, 0));
+  const importVat = r2(input.importVat);
+  const fobMnt = r2(input.fobMnt);
+  if (importVat > 0 && vatInId != null)
+    jLines.push({ account_id: vatInId, debit: importVat, credit: 0, description: "Импортын НӨАТ (нөхөгдөх)" });
+  jLines.push({ account_id: apId, debit: 0, credit: fobMnt, description: "Нийлүүлэгчийн өглөг (FOB)" });
+
+  const duty = r2(input.duty);
+  const freight = r2(input.freight);
+  const storage = r2(input.storage);
+  const acctOr = (id: number | null | undefined) => (id && id > 0 ? id : input.bankAccountId);
+  if (duty > 0) jLines.push({ account_id: acctOr(input.dutyAccountId), debit: 0, credit: duty, description: "Гаалийн албан татвар" });
+  if (freight > 0) jLines.push({ account_id: acctOr(input.freightAccountId), debit: 0, credit: freight, description: "Тээврийн зардал" });
+  if (storage > 0) jLines.push({ account_id: acctOr(input.storageAccountId), debit: 0, credit: storage, description: "Хадгалалтын зардал" });
+
+  const residual = r2(landedTotal - r2(fobMnt + duty + freight + storage));
+  const bankCredit = r2((vatInId != null ? importVat : 0) + residual);
+  if (Math.abs(bankCredit) > 0.005)
+    jLines.push({ account_id: input.bankAccountId, debit: 0, credit: bankCredit, description: "Импортын НӨАТ + дугуйралт" });
+
+  const totDt = r2(jLines.reduce((s, l) => s + l.debit, 0));
+  const totKt = r2(jLines.reduce((s, l) => s + l.credit, 0));
+  if (Math.abs(totDt - totKt) > 0.5)
+    return { ok: false, error: `Журнал балансжихгүй байна (Дт ${totDt} ≠ Кт ${totKt}).` };
+
+  // ── 1) Хөрөнгийн картууд (ширхэг бүрд нэг) ──
+  const assetRows: Record<string, unknown>[] = [];
+  for (const l of lines) {
+    const c = cats.get(l.categoryId)!;
+    const nm = l.name.trim();
+    const n = Math.max(1, Math.round(l.qty));
+    for (let i = 0; i < n; i++) {
+      assetRows.push({
+        name: n > 1 ? `${nm} #${i + 1}` : nm,
+        category_id: l.categoryId,
+        acquired_date: input.date,
+        cost: r2(l.landedUnit),
+        opening_accum_depreciation: 0,
+        useful_life_years: c.useful_life_years ?? null,
+        salvage_value: 0,
+        status: "active",
+        is_active: true,
+      });
+    }
+  }
+  const { data: insAssets, error: aErr } = await supabase
+    .from("assets")
+    .insert(assetRows)
+    .select("id");
+  if (aErr) return { ok: false, error: `Хөрөнгө хадгалахад алдаа: ${aErr.message}` };
+  const assetIds = ((insAssets as { id: number }[] | null) ?? []).map((a) => a.id);
+
+  // ── 2) Нэг гаалийн ваучер ──
+  const posted = await postJournal(supabase, {
+    date: input.date,
+    description: `Гаалийн импорт ҮХ landed-cost${input.supplier ? ` — ${input.supplier}` : ""}`,
+    reference: docNo,
+    partner_id: null,
+    source: "asset",
+    lines: jLines,
+  });
+  if (!posted.ok) {
+    if (assetIds.length) await supabase.from("assets").delete().in("id", assetIds);
+    return { ok: false, error: `Журнал: ${posted.error}` };
+  }
+
+  revalidatePath("/assets");
+  revalidatePath("/journals");
+  return { ok: true, docNo, assets: assetIds.length, journalId: posted.id };
+}
+
 // Дансны одоогийн үлдэгдлийг (journal_entries Дт−Кт) буцаана — нэмэлт зардлыг
 // УТЗ/УТТ зэрэг дансны бодит үлдэгдлээс татаж оруулахад ашиглана.
 export type AccountBalanceResult =
