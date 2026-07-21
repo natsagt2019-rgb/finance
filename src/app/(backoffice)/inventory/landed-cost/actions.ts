@@ -374,3 +374,55 @@ export async function getAccountBalance(accountId: number): Promise<AccountBalan
   const balance = r2(Math.abs(dr - cr));
   return { ok: true, balance, code: a.code, name: a.name };
 }
+
+// Дансны гүйлгээнүүдийг (тухайн данс ДЕБЕТлэгдсэн — УТЗ/УТТ-д урьдчилж төлсөн
+// дүнгүүд) буцаана. Хэрэглэгч чеклэн сонгож нэмэлт зардлын дүнд оруулна.
+export type AccountEntry = {
+  id: number;
+  date: string;
+  description: string | null;
+  partner: string | null;
+  amount: number;
+};
+export type AccountEntriesResult =
+  | { ok: true; code: string; name: string; entries: AccountEntry[] }
+  | { ok: false; error: string };
+
+export async function getAccountEntries(accountId: number): Promise<AccountEntriesResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Нэвтрэх шаардлагатай." };
+  if (!(accountId > 0)) return { ok: false, error: "Данс сонгоно уу." };
+
+  const { data: acc } = await supabase
+    .from("accounts")
+    .select("code, name")
+    .eq("id", accountId)
+    .maybeSingle();
+  const a = acc as { code: string; name: string } | null;
+  if (!a) return { ok: false, error: "Данс олдсонгүй." };
+
+  // Тухайн данс ДЕБЕТ талд орсон гүйлгээнүүд (урьдчилж төлсөн дүнгүүд).
+  const { data, error } = await supabase
+    .from("journal_entries")
+    .select("id, txn_date, description, partner_name, amount")
+    .eq("debit_code", a.code)
+    .order("txn_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(500);
+  if (error) return { ok: false, error: error.message };
+
+  const entries: AccountEntry[] = (
+    (data as { id: number; txn_date: string; description: string | null; partner_name: string | null; amount: number }[] | null) ?? []
+  ).map((e) => ({
+    id: e.id,
+    date: (e.txn_date ?? "").slice(0, 10),
+    description: e.description,
+    partner: e.partner_name,
+    amount: r2(Number(e.amount) || 0),
+  }));
+
+  return { ok: true, code: a.code, name: a.name, entries };
+}

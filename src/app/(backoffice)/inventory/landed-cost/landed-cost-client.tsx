@@ -10,8 +10,10 @@ import {
   postLandedImport,
   postLandedAssetImport,
   getAccountBalance,
+  getAccountEntries,
   type LandedPostResult,
   type LandedAssetPostResult,
+  type AccountEntry,
 } from "./actions";
 
 export type PickItem = {
@@ -107,6 +109,48 @@ export function LandedCostClient({
   const [freightAcct, setFreightAcct] = useState(acctId("140200") || acctId("110200"));
   const [storageAcct, setStorageAcct] = useState(acctId("140200") || acctId("110200"));
   const [pullBusy, setPullBusy] = useState("");
+
+  // ── Гүйлгээ сонгох picker (нэмэлт зардлыг дансны гүйлгээнээс чеклэн татах) ──
+  type RowKey = "duty" | "freight" | "storage";
+  const [pickerOpen, setPickerOpen] = useState<RowKey | null>(null);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerEntries, setPickerEntries] = useState<AccountEntry[]>([]);
+  const [checkedByRow, setCheckedByRow] = useState<Record<RowKey, Set<number>>>({
+    duty: new Set(), freight: new Set(), storage: new Set(),
+  });
+
+  const acctOf = (row: RowKey) => (row === "duty" ? dutyAcct : row === "freight" ? freightAcct : storageAcct);
+  const setAmountOf = (row: RowKey, v: number) => {
+    if (row === "duty") setDutyAmount(v);
+    else if (row === "freight") setFreight(v);
+    else setStorage(v);
+  };
+
+  async function openPicker(row: RowKey) {
+    if (pickerOpen === row) { setPickerOpen(null); return; }
+    const acct = acctOf(row);
+    if (!acct) { setImportMsg("✕ Эх данс сонгоно уу."); return; }
+    setPickerBusy(true);
+    const res = await getAccountEntries(Number(acct));
+    setPickerBusy(false);
+    if (!res.ok) { setImportMsg("✕ " + res.error); return; }
+    setPickerEntries(res.entries);
+    setPickerOpen(row);
+  }
+
+  function toggleEntry(row: RowKey, id: number) {
+    setCheckedByRow((prev) => {
+      const set = new Set(prev[row]);
+      if (set.has(id)) set.delete(id); else set.add(id);
+      const sum = pickerEntries.filter((e) => set.has(e.id)).reduce((s, e) => s + e.amount, 0);
+      setAmountOf(row, Math.round(sum * 100) / 100);
+      return { ...prev, [row]: set };
+    });
+  }
+  function clearRow(row: RowKey) {
+    setCheckedByRow((prev) => ({ ...prev, [row]: new Set() }));
+    setAmountOf(row, 0);
+  }
 
   const newLine = (key: number): Line => ({ key, itemId: 0, name: "", categoryId: 0, qty: 0, fobUnit: 0 });
   const [lines, setLines] = useState<Line[]>([newLine(1)]);
@@ -269,6 +313,7 @@ export function LandedCostClient({
   }
 
   // ── Тооцоо (landed cost allocation) ──
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const calc = useMemo(() => {
     const valid = lines.filter((l) =>
       (mode === "inv" ? l.itemId > 0 : l.categoryId > 0 && l.name.trim()) && l.qty > 0,
@@ -282,9 +327,19 @@ export function LandedCostClient({
     const baseTotal = allocBy === "qty" ? qtyTotal : fobMntTotal;
 
     // Нэмэлт зардал бүрийг суурь (үнэ/тоо)-аар хувиарлана; үлдэгдлийг сүүлийн мөрд.
-    let accDuty = 0, accFreight = 0, accStorage = 0;
-    const share = (total: number, l: Line, last: boolean, acc: number) =>
-      last ? r2(total - acc) : baseTotal > 0 ? r2(total * (base(l) / baseTotal)) : 0;
+    // Мутацигүй: эхлээд пропорциональ хувь, дараа нь сүүлийн мөр = нийт − өмнөхийн нийлбэр.
+    const propOf = (total: number, l: Line) =>
+      baseTotal > 0 ? r2(total * (base(l) / baseTotal)) : 0;
+    const prop = valid.map((l) => ({
+      duty: propOf(dutyTotal, l),
+      freight: propOf(freight, l),
+      storage: propOf(storage, l),
+    }));
+    const sumHead = (pick: (p: { duty: number; freight: number; storage: number }) => number) =>
+      r2(prop.slice(0, -1).reduce((s, p) => s + pick(p), 0));
+    const prevDuty = sumHead((p) => p.duty);
+    const prevFreight = sumHead((p) => p.freight);
+    const prevStorage = sumHead((p) => p.storage);
     const rows = valid.map((l, idx) => {
       const it = mode === "inv" ? itemById.get(l.itemId) : undefined;
       const cat = mode === "asset" ? catById.get(l.categoryId) : undefined;
@@ -293,14 +348,9 @@ export function LandedCostClient({
       const categoryCode = mode === "inv" ? it?.category_code ?? "" : cat?.account_code ?? "";
       const fobMnt = fobMntOf(l);
       const last = idx === valid.length - 1;
-      const duty = share(dutyTotal, l, last, accDuty);
-      const frShare = share(freight, l, last, accFreight);
-      const stShare = share(storage, l, last, accStorage);
-      if (!last) {
-        accDuty = r2(accDuty + duty);
-        accFreight = r2(accFreight + frShare);
-        accStorage = r2(accStorage + stShare);
-      }
+      const duty = last ? r2(dutyTotal - prevDuty) : prop[idx].duty;
+      const frShare = last ? r2(freight - prevFreight) : prop[idx].freight;
+      const stShare = last ? r2(storage - prevStorage) : prop[idx].storage;
       const landed = r2(fobMnt + duty + frShare + stShare);
       const landedUnit = l.qty > 0 ? r2(landed / l.qty) : 0;
       const landedAdj = r2(l.qty * landedUnit); // = total_cost (post-той ижил)
@@ -441,22 +491,92 @@ export function LandedCostClient({
             { key: "duty" as const, label: "Гаалийн татвар", amount: dutyAmount, setAmount: setDutyAmount, acct: dutyAcct, setAcct: setDutyAcct, hint: dutyAmount > 0 ? "" : `${dutyPct}% авто` },
             { key: "freight" as const, label: "Тээвэр", amount: freight, setAmount: setFreight, acct: freightAcct, setAcct: setFreightAcct, hint: "" },
             { key: "storage" as const, label: "Хадгалалт", amount: storage, setAmount: setStorage, acct: storageAcct, setAcct: setStorageAcct, hint: "" },
-          ]).map((c) => (
-            <div key={c.key} className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[120px_1fr_minmax(160px,1.4fr)_auto]">
-              <span className="text-sm text-zinc-600">{c.label}</span>
-              <input type="number" value={c.amount || ""} placeholder={c.hint || "0"} onChange={(e) => c.setAmount(Number(e.target.value) || 0)} className={numCls} />
-              <select value={c.acct} onChange={(e) => c.setAcct(e.target.value)} className={inputCls} title="Эх данс (банк/касс эсвэл УТЗ 140200 / УТТ 140300)">
-                <option value="">— эх данс —</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-              </select>
-              <button type="button" disabled={pullBusy === c.key} onClick={() => pull(c.key)}
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40">
-                {pullBusy === c.key ? "…" : "↧ Үлдэгдэл татах"}
-              </button>
+          ]).map((c) => {
+            const locked = checkedByRow[c.key].size > 0;
+            return (
+            <div key={c.key}>
+              <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[120px_1fr_minmax(160px,1.4fr)_auto]">
+                <span className="text-sm text-zinc-600">{c.label}</span>
+                <input
+                  type="number"
+                  value={c.amount || ""}
+                  placeholder={c.hint || "0"}
+                  readOnly={locked}
+                  title={locked ? `${checkedByRow[c.key].size} гүйлгээ сонгосон — цэвэрлэхийн тулд бүгдийг тайлна уу` : undefined}
+                  onChange={(e) => c.setAmount(Number(e.target.value) || 0)}
+                  className={numCls + (locked ? " bg-zinc-100 text-zinc-500" : "")}
+                />
+                <select value={c.acct} onChange={(e) => c.setAcct(e.target.value)} className={inputCls} title="Эх данс (банк/касс эсвэл УТЗ 140200 / УТТ 140300)">
+                  <option value="">— эх данс —</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <button type="button" disabled={pickerBusy} onClick={() => openPicker(c.key)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-40 ${pickerOpen === c.key ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"}`}>
+                    {pickerBusy && pickerOpen !== c.key ? "…" : "☑ Гүйлгээ сонгох"}
+                  </button>
+                  <button type="button" disabled={pullBusy === c.key} onClick={() => pull(c.key)}
+                    title="Дансны бүтэн үлдэгдлийг татах"
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40">
+                    {pullBusy === c.key ? "…" : "↧ Үлдэгдэл"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Гүйлгээ сонгох panel */}
+              {pickerOpen === c.key && (
+                <div className="mt-1 mb-2 rounded-lg border border-zinc-300 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-600">
+                      {c.label}: тухайн дансны гүйлгээ — чеклэн сонгоно уу ({checkedByRow[c.key].size} сонгосон)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {checkedByRow[c.key].size > 0 && (
+                        <button type="button" onClick={() => clearRow(c.key)} className="text-xs text-red-600 hover:underline">Цэвэрлэх</button>
+                      )}
+                      <button type="button" onClick={() => setPickerOpen(null)} className="text-xs text-zinc-500 hover:underline">Хаах</button>
+                    </div>
+                  </div>
+                  {pickerEntries.length === 0 ? (
+                    <p className="py-3 text-center text-xs text-zinc-400">Энэ дансанд гүйлгээ алга.</p>
+                  ) : (
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-zinc-50 text-left text-zinc-500">
+                          <tr>
+                            <th className="w-8 px-2 py-1"></th>
+                            <th className="px-2 py-1">Огноо</th>
+                            <th className="px-2 py-1">Гүйлгээ</th>
+                            <th className="px-2 py-1">Харилцагч</th>
+                            <th className="px-2 py-1 text-right">Дүн</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {pickerEntries.map((e) => {
+                            const on = checkedByRow[c.key].has(e.id);
+                            return (
+                              <tr key={e.id} className={`cursor-pointer ${on ? "bg-amber-50" : "hover:bg-zinc-50"}`} onClick={() => toggleEntry(c.key, e.id)}>
+                                <td className="px-2 py-1"><input type="checkbox" checked={on} onChange={() => toggleEntry(c.key, e.id)} onClick={(ev) => ev.stopPropagation()} /></td>
+                                <td className="whitespace-nowrap px-2 py-1 tabular-nums text-zinc-600">{e.date}</td>
+                                <td className="px-2 py-1 text-zinc-700">{e.description || "—"}</td>
+                                <td className="px-2 py-1 text-zinc-500">{e.partner || "—"}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-zinc-800">{fmt(e.amount)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+          );})}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">«Үлдэгдэл татах» нь сонгосон дансны (УТЗ/УТТ г.м) одоогийн үлдэгдлийг дүнд бичнэ. Орлогод авахад тухайн данс кредитлэгдэнэ.</p>
+        <p className="mt-2 text-xs text-zinc-500">
+          «☑ Гүйлгээ сонгох» — тухайн дансны (УТЗ 140200 / УТТ 140300) гүйлгээнүүдээс чеклэн сонгоход дүн автоматаар нэмэгдэнэ (гараар засахгүй).
+          «↧ Үлдэгдэл» — дансны бүтэн үлдэгдлийг татна. Орлогод авахад тухайн данс кредитлэгдэнэ.
+        </p>
       </div>
 
       {/* ── Excel хэрэгсэл ── */}
