@@ -406,6 +406,42 @@ export async function saveDepreciation(
   return { ok: true, id: records.length };
 }
 
+// Тухайн сарын элэгдлийг устгах: снапшот (asset_depreciation) + GL журналыг цуцлана.
+export async function deleteDepreciation(
+  year: number,
+  month: number,
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+
+  // 1) Снапшотуудыг устгах.
+  const { data: delSnaps } = await supabase
+    .from("asset_depreciation")
+    .delete()
+    .eq("year", year)
+    .eq("month", month)
+    .select("id");
+  const removed = (delSnaps as { id: number }[] | null)?.length ?? 0;
+
+  // 2) Тухайн сарын элэгдлийн GL журналыг устгах.
+  const date = monthEndDate(year, month);
+  const { data: oldJ } = await supabase
+    .from("journals")
+    .select("id")
+    .eq("source", "asset_depr")
+    .eq("date", date);
+  const oldIds = (oldJ as { id: number }[] | null)?.map((j) => j.id) ?? [];
+  if (oldIds.length > 0) {
+    await supabase.from("journal_entries").delete().in("journal_id", oldIds);
+    await supabase.from("journal_lines").delete().in("journal_id", oldIds);
+    await supabase.from("journals").delete().in("id", oldIds);
+  }
+
+  revalidatePath("/assets");
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: removed };
+}
+
 // ── Хасалт / Борлуулалт ─────────────────────────────────────────────────────
 // Стандарт чартын тогтмол данс (категориос хамаарахгүй):
 const ACC_GAIN = "620500"; // ҮХ борлуулсны олз
@@ -642,6 +678,9 @@ export async function acquireAsset(
   const note = get("note") || null;
   // НӨАТ данс: 130600 (шууд хасах) эсвэл 180500 (хойшлуулах — барилга/тоног).
   const vatAccount = get("vat_account") || ACC_INPUT_VAT;
+  // Импорт: өртгийн доторх гаалийн татвар, хураамж + гаалийн тооцооны данс.
+  const customs = Math.max(num(formData.get("customs")), 0);
+  const customsSettlement = get("customs_settlement") || settlement;
 
   // Хөрөнгө + ангилал.
   const { data: aRaw, error: ae } = await supabase
@@ -684,7 +723,8 @@ export async function acquireAsset(
   const built = buildAcquisitionJournal({
     cost,
     vat,
-    accounts: { asset: assetAcc, inputVat: vatAccount, settlement },
+    customs,
+    accounts: { asset: assetAcc, inputVat: vatAccount, settlement, customsSettlement },
   });
   if (!built.ok) return { ok: false, error: built.error };
 
@@ -721,7 +761,7 @@ export async function acquireAsset(
 
   const { error: ue } = await supabase
     .from("assets")
-    .update({ acquisition_vat: vat, acquisition_journal_id: res.id })
+    .update({ acquisition_vat: vat, acquisition_customs: customs, acquisition_journal_id: res.id })
     .eq("id", assetId);
   if (ue) return { ok: false, error: ue.message };
 
@@ -746,7 +786,7 @@ export async function reverseAcquisition(assetId: number): Promise<ActionResult>
 
   const { error: ue } = await supabase
     .from("assets")
-    .update({ acquisition_vat: 0, acquisition_journal_id: null })
+    .update({ acquisition_vat: 0, acquisition_customs: 0, acquisition_journal_id: null })
     .eq("id", assetId);
   if (ue) return { ok: false, error: ue.message };
 
