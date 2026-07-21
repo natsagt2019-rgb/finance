@@ -46,6 +46,14 @@ export default async function LandedCostPage() {
     (catData as { id: number; name: string; account_code: string | null }[] | null) ?? []
   ).filter((c) => c.account_code) as AssetCat[];
 
+  const { data: partData } = await supabase
+    .from("partners")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true })
+    .limit(5000);
+  const partners = (partData as { id: number; name: string }[] | null) ?? [];
+
   return (
     <div>
       <div className="mb-4 print:hidden">
@@ -61,7 +69,7 @@ export default async function LandedCostPage() {
       </p>
 
       <div className="mt-6">
-        <LandedCostClient items={picks} accounts={accounts} assetCats={assetCats} defaultMode="inv" lockMode />
+        <LandedCostClient items={picks} accounts={accounts} assetCats={assetCats} partners={partners} defaultMode="inv" lockMode />
       </div>
     </div>
   );
