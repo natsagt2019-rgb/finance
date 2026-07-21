@@ -51,14 +51,16 @@ export function LandedCostClient({
   items,
   accounts,
   assetCats,
+  defaultMode = "inv",
 }: {
   items: PickItem[];
   accounts: AccountOpt[];
   assetCats: AssetCat[];
+  defaultMode?: "inv" | "asset";
 }) {
   const router = useRouter();
   // Орлого авах төрөл: бараа материал (inv) эсвэл үндсэн хөрөнгө (asset).
-  const [mode, setMode] = useState<"inv" | "asset">("inv");
+  const [mode, setMode] = useState<"inv" | "asset">(defaultMode);
   const catById = useMemo(() => new Map(assetCats.map((c) => [c.id, c])), [assetCats]);
   const fileRef = useRef<HTMLInputElement>(null);
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
