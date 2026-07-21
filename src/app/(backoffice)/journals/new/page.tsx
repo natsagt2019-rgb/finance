@@ -7,23 +7,38 @@ import type { AccountOption } from "../types";
 export default async function NewJournalPage() {
   const supabase = await createClient();
 
-  const [{ data: accRows }, { data: partRows }] = await Promise.all([
-    supabase
-      .from("accounts")
-      .select("id, code, name")
-      .eq("is_active", true)
-      .order("code", { ascending: true })
-      .limit(2000),
-    supabase
-      .from("partners")
-      .select("id, name")
-      .eq("is_active", true)
-      .order("name", { ascending: true })
-      .limit(2000),
-  ]);
+  const [{ data: accRows }, { data: partRows }, { data: bankRows }, { data: cashRegRows }] =
+    await Promise.all([
+      supabase
+        .from("accounts")
+        .select("id, code, name")
+        .eq("is_active", true)
+        .order("code", { ascending: true })
+        .limit(2000),
+      supabase
+        .from("partners")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name", { ascending: true })
+        .limit(2000),
+      supabase.from("bank_accounts").select("gl_code").eq("is_active", true),
+      supabase.from("cash_registers").select("account_id").eq("is_active", true),
+    ]);
 
   const accounts = (accRows as AccountOption[] | null) ?? [];
   const partners = (partRows as { id: number; name: string }[] | null) ?? [];
+
+  // Касс/банкны GL дансны кодууд — эдгээр мөрд дүнг гараар бичихгүй, гүйлгээ холбоно.
+  const bankCodes = ((bankRows as { gl_code: string | null }[] | null) ?? [])
+    .map((b) => b.gl_code)
+    .filter((c): c is string => !!c);
+  const cashAccIds = new Set(
+    ((cashRegRows as { account_id: number | null }[] | null) ?? [])
+      .map((r) => r.account_id)
+      .filter((x): x is number => x != null),
+  );
+  const cashCodes = accounts.filter((a) => cashAccIds.has(a.id)).map((a) => a.code);
+  const cashBankCodes = [...new Set([...bankCodes, ...cashCodes])];
 
   // Серверийн өнөөдрийг ISO-гоор (Монголын цаг).
   const today = new Date().toISOString().slice(0, 10);
@@ -50,7 +65,12 @@ export default async function NewJournalPage() {
         </div>
       ) : (
         <div className="mt-6">
-          <JournalForm accounts={accounts} partners={partners} today={today} />
+          <JournalForm
+            accounts={accounts}
+            partners={partners}
+            today={today}
+            cashBankCodes={cashBankCodes}
+          />
         </div>
       )}
     </div>

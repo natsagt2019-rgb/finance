@@ -32,12 +32,16 @@ export type JournalLineRow = {
   line_no: number;
 };
 
+// Касс/банкны мөрд холбосон дэд бүртгэлийн гүйлгээ.
+export type TxnLink = { source: "bank" | "cash"; id: number };
+
 // Форм → server руу дамжих нэг мөр.
 export type LineInput = {
   account_id: number | null;
   debit: number;
   credit: number;
   description: string;
+  link?: TxnLink | null; // касс/банкны мөрд сонгосон гүйлгээ (журналд холбоно)
 };
 
 // Account dropdown-д хэрэгтэй хөнгөн хэлбэр.
@@ -45,4 +49,14 @@ export type AccountOption = {
   id: number;
   code: string;
   name: string;
+};
+
+// Журналд ороогүй (холбогдоогүй) касс/банк гүйлгээ — picker-т.
+export type UnlinkedTxn = {
+  source: "bank" | "cash";
+  id: number;
+  date: string; // YYYY-MM-DD
+  description: string;
+  direction: "in" | "out"; // in = мөнгө орсон (Дт), out = гарсан (Кт)
+  amount: number; // ₮
 };

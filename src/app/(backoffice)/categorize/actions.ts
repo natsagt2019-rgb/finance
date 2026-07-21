@@ -247,6 +247,8 @@ export async function postBankJournal(year: number): Promise<PostJournalResult> 
         "txn_date, description, master_code, master_name, income, expense, income_code, expense_code, account_id, exchange_rate, debit_code, credit_code",
       )
       .eq("year", year)
+      // Гараар журналд холбосон гүйлгээг алгасна (давхар бичихээс сэргийлнэ).
+      .is("journal_id", null)
       .order("txn_date", { ascending: true })
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);

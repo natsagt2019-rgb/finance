@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { mirrorToLedger, partnerNameById } from "@/lib/post-journal";
-import type { LineInput } from "./types";
+import type { LineInput, TxnLink, UnlinkedTxn } from "./types";
 
 export type ActionResult =
   | { ok: true; id: number; number: string }
@@ -44,6 +44,86 @@ async function nextNumber(
     .from("journals")
     .select("id", { count: "exact", head: true });
   return `GL-${String((count ?? 0) + 1).padStart(6, "0")}`;
+}
+
+// ── Журналд ороогүй (холбогдоогүй) касс/банк гүйлгээ татах ───────────────────
+// GL дансны кодоор (ж: 110201) тухайн касс/банкны дэд бүртгэлээс журналд хараахан
+// ороогүй гүйлгээнүүдийг буцаана. Банк: кодлогдоогүй (Дт/Кт дутуу) БА гараар
+// холбоогүй. Касс: journal_id хоосон.
+export async function unlinkedTxnsForAccount(code: string): Promise<UnlinkedTxn[]> {
+  const supabase = await requireAuth();
+  const out: UnlinkedTxn[] = [];
+
+  // ── Банк ──
+  const { data: ba } = await supabase
+    .from("bank_accounts")
+    .select("account_no")
+    .eq("gl_code", code);
+  const accountNos = ((ba as { account_no: string }[] | null) ?? []).map((x) => x.account_no);
+  if (accountNos.length) {
+    const { data: txns } = await supabase
+      .from("transactions")
+      .select("id, txn_date, description, income, expense, exchange_rate")
+      .in("account_id", accountNos)
+      .is("journal_id", null)
+      .or("debit_code.is.null,debit_code.eq.,credit_code.is.null,credit_code.eq.")
+      .order("txn_date", { ascending: false })
+      .limit(500);
+    for (const t of (txns as {
+      id: number; txn_date: string; description: string | null;
+      income: number | null; expense: number | null; exchange_rate: number | null;
+    }[] | null) ?? []) {
+      const inc = Number(t.income) || 0;
+      const exp = Number(t.expense) || 0;
+      const rate = Number(t.exchange_rate) || 1;
+      out.push({
+        source: "bank", id: t.id, date: (t.txn_date ?? "").slice(0, 10),
+        description: t.description ?? "", direction: inc > 0 ? "in" : "out",
+        amount: Math.round((inc || exp) * rate * 100) / 100,
+      });
+    }
+  }
+
+  // ── Касс ──
+  const { data: acc } = await supabase.from("accounts").select("id").eq("code", code).maybeSingle();
+  const accId = (acc as { id: number } | null)?.id;
+  if (accId) {
+    const { data: regs } = await supabase.from("cash_registers").select("id").eq("account_id", accId);
+    const regIds = ((regs as { id: number }[] | null) ?? []).map((r) => r.id);
+    if (regIds.length) {
+      const { data: ces } = await supabase
+        .from("cash_entries")
+        .select("id, date, description, type, amount_mnt")
+        .in("register_id", regIds)
+        .is("journal_id", null)
+        .order("date", { ascending: false })
+        .limit(500);
+      for (const e of (ces as {
+        id: number; date: string; description: string | null; type: string; amount_mnt: number;
+      }[] | null) ?? []) {
+        out.push({
+          source: "cash", id: e.id, date: e.date, description: e.description ?? "",
+          direction: e.type === "in" ? "in" : "out", amount: Number(e.amount_mnt),
+        });
+      }
+    }
+  }
+
+  return out;
+}
+
+// Сонгосон дэд бүртгэлийн гүйлгээнүүдийг журналд холбоно (journal_id тэмдэглэнэ).
+async function linkTxns(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  journalId: number,
+  links: TxnLink[],
+): Promise<void> {
+  const bankIds = links.filter((l) => l.source === "bank").map((l) => l.id);
+  const cashIds = links.filter((l) => l.source === "cash").map((l) => l.id);
+  if (bankIds.length)
+    await supabase.from("transactions").update({ journal_id: journalId }).in("id", bankIds);
+  if (cashIds.length)
+    await supabase.from("cash_entries").update({ journal_id: journalId }).in("id", cashIds);
 }
 
 // ── Гар журнал үүсгэх ───────────────────────────────────────────────────────
@@ -137,7 +217,12 @@ export async function createJournal(input: {
     }
   }
 
+  // Сонгосон касс/банк гүйлгээг журналд холбоно (давхар бичихээс сэргийлнэ).
+  const links = input.lines.map((l) => l.link).filter((l): l is TxnLink => !!l);
+  if (links.length) await linkTxns(supabase, journalId, links);
+
   revalidatePath("/journals");
+  revalidatePath("/statements");
   return { ok: true, id: journalId, number: jrn.number as string };
 }
 
@@ -261,6 +346,9 @@ export async function updateJournal(
 
   // Ерөнхий дэвтрийн тусгалыг дахин үүсгэнэ (хуучныг устгаад posted бол тусгана).
   await supabase.from("journal_entries").delete().eq("journal_id", id);
+  // Хуучин холбоосыг салгаад (журналд ороогүй болгоод) шинээр холбоно.
+  await supabase.from("transactions").update({ journal_id: null }).eq("journal_id", id);
+  await supabase.from("cash_entries").update({ journal_id: null }).eq("journal_id", id);
   if (input.status === "posted") {
     const mir = await mirrorToLedger(supabase, {
       date: input.date,
@@ -272,14 +360,20 @@ export async function updateJournal(
     });
     if (!mir.ok) return { ok: false, error: `Тайланд тусгахад алдаа: ${mir.error}` };
   }
+  const links = input.lines.map((l) => l.link).filter((l): l is TxnLink => !!l);
+  if (links.length) await linkTxns(supabase, id, links);
 
   revalidatePath("/journals");
+  revalidatePath("/statements");
   return { ok: true, id, number: (existing.number as string) ?? "" };
 }
 
 // ── Журнал устгах (мөрүүд cascade-аар устана) ───────────────────────────────
 export async function deleteJournal(id: number): Promise<ActionResult> {
   const supabase = await requireAuth();
+  // Холбосон касс/банк гүйлгээг салгана (журналд ороогүй болж дахин холбогдох боломжтой).
+  await supabase.from("transactions").update({ journal_id: null }).eq("journal_id", id);
+  await supabase.from("cash_entries").update({ journal_id: null }).eq("journal_id", id);
   // journal_entries ба journal_lines хоёул CASCADE-аар устана.
   const { data, error } = await supabase
     .from("journals")

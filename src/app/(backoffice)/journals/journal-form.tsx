@@ -3,17 +3,18 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { createJournal, updateJournal } from "./actions";
-import type { AccountOption, LineInput } from "./types";
+import { createJournal, updateJournal, unlinkedTxnsForAccount } from "./actions";
+import type { AccountOption, LineInput, TxnLink, UnlinkedTxn } from "./types";
 
 type Row = {
   account_id: string; // select value (string)
   debit: string;
   credit: string;
   description: string;
+  link?: TxnLink | null; // касс/банкны мөрд холбосон дэд бүртгэлийн гүйлгээ
 };
 
-const EMPTY_ROW: Row = { account_id: "", debit: "", credit: "", description: "" };
+const EMPTY_ROW: Row = { account_id: "", debit: "", credit: "", description: "", link: null };
 
 // Засвар горимд анхны утга дамжуулна.
 export type JournalInitial = {
@@ -44,17 +45,57 @@ export function JournalForm({
   today,
   journalId,
   initial,
+  cashBankCodes = [],
 }: {
   accounts: AccountOption[];
   partners: { id: number; name: string }[];
   today: string;
   journalId?: number;
   initial?: JournalInitial;
+  cashBankCodes?: string[];
 }) {
   const router = useRouter();
   const isEdit = journalId != null;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // account_id (select value) → accounts.code. Касс/банк эсэхийг шалгахад.
+  const codeById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of accounts) m.set(String(a.id), a.code);
+    return m;
+  }, [accounts]);
+  const cbSet = useMemo(() => new Set(cashBankCodes), [cashBankCodes]);
+  const isCashBank = (accountId: string) => {
+    const code = codeById.get(accountId);
+    return !!code && cbSet.has(code);
+  };
+
+  // Гүйлгээ холбох picker.
+  const [pickerRow, setPickerRow] = useState<number | null>(null);
+  const [pickerItems, setPickerItems] = useState<UnlinkedTxn[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  function openPicker(rowIdx: number, accountId: string) {
+    const code = codeById.get(accountId);
+    if (!code) return;
+    setPickerRow(rowIdx);
+    setPickerItems([]);
+    setPickerLoading(true);
+    unlinkedTxnsForAccount(code)
+      .then((items) => setPickerItems(items))
+      .finally(() => setPickerLoading(false));
+  }
+
+  function pickTxn(rowIdx: number, t: UnlinkedTxn) {
+    setRow(rowIdx, {
+      link: { source: t.source, id: t.id },
+      debit: t.direction === "in" ? String(t.amount) : "",
+      credit: t.direction === "out" ? String(t.amount) : "",
+      description: t.description || "",
+    });
+    setPickerRow(null);
+  }
 
   const [date, setDate] = useState(initial?.date ?? today);
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -110,6 +151,7 @@ export function JournalForm({
       debit: num(r.debit),
       credit: num(r.credit),
       description: r.description,
+      link: r.link ?? null,
     }));
 
     startTransition(async () => {
@@ -254,12 +296,18 @@ export function JournalForm({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {rows.map((r, i) => (
+              {rows.map((r, i) => {
+                const cb = isCashBank(r.account_id);
+                const amtCls = (extra: string) =>
+                  `w-full rounded border border-zinc-200 px-2 py-1.5 text-right text-sm tabular-nums focus:border-zinc-400 focus:outline-none ${extra}`;
+                return (
                 <tr key={i}>
                   <td className="px-3 py-1.5">
                     <select
                       value={r.account_id}
-                      onChange={(e) => setRow(i, { account_id: e.target.value })}
+                      onChange={(e) =>
+                        setRow(i, { account_id: e.target.value, link: null, debit: "", credit: "" })
+                      }
                       className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
                     >
                       <option value="">— Данс сонгох —</option>
@@ -274,13 +322,13 @@ export function JournalForm({
                     <input
                       inputMode="decimal"
                       value={r.debit}
-                      onChange={(e) =>
-                        setRow(i, {
-                          debit: e.target.value,
-                          credit: e.target.value ? "" : r.credit,
-                        })
+                      readOnly={cb}
+                      onChange={
+                        cb
+                          ? undefined
+                          : (e) => setRow(i, { debit: e.target.value, credit: e.target.value ? "" : r.credit })
                       }
-                      className="w-full rounded border border-zinc-200 px-2 py-1.5 text-right text-sm tabular-nums focus:border-zinc-400 focus:outline-none"
+                      className={amtCls(cb ? "bg-zinc-100 text-zinc-500" : "")}
                       placeholder="0"
                     />
                   </td>
@@ -288,23 +336,48 @@ export function JournalForm({
                     <input
                       inputMode="decimal"
                       value={r.credit}
-                      onChange={(e) =>
-                        setRow(i, {
-                          credit: e.target.value,
-                          debit: e.target.value ? "" : r.debit,
-                        })
+                      readOnly={cb}
+                      onChange={
+                        cb
+                          ? undefined
+                          : (e) => setRow(i, { credit: e.target.value, debit: e.target.value ? "" : r.debit })
                       }
-                      className="w-full rounded border border-zinc-200 px-2 py-1.5 text-right text-sm tabular-nums focus:border-zinc-400 focus:outline-none"
+                      className={amtCls(cb ? "bg-zinc-100 text-zinc-500" : "")}
                       placeholder="0"
                     />
                   </td>
                   <td className="px-3 py-1.5">
-                    <input
-                      type="text"
-                      value={r.description}
-                      onChange={(e) => setRow(i, { description: e.target.value })}
-                      className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
-                    />
+                    {cb ? (
+                      r.link ? (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 truncate text-zinc-700" title={r.description}>
+                            🔗 {r.description || "(гүйлгээ)"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setRow(i, { link: null, debit: "", credit: "", description: "" })}
+                            className="shrink-0 text-xs text-red-500 hover:underline"
+                          >
+                            салгах
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openPicker(i, r.account_id)}
+                          className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                        >
+                          🔗 Гүйлгээ холбох
+                        </button>
+                      )
+                    ) : (
+                      <input
+                        type="text"
+                        value={r.description}
+                        onChange={(e) => setRow(i, { description: e.target.value })}
+                        className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+                      />
+                    )}
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <button
@@ -318,7 +391,8 @@ export function JournalForm({
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
             <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
               <tr>
@@ -392,6 +466,84 @@ export function JournalForm({
           </span>
         )}
       </div>
+
+      {/* Гүйлгээ холбох picker */}
+      {pickerRow !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setPickerRow(null)}
+        >
+          <div
+            className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <span className="text-sm font-semibold text-zinc-800">
+                Журналд ороогүй гүйлгээ сонгох
+              </span>
+              <button
+                type="button"
+                onClick={() => setPickerRow(null)}
+                className="text-zinc-400 hover:text-zinc-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto p-2">
+              {pickerLoading ? (
+                <div className="py-8 text-center text-sm text-zinc-500">Ачааллаж байна…</div>
+              ) : pickerItems.length === 0 ? (
+                <div className="py-8 text-center text-sm text-zinc-500">
+                  Журналд ороогүй гүйлгээ алга.
+                  <div className="mt-1 text-xs text-zinc-400">
+                    Эхлээд Касс / Дансны хуулгаар гүйлгээ оруулна уу.
+                  </div>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs font-medium text-zinc-500">
+                    <tr>
+                      <th className="px-2 py-1">Огноо</th>
+                      <th className="px-2 py-1">Утга</th>
+                      <th className="px-2 py-1 text-right">Орлого</th>
+                      <th className="px-2 py-1 text-right">Зарлага</th>
+                      <th className="px-2 py-1"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {pickerItems.map((t) => (
+                      <tr key={`${t.source}-${t.id}`} className="hover:bg-zinc-50">
+                        <td className="whitespace-nowrap px-2 py-1.5 text-zinc-600">{t.date}</td>
+                        <td className="px-2 py-1.5 text-zinc-700">
+                          <span className="mr-1 text-[10px] text-zinc-400">
+                            {t.source === "cash" ? "касс" : "банк"}
+                          </span>
+                          {t.description || "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-green-700">
+                          {t.direction === "in" ? fmt(t.amount) : "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-red-600">
+                          {t.direction === "out" ? fmt(t.amount) : "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => pickTxn(pickerRow, t)}
+                            className="rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700"
+                          >
+                            Сонгох
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
