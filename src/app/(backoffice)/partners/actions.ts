@@ -72,6 +72,49 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
   return { ok: true, id: data.id as number, name: data.name as string };
 }
 
+// ── Харилцагч устгах ──────────────────────────────────────────────────────
+// Журнал/eBarimt/нэхэмжлэлтэй холбоотой бол устгахгүй, ЗӨВХӨН идэвхгүй болгоно
+// (тайлангийн түүх хадгалагдана). Холбоосгүй бол бүрмөсөн устгана.
+export type DeleteResult =
+  | { ok: true; name: string; deactivated: boolean; refs: number }
+  | { ok: false; error: string };
+
+export async function deletePartner(id: number): Promise<DeleteResult> {
+  const { supabase } = await requireAuth();
+  const { data: p } = await supabase
+    .from("partners")
+    .select("id, name")
+    .eq("id", id)
+    .maybeSingle();
+  if (!p) return { ok: false, error: "Харилцагч олдсонгүй." };
+  const name = (p as { name: string }).name;
+
+  // Холбоос шалгах (partner_id-аар).
+  let refs = 0;
+  for (const t of ["vat_records", "journals", "invoices"]) {
+    const { count } = await supabase
+      .from(t)
+      .select("id", { count: "exact", head: true })
+      .eq("partner_id", id);
+    refs += count ?? 0;
+  }
+
+  if (refs > 0) {
+    const { error } = await supabase
+      .from("partners")
+      .update({ is_active: false })
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath("/partners");
+    return { ok: true, name, deactivated: true, refs };
+  }
+
+  const { error } = await supabase.from("partners").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/partners");
+  return { ok: true, name, deactivated: false, refs: 0 };
+}
+
 // ── Харилцагч засах ───────────────────────────────────────────────────────
 export async function updatePartner(
   id: number,

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import type { PartnerRow, PartnerType } from "./actions";
+import { DeletePartnerButton } from "./delete-partner-button";
 
 type SearchParams = {
   q?: string;
@@ -234,6 +235,7 @@ export default async function PartnersPage({
                         >
                           Засах
                         </Link>
+                        <DeletePartnerButton id={p.id} name={p.name} />
                       </td>
                     </tr>
                   );

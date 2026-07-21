@@ -4,7 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { createPartner, updatePartner, type PartnerRow } from "./actions";
+import {
+  createPartner,
+  updatePartner,
+  deletePartner,
+  type PartnerRow,
+} from "./actions";
 
 type Props =
   | { mode: "create"; partner?: undefined }
@@ -41,6 +46,24 @@ export function PartnerForm({ mode, partner }: Props) {
           err instanceof Error ? err.message : "Хадгалахад алдаа гарлаа.",
         );
       }
+    });
+  }
+
+  function handleDelete() {
+    if (mode !== "edit") return;
+    const ok = window.confirm(
+      `"${partner.name}" харилцагчийг устгах уу?\n(Журнал/eBarimt/нэхэмжлэлтэй бол устгахгүй, зөвхөн идэвхгүй болгоно.)`,
+    );
+    if (!ok) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await deletePartner(partner.id);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.push("/partners");
+      router.refresh();
     });
   }
 
@@ -153,6 +176,16 @@ export function PartnerForm({ mode, partner }: Props) {
         >
           Болих
         </Link>
+        {mode === "edit" && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={isPending}
+            className="ml-auto rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            🗑 Устгах
+          </button>
+        )}
       </div>
     </form>
   );
