@@ -516,7 +516,7 @@ export function JournalForm({
                         <td className="whitespace-nowrap px-2 py-1.5 text-zinc-600">{t.date}</td>
                         <td className="px-2 py-1.5 text-zinc-700">
                           <span className="mr-1 text-[10px] text-zinc-400">
-                            {t.source === "cash" ? "касс" : "банк"}
+                            {t.source === "cash" ? "касс" : t.source === "vat" ? "eBarimt" : "банк"}
                           </span>
                           {t.description || "—"}
                         </td>

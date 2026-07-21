@@ -32,8 +32,8 @@ export type JournalLineRow = {
   line_no: number;
 };
 
-// Касс/банкны мөрд холбосон дэд бүртгэлийн гүйлгээ.
-export type TxnLink = { source: "bank" | "cash"; id: number };
+// Мөрд холбосон дэд бүртгэлийн гүйлгээ (касс/банк) эсвэл eBarimt баримт.
+export type TxnLink = { source: "bank" | "cash" | "vat"; id: number };
 
 // Форм → server руу дамжих нэг мөр.
 export type LineInput = {
@@ -51,9 +51,9 @@ export type AccountOption = {
   name: string;
 };
 
-// Журналд ороогүй (холбогдоогүй) касс/банк гүйлгээ — picker-т.
+// Журналд ороогүй (холбогдоогүй) касс/банк гүйлгээ ба eBarimt баримт — picker-т.
 export type UnlinkedTxn = {
-  source: "bank" | "cash";
+  source: "bank" | "cash" | "vat";
   id: number;
   date: string; // YYYY-MM-DD
   description: string;

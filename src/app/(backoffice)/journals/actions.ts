@@ -109,6 +109,39 @@ export async function unlinkedTxnsForAccount(code: string): Promise<UnlinkedTxn[
     }
   }
 
+  // ── eBarimt (журналд ороогүй = ДДТД нь журналын reference-д байхгүй) ──
+  // Худ.авалт (type=in) → мөнгө гарна (Кт), борлуулалт (type=out) → мөнгө орно (Дт).
+  const { data: jr } = await supabase
+    .from("journals")
+    .select("reference")
+    .not("reference", "is", null)
+    .limit(100000);
+  const usedRefs = new Set(
+    ((jr as { reference: string | null }[] | null) ?? [])
+      .map((j) => j.reference)
+      .filter((r): r is string => !!r),
+  );
+  const { data: vats } = await supabase
+    .from("vat_records")
+    .select("id, date, type, ddtd, partner_name, total_amount")
+    .not("ddtd", "is", null)
+    .order("date", { ascending: false })
+    .limit(500);
+  for (const v of (vats as {
+    id: number; date: string; type: string; ddtd: string | null;
+    partner_name: string | null; total_amount: number;
+  }[] | null) ?? []) {
+    if (!v.ddtd || usedRefs.has(v.ddtd)) continue;
+    out.push({
+      source: "vat",
+      id: v.id,
+      date: (v.date ?? "").slice(0, 10),
+      description: `${v.partner_name ?? ""}${v.ddtd ? ` · ${v.ddtd.slice(0, 18)}` : ""}`.trim(),
+      direction: v.type === "in" ? "out" : "in",
+      amount: Number(v.total_amount) || 0,
+    });
+  }
+
   return out;
 }
 
@@ -120,10 +153,24 @@ async function linkTxns(
 ): Promise<void> {
   const bankIds = links.filter((l) => l.source === "bank").map((l) => l.id);
   const cashIds = links.filter((l) => l.source === "cash").map((l) => l.id);
+  const vatIds = links.filter((l) => l.source === "vat").map((l) => l.id);
   if (bankIds.length)
     await supabase.from("transactions").update({ journal_id: journalId }).in("id", bankIds);
   if (cashIds.length)
     await supabase.from("cash_entries").update({ journal_id: journalId }).in("id", cashIds);
+  // eBarimt: vat_records-д journal_id багана байхгүй тул журналын reference-ийг
+  // тухайн ДДТД болгож тэмдэглэнэ (ингэснээр дахин «холбогдоогүй» жагсаалтад гарахгүй).
+  if (vatIds.length) {
+    const { data: vr } = await supabase
+      .from("vat_records")
+      .select("ddtd")
+      .in("id", vatIds);
+    const ddtd = ((vr as { ddtd: string | null }[] | null) ?? [])
+      .map((v) => v.ddtd)
+      .find((d): d is string => !!d);
+    if (ddtd)
+      await supabase.from("journals").update({ reference: ddtd }).eq("id", journalId);
+  }
 }
 
 // ── Гар журнал үүсгэх ───────────────────────────────────────────────────────
