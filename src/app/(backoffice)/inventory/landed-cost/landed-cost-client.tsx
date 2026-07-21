@@ -64,6 +64,16 @@ export function LandedCostClient({
   // Орлого авах төрөл: бараа материал (inv) эсвэл үндсэн хөрөнгө (asset).
   const [mode, setMode] = useState<"inv" | "asset">(defaultMode);
   const catById = useMemo(() => new Map(assetCats.map((c) => [c.id, c])), [assetCats]);
+  // Excel импортод ангилал тааруулах (нэр эсвэл данс кодоор).
+  const catLookup = useMemo(() => {
+    const byName = new Map<string, AssetCat>();
+    const byCode = new Map<string, AssetCat>();
+    for (const c of assetCats) {
+      byName.set(c.name.trim().toLowerCase(), c);
+      byCode.set(c.account_code.trim().toLowerCase(), c);
+    }
+    return { byName, byCode };
+  }, [assetCats]);
   const fileRef = useRef<HTMLInputElement>(null);
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   // Excel импортод бараа тааруулах (SKU / нэрээр).
@@ -138,6 +148,32 @@ export function LandedCostClient({
       const ws = wb.Sheets[wb.SheetNames[0]];
       const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null });
       const n = (v: unknown) => Number(String(v ?? "").replace(/[, ₮]/g, "")) || 0;
+
+      // ── ҮХ горим: A=Нэр, B=Ангилал(нэр эсвэл данс код), C=Тоо, D=FOB ──
+      if (mode === "asset") {
+        const fresh: Line[] = [];
+        let key = lines.at(-1)?.key ?? 0;
+        let matched = 0;
+        let missed = 0;
+        for (let i = 1; i < grid.length; i++) {
+          const row = grid[i] ?? [];
+          const nm = String(row[0] ?? "").trim();
+          const catKey = String(row[1] ?? "").trim().toLowerCase();
+          const qty = n(row[2]);
+          const fob = n(row[3]);
+          if (!nm) continue;
+          const cat = catLookup.byName.get(catKey) || catLookup.byCode.get(catKey) || null;
+          if (!cat) { missed++; continue; }
+          fresh.push({ key: ++key, itemId: 0, name: nm, categoryId: cat.id, qty, fobUnit: fob });
+          matched++;
+        }
+        if (fresh.length)
+          setLines((ls) => [...ls.filter((l) => l.name.trim() || l.categoryId > 0), ...fresh]);
+        setImportMsg(`✓ ${matched} мөр оруулав${missed ? `, ${missed} ангилал олдсонгүй` : ""}.`);
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+
       const fresh: Line[] = [];
       let key = lines.at(-1)?.key ?? 0;
       let matched = 0;
@@ -169,6 +205,30 @@ export function LandedCostClient({
       setImportMsg("✕ Excel уншиж чадсангүй.");
     }
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // ── ҮХ горимын Excel загвар (нэр, ангилал, тоо, FOB) ──
+  async function downloadAssetTemplate() {
+    const XLSX = await import("xlsx");
+    const header = ["Хөрөнгийн нэр", `Ангилал (данс код эсвэл нэр)`, "Тоо (ширхэг)", `FOB нэгж үнэ (${currency})`];
+    const example =
+      assetCats[0] != null
+        ? ["Экскаватор", assetCats[0].account_code, 1, 100000]
+        : ["Экскаватор", "160300", 1, 100000];
+    const ws = XLSX.utils.aoa_to_sheet([header, example]);
+    ws["!cols"] = [{ wch: 30 }, { wch: 26 }, { wch: 12 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ҮХ импорт");
+    const out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Гаалийн_импорт_ҮХ_загвар.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   // ── Тооцооны тайланг Excel рүү хөрвүүлэх ──
@@ -399,12 +459,19 @@ export function LandedCostClient({
         <p className="mt-2 text-xs text-zinc-500">«Үлдэгдэл татах» нь сонгосон дансны (УТЗ/УТТ г.м) одоогийн үлдэгдлийг дүнд бичнэ. Орлогод авахад тухайн данс кредитлэгдэнэ.</p>
       </div>
 
-      {/* ── Excel хэрэгсэл (зөвхөн БМ горим) ── */}
-      <div className={`flex flex-wrap items-center gap-2 print:hidden ${mode === "asset" ? "hidden" : ""}`}>
-        <a href="/inventory/landed-cost/template"
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-          ↓ Excel загвар
-        </a>
+      {/* ── Excel хэрэгсэл ── */}
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        {mode === "inv" ? (
+          <a href="/inventory/landed-cost/template"
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+            ↓ Excel загвар
+          </a>
+        ) : (
+          <button type="button" onClick={downloadAssetTemplate}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+            ↓ Excel загвар
+          </button>
+        )}
         <button type="button" onClick={() => fileRef.current?.click()}
           className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
           ↥ Excel-ээс мөр оруулах
