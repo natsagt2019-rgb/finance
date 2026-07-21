@@ -101,7 +101,7 @@ export const navEntries: NavEntry[] = [
     icon: "🏗",
     items: [
       { href: "/assets", label: "Хөрөнгийн бүртгэл", icon: "🏗" },
-      { href: "/inventory/landed-cost?mode=asset", label: "Гаалийн импорт (ҮХ)", icon: "🛃" },
+      { href: "/assets/customs-import", label: "Гаалийн импорт (ҮХ)", icon: "🛃" },
       { href: "/assets/transfer", label: "Олноор шилжүүлэх", icon: "🔀" },
       { href: "/reports/assets-depreciation", label: "Элэгдлийн тайлан", icon: "📉" },
       { href: "/reports/assets-movements", label: "Хөдөлгөөний тайлан", icon: "🔀" },

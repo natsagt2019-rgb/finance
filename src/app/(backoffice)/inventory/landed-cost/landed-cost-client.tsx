@@ -52,11 +52,13 @@ export function LandedCostClient({
   accounts,
   assetCats,
   defaultMode = "inv",
+  lockMode = false,
 }: {
   items: PickItem[];
   accounts: AccountOpt[];
   assetCats: AssetCat[];
   defaultMode?: "inv" | "asset";
+  lockMode?: boolean; // true бол горим сонголтын товч харагдахгүй (тусгай хуудсанд)
 }) {
   const router = useRouter();
   // Орлого авах төрөл: бараа материал (inv) эсвэл үндсэн хөрөнгө (asset).
@@ -313,8 +315,8 @@ export function LandedCostClient({
 
   return (
     <div className="space-y-6">
-      {/* ── Орлого авах төрөл ── */}
-      <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm print:hidden">
+      {/* ── Орлого авах төрөл (тусгай хуудсанд нуугдана) ── */}
+      <div className={`inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm print:hidden ${lockMode ? "hidden" : ""}`}>
         {([
           { v: "inv" as const, label: "📦 Бараа материал" },
           { v: "asset" as const, label: "🏗 Үндсэн хөрөнгө" },

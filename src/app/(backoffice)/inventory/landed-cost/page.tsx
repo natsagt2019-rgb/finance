@@ -6,13 +6,7 @@ import { LandedCostClient, type PickItem, type AccountOpt, type AssetCat } from 
 
 export const metadata = { title: "Гаалийн өртөг тооцоо" };
 
-export default async function LandedCostPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ mode?: string }>;
-}) {
-  const sp = await searchParams;
-  const defaultMode = sp.mode === "asset" ? "asset" : "inv";
+export default async function LandedCostPage() {
   const supabase = await createClient();
 
   // Бараа (идэвхтэй).
@@ -67,7 +61,7 @@ export default async function LandedCostPage({
       </p>
 
       <div className="mt-6">
-        <LandedCostClient items={picks} accounts={accounts} assetCats={assetCats} defaultMode={defaultMode} />
+        <LandedCostClient items={picks} accounts={accounts} assetCats={assetCats} defaultMode="inv" lockMode />
       </div>
     </div>
   );
