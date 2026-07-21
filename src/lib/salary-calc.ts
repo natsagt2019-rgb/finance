@@ -132,19 +132,38 @@ export function pitDeduction(gross: number, tiers: PitTier[]): number {
   return 0;
 }
 
+// ХХОАТ-ын шатлалт хөнгөлөлт — ЖИЛИЙН татвар ногдуулах орлогоор (Арт.23.1).
+// Хөнгөлөлтийг зөвхөн жилийн эцэст (12-р сар) өссөн дүнгээр тооцно.
+export const ANNUAL_PIT_TIERS: PitTier[] = [
+  { max: 6_000_000, deduction: 240_000 },
+  { max: 12_000_000, deduction: 216_000 },
+  { max: 18_000_000, deduction: 192_000 },
+  { max: 24_000_000, deduction: 168_000 },
+  { max: 30_000_000, deduction: 144_000 },
+  { max: 36_000_000, deduction: 120_000 },
+  { max: null, deduction: 0 },
+];
+
+// Жилийн өссөн татвар ногдуулах орлогод ногдох шатлалт хөнгөлөлт.
+export function annualPitRelief(annualTaxable: number): number {
+  return pitDeduction(annualTaxable, ANNUAL_PIT_TIERS);
+}
+
 // Резидент бус (гадаад) татвар төлөгчийн ХХОАТ хувь (ХХОАТ хууль 21.2.5).
 export const NON_RESIDENT_PIT_RATE = 0.2;
 
 // ХХОАТ тооцоо:
 //   Хөгжлийн бэрхшээлтэй (disabled): орлого албан татвараас ЧӨЛӨӨЛӨГДӨНӨ = 0 (22.1.2).
 //   Резидент (монгол): (Нийт − ЭМНДШ) × 10% − шатлалт хөнгөлөлт.
-//     Хөнгөлөлтийн шатлалыг ТАТВАР НОГДУУЛАХ ОРЛОГООР (Нийт − ЭМНДШ) сонгоно (23.1).
+//     Шатлалт хөнгөлөлтийг сар бүр ТООЦОХГҮЙ — зөвхөн жилийн эцэст (12-р сар)
+//     өссөн дүнгээр тооцно. Тухайн үеийн хөнгөлөлтийг reliefAmount-оор дамжуулна
+//     (анхдагч 0 = хөнгөлөлтгүй).
 //   Резидент бус (гадаад): Нийт цалин × 20% (ЭМНДШ хасахгүй, хөнгөлөлтгүй; 20.1, 21.2.5).
 export function pit(
   gross: number,
   sh: number,
   params = DEFAULT_PARAMS,
-  opts?: { foreign?: boolean; disabled?: boolean },
+  opts?: { foreign?: boolean; disabled?: boolean; reliefAmount?: number },
 ): number {
   if (opts?.disabled) {
     return 0;
@@ -153,8 +172,8 @@ export function pit(
     return round(gross * NON_RESIDENT_PIT_RATE);
   }
   const taxable = gross - sh;
-  const ded = pitDeduction(taxable, params.pitTiers);
-  return round(Math.max(0, taxable * params.pitRate - ded));
+  const relief = opts?.reliefAmount ?? 0;
+  return round(Math.max(0, taxable * params.pitRate - relief));
 }
 
 // Урьдчилгаа = Үндсэн цалин × хувь (ажилласан өдрөөс үл хамаарна).
@@ -188,6 +207,8 @@ export type SalaryInput = {
   foreign?: boolean;
   // Хөгжлийн бэрхшээлтэй — орлого албан татвараас чөлөөлөгдөнө (22.1.2).
   disabled?: boolean;
+  // Шатлалт хөнгөлөлт (зөвхөн 12-р сард жилийн өссөн дүнгээр; анхдагч 0).
+  reliefAmount?: number;
 };
 
 export type SalaryComputed = {
@@ -239,6 +260,7 @@ export function computeRow(
   const tax = pit(gross, sh, params, {
     foreign: input.foreign,
     disabled: input.disabled,
+    reliefAmount: input.reliefAmount,
   });
   // Урьдчилгаа (үндсэн × хувь) зөвхөн тогтмол цалинд утгатай.
   const adv = type === "fixed" ? advance(input.base, params) : 0;

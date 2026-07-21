@@ -61,15 +61,16 @@ export function SummaryTab({
     a.advance += Number(r.advance) || 0;
     a.net += Number(r.net) || 0;
 
-    // Хөнгөлөлтийн зөрүү (зөвхөн резидент — гадаад/хөгж.бэрхшээлтэйд хамаарахгүй).
-    // Хэрэглэсэн хөнгөлөлт (өссөн дүнгээр, хадгалсан pit-ээс) − сарын шатлалт хөнгөлөлт.
+    // Хөнгөлөлтийн зөрүү (резидент): сарын шатлалт хөнгөлөлт − хэрэглэсэн хөнгөлөлт.
+    // Хөнгөлөлтийг сар бүр эдлүүлэхгүй, зөвхөн 12-р сард жилийн өссөн дүнгээр тооцно.
+    // Тиймээс 1-11 сард энэ багана нь ХОЙШЛУУЛСАН (Дек-т эдлэх) хөнгөлөлтийг харуулна.
     const e = r.employee_id != null ? empById.get(r.employee_id) : undefined;
     const resident = !!e && !isForeignRegister(e.register) && !e.disabled;
     if (resident) {
       const taxable = (Number(r.gross) || 0) - (Number(r.sh_insurance) || 0);
       const applied = Math.max(0, taxable * PIT_RATE - (Number(r.pit) || 0));
       const monthly = pitDeduction(taxable, DEFAULT_PIT_TIERS);
-      a.reliefDiff += applied - monthly;
+      a.reliefDiff += monthly - applied;
     }
   }
 

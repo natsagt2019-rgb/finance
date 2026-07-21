@@ -12,6 +12,7 @@ import {
   paramsFromSettings,
   normalizeSalaryType,
   isForeignRegister,
+  annualPitRelief,
   DEFAULT_MONTH_HOURS_2026,
   type SalaryParams,
   type SalaryType,
@@ -536,6 +537,40 @@ export async function saveSalary(
       is_active: true,
     };
   });
+
+  // 12-р сар: резидентийн шатлалт хөнгөлөлтийг жилийн ӨССӨН дүнгээр нэг дор
+  // тооцно (Хууль 25.5, 27.1). 1-11 сард хөнгөлөлт 0 тул Дек-т бүрэн эдэлнэ.
+  if (month === 12) {
+    const { data: prior } = await supabase
+      .from("salary_records")
+      .select("employee_id, gross, sh_insurance")
+      .eq("year", year)
+      .lt("month", 12)
+      .eq("is_active", true)
+      .in("employee_id", empIds);
+    const priorTaxable = new Map<number, number>();
+    for (const p of (prior as { employee_id: number; gross: number; sh_insurance: number }[] | null) ?? []) {
+      const t = (Number(p.gross) || 0) - (Number(p.sh_insurance) || 0);
+      priorTaxable.set(p.employee_id, (priorTaxable.get(p.employee_id) ?? 0) + t);
+    }
+    const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+    for (const rec of records) {
+      const id = rec.employee_id;
+      if (id == null || foreignById.get(id) || disabledById.get(id)) continue;
+      const decTaxable = (Number(rec.gross) || 0) - (Number(rec.sh_insurance) || 0);
+      const annualTaxable = (priorTaxable.get(id) ?? 0) + decTaxable;
+      const relief = annualPitRelief(annualTaxable);
+      const newPit = r2(Math.max(0, decTaxable * params.pitRate - relief));
+      const otherDed =
+        (Number(rec.advance) || 0) +
+        (Number(rec.late_deduction) || 0) +
+        (Number(rec.savings_deduction) || 0) +
+        (Number(rec.discipline_deduction) || 0) +
+        (Number(rec.other_deduction) || 0);
+      rec.pit = newPit;
+      rec.net = r2((Number(rec.gross) || 0) - (Number(rec.sh_insurance) || 0) - newPit - otherDed);
+    }
+  }
 
   if (records.length === 0) return { ok: false, error: "Хадгалах мөр алга." };
 
