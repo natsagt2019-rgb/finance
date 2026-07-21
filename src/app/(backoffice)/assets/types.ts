@@ -61,7 +61,11 @@ export type AssetRow = {
   opening_date: string | null; // эхний үлдэгдлийн огноо
   opening_accum_depreciation: number; // тэр огноо дахь хуримтлагдсан элэгдэл
   acquisition_vat: number;
+  acquisition_customs: number; // өртгийн доторх гаалийн татвар, хураамж (импорт)
   acquisition_journal_id: number | null;
+  deferred_vat: number; // 180500-д хойшлогдсон НӨАТ
+  deferred_vat_months: number | null; // 60 (тоног) / 120 (барилга)
+  deferred_vat_start: string | null; // амортизаци эхлэх огноо
   revision_kind: "repair" | "revaluation" | "life" | null;
   revision_date: string | null;
   revision_cost: number | null;
@@ -82,7 +86,8 @@ export type AssetRow = {
 export const ASSET_SELECT =
   "id, name, code, category_id, company, acquired_date, cost, salvage_value, " +
   "useful_life_years, location, location_id, barcode, responsible, opening_date, " +
-  "opening_accum_depreciation, acquisition_vat, acquisition_journal_id, " +
+  "opening_accum_depreciation, acquisition_vat, acquisition_customs, acquisition_journal_id, " +
+  "deferred_vat, deferred_vat_months, deferred_vat_start, " +
   "revision_kind, revision_date, revision_cost, revision_accum, " +
   "revision_life_months, revision_note, revision_journal_id, " +
   "status, disposed_date, " +
@@ -111,5 +116,5 @@ export const DEPRECIATION_SELECT =
 
 // ── Туслах ─────────────────────────────────────────────────────────────────
 export const COMPANIES: readonly string[] = [];
-export const TABS = ["assets", "depreciation", "summary", "locations", "settings"] as const;
+export const TABS = ["assets", "depreciation", "vat-defer", "summary", "locations", "settings"] as const;
 export type Tab = (typeof TABS)[number];

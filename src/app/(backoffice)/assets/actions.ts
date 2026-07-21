@@ -5,6 +5,7 @@ import * as xlsx from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
 import { computeAsset, resolveUsefulLife, revisionInput } from "@/lib/asset-calc";
+import { computeVatDefer } from "@/lib/vat-defer";
 import { buildDisposalJournal, type DisposalType } from "@/lib/asset-disposal";
 import { buildAcquisitionJournal } from "@/lib/asset-acquisition";
 import { buildRevaluationJournal } from "@/lib/asset-revision";
@@ -442,6 +443,95 @@ export async function deleteDepreciation(
   return { ok: true, id: removed };
 }
 
+// ── Хойшлогдсон НӨАТ амортизаци: Дт 130600 НӨАТ авлага / Кт 180500 ──────────
+const ACC_DEFER_VAT = "180500"; // Хойшлогдсон НӨАТ-ын тооцоо
+const ACC_RECOVER_VAT = "130600"; // НӨАТ-ын авлага (нөхөгдөх)
+
+export type VatDeferRow = {
+  asset_id: number;
+  deferred_vat: number;
+  deferred_vat_months: number | null;
+  deferred_vat_start: string | null;
+};
+
+export async function saveVatDefer(
+  year: number,
+  month: number,
+  rows: VatDeferRow[],
+): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+
+  // Сонгосон хөрөнгүүдийн тухайн сарын хасагдах НӨАТ-ыг нэгтгэнэ.
+  let total = 0;
+  for (const r of rows) {
+    const c = computeVatDefer(
+      { deferredVat: Number(r.deferred_vat) || 0, months: Number(r.deferred_vat_months) || 0, startDate: r.deferred_vat_start },
+      year,
+      month,
+    );
+    total += c.monthly;
+  }
+  total = Math.round(total * 100) / 100;
+  if (total <= 0) return { ok: false, error: "Энэ сард хасагдах хойшлогдсон НӨАТ алга." };
+
+  // Дансны код → id.
+  const { data: accs } = await supabase
+    .from("accounts")
+    .select("id, code")
+    .in("code", [ACC_RECOVER_VAT, ACC_DEFER_VAT]);
+  const idByCode = new Map<string, number>();
+  for (const a of (accs as { id: number; code: string }[] | null) ?? []) idByCode.set(a.code, a.id);
+  const recId = idByCode.get(ACC_RECOVER_VAT);
+  const defId = idByCode.get(ACC_DEFER_VAT);
+  if (recId == null || defId == null)
+    return { ok: false, error: `Дансны код олдсонгүй (${ACC_RECOVER_VAT}/${ACC_DEFER_VAT}).` };
+
+  // Идемпотент: тухайн сарын өмнөх амортизацийн журналыг устгана.
+  const date = monthEndDate(year, month);
+  const { data: oldJ } = await supabase
+    .from("journals")
+    .select("id")
+    .eq("source", "asset_vat_defer")
+    .eq("date", date);
+  const oldIds = (oldJ as { id: number }[] | null)?.map((j) => j.id) ?? [];
+  for (const jid of oldIds) await deleteJournalFull(supabase, jid);
+
+  const res = await postJournal(supabase, {
+    date,
+    description: `Хойшлогдсон НӨАТ амортизаци ${year}-${String(month).padStart(2, "0")}`,
+    reference: null,
+    partner_id: null,
+    source: "asset_vat_defer",
+    lines: [
+      { account_id: recId, debit: total, credit: 0, description: "Хойшлогдсон НӨАТ хасалт" },
+      { account_id: defId, debit: 0, credit: total, description: "Хойшлогдсон НӨАТ хасалт" },
+    ],
+  });
+  if (!res.ok) return { ok: false, error: `Журнал: ${res.error}` };
+
+  revalidatePath("/assets");
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: rows.length };
+}
+
+// Тухайн сарын хойшлогдсон НӨАТ амортизацийн журналыг устгах.
+export async function deleteVatDefer(year: number, month: number): Promise<ActionResult> {
+  const { supabase } = await requireAuth();
+  if (month < 1 || month > 12) return { ok: false, error: "Сар буруу." };
+  const date = monthEndDate(year, month);
+  const { data: oldJ } = await supabase
+    .from("journals")
+    .select("id")
+    .eq("source", "asset_vat_defer")
+    .eq("date", date);
+  const oldIds = (oldJ as { id: number }[] | null)?.map((j) => j.id) ?? [];
+  for (const jid of oldIds) await deleteJournalFull(supabase, jid);
+  revalidatePath("/assets");
+  revalidatePath("/reports/trial-balance");
+  return { ok: true, id: oldIds.length };
+}
+
 // ── Хасалт / Борлуулалт ─────────────────────────────────────────────────────
 // Стандарт чартын тогтмол данс (категориос хамаарахгүй):
 const ACC_GAIN = "620500"; // ҮХ борлуулсны олз
@@ -759,9 +849,20 @@ export async function acquireAsset(
   });
   if (!res.ok) return { ok: false, error: `Журнал: ${res.error}` };
 
+  // Хойшлогдсон НӨАТ (180500): дүн + хугацаа (тоног 60 / барилга 120) + эхлэх огноо.
+  const deferred = vatAccount === "180500" && vat > 0;
+  const vatMonths = deferred ? num(formData.get("vat_months")) || 60 : null;
+
   const { error: ue } = await supabase
     .from("assets")
-    .update({ acquisition_vat: vat, acquisition_customs: customs, acquisition_journal_id: res.id })
+    .update({
+      acquisition_vat: vat,
+      acquisition_customs: customs,
+      acquisition_journal_id: res.id,
+      deferred_vat: deferred ? vat : 0,
+      deferred_vat_months: deferred ? vatMonths : null,
+      deferred_vat_start: deferred ? date : null,
+    })
     .eq("id", assetId);
   if (ue) return { ok: false, error: ue.message };
 
@@ -786,7 +887,10 @@ export async function reverseAcquisition(assetId: number): Promise<ActionResult>
 
   const { error: ue } = await supabase
     .from("assets")
-    .update({ acquisition_vat: 0, acquisition_customs: 0, acquisition_journal_id: null })
+    .update({
+      acquisition_vat: 0, acquisition_customs: 0, acquisition_journal_id: null,
+      deferred_vat: 0, deferred_vat_months: null, deferred_vat_start: null,
+    })
     .eq("id", assetId);
   if (ue) return { ok: false, error: ue.message };
 
