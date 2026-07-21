@@ -71,8 +71,9 @@ export async function postLandedImport(input: LandedPostInput): Promise<LandedPo
   const rawCat = (settings?.category_accounts as Record<string, number | string | null>) ?? {};
   const catInv: Record<string, number | null> = {};
   for (const [code, v] of Object.entries(rawCat)) catInv[code] = v != null && v !== "" ? Number(v) : null;
-  const apId = settings?.ap_account_id ?? null;
-  if (apId == null) return { ok: false, error: "Нийлүүлэгчийн өглөгийн данс тохируулаагүй (БМ тохиргоо)." };
+  // Нийлүүлэгчийн өглөг (FOB): БМ тохиргооны AP данс, эс бөгөөс сонгосон
+  // «Төлбөрийн данс» (bankAccountId). bankAccountId дээр аль хэдийн > 0 шалгасан.
+  const apId = settings?.ap_account_id ?? input.bankAccountId;
 
   // НӨАТ-ын авлагын данс (импортын НӨАТ) — кодоор.
   const { data: vatAcc } = await supabase
@@ -232,8 +233,9 @@ export async function postLandedAssetImport(
     .eq("id", 1)
     .maybeSingle();
   const settings = (setData as InvSettings | null) ?? null;
-  const apId = settings?.ap_account_id ?? null;
-  if (apId == null) return { ok: false, error: "Нийлүүлэгчийн өглөгийн данс тохируулаагүй (БМ тохиргоо)." };
+  // Нийлүүлэгчийн өглөг (FOB): БМ тохиргооны AP данс, эс бөгөөс сонгосон
+  // «Төлбөрийн данс» (bankAccountId). bankAccountId дээр аль хэдийн > 0 шалгасан.
+  const apId = settings?.ap_account_id ?? input.bankAccountId;
 
   // Дансны код → id (хөрөнгийн данс + НӨАТ авлага).
   const wantCodes = [
