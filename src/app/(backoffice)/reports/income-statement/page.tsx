@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { ExcelExportButton } from "@/components/excel-export";
 import {
   INCOME_STATEMENT,
   computeStatement,
@@ -85,6 +86,17 @@ export default async function IncomeStatementPage({
       ? `${selYear} он (журналаас)`
       : `${selYear} он`;
   const rows = computeStatement(INCOME_STATEMENT, balances);
+
+  // Excel aoa.
+  const xn = (x: number | undefined) => x || "";
+  const excelAoa: (string | number)[][] = [
+    ["Орлогын дэлгэрэнгүй тайлан"],
+    ["Үзүүлэлт", "Өмнөх үе", "Тайлант үе"],
+    ...rows.map((r) => {
+      const g = r as { label?: string; opening?: number; closing?: number };
+      return [g.label ?? "", xn(g.opening), xn(g.closing)];
+    }),
+  ];
   const hasData = balances.size > 0;
 
   return (
@@ -139,6 +151,7 @@ export default async function IncomeStatementPage({
               Цэвэрлэх
             </a>
           )}
+          <ExcelExportButton aoa={excelAoa} filename="Орлогын-тайлан" sheet="Орлого" />
           <PrintButton />
         </div>
       </div>

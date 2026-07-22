@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { ExcelExportButton } from "@/components/excel-export";
 import {
   BALANCE_SHEET,
   computeStatement,
@@ -96,6 +97,17 @@ export default async function BalanceSheetPage({
       : `${selYear} он`;
   const rows = computeStatement(BALANCE_SHEET, balances);
 
+  // Excel aoa.
+  const xn = (x: number | undefined) => x || "";
+  const excelAoa: (string | number)[][] = [
+    ["Санхүүгийн байдлын тайлан (Баланс)"],
+    ["Код", "Үзүүлэлт", "Эхэнд", "Эцэст"],
+    ...rows.map((r) => {
+      const g = r as { code?: string; label?: string; opening?: number; closing?: number };
+      return [g.code ?? "", g.label ?? "", xn(g.opening), xn(g.closing)];
+    }),
+  ];
+
   // Тэнцлийн шалгалт: Актив (1.3) ↔ Өр+Өмч (2.4).
   const assets = rows.find((r) => "code" in r && r.code === "1.3");
   const liabEquity = rows.find((r) => "code" in r && r.code === "2.4");
@@ -155,6 +167,7 @@ export default async function BalanceSheetPage({
               Цэвэрлэх
             </a>
           )}
+          <ExcelExportButton aoa={excelAoa} filename="Санхүүгийн-байдлын-тайлан" sheet="Баланс" />
           <PrintButton />
         </div>
       </div>

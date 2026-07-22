@@ -1,4 +1,5 @@
 import { PrintButton } from "@/components/print-button";
+import { ExcelExportButton } from "@/components/excel-export";
 import {
   buildTrialBalanceView,
   type TbAccount,
@@ -51,6 +52,22 @@ export function TrialBalanceView({
 }) {
   const view = buildTrialBalanceView(accounts);
 
+  // Excel aoa (эхний/гүйлгээ/эцсийн Дт-Кт).
+  const num = (x: number | undefined) => x || "";
+  const cells = (c: {
+    obDt: number; obKt: number; tnDt: number; tnKt: number; clDt: number; clKt: number;
+  }) => [num(c.obDt), num(c.obKt), num(c.tnDt), num(c.tnKt), num(c.clDt), num(c.clKt)];
+  const excelAoa: (string | number)[][] = [
+    [`Гүйлгээ баланс — ${label}`],
+    ["Код", "Нэр", "Эхний Дт", "Эхний Кт", "Гүйлгээ Дт", "Гүйлгээ Кт", "Эцсийн Дт", "Эцсийн Кт"],
+    ...view.rows.map((r) =>
+      r.type === "account"
+        ? [r.code ?? "", r.name ?? "", ...cells(r)]
+        : [r.label ?? "", "", ...cells(r as never)],
+    ),
+    ["НИЙТ ДҮН", "", ...cells(view.grand)],
+  ];
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -72,6 +89,11 @@ export function TrialBalanceView({
               ? "✓ Тэнцэл бүрэн (Дт = Кт)"
               : `⚠ Зөрүү: ${fmt(view.grand.clDt - view.grand.clKt)}`}
           </span>
+          <ExcelExportButton
+            aoa={excelAoa}
+            filename={`Гүйлгээ-баланс_${label}`}
+            sheet="Гүйлгээ баланс"
+          />
           <PrintButton />
         </div>
       </div>

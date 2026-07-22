@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { ExcelExportButton } from "@/components/excel-export";
 import { isPayableAccount, isReceivableAccount, normalizePartner } from "@/lib/receivables-calc";
 
 // Харилцагчийн үлдэгдлийн тайлан (Smart Accounting загвар) — харилцагч бүрийг
@@ -154,6 +155,20 @@ export default async function PartnerBalanceDetailPage({
   const grandPay = groups.reduce((s, g) => s + g.payTotal, 0);
   const grandRecv = groups.reduce((s, g) => s + g.recvTotal, 0);
 
+  // Excel aoa.
+  const xn = (x: number) => (Math.abs(x) < 0.5 ? "" : Math.round(x));
+  const excelAoa: (string | number)[][] = [
+    [`Харилцагчийн үлдэгдлийн тайлан — ${to}`],
+    ["Дансны код", "Дансны нэр", "Валют", "Өглөгийн үлдэгдэл", "Авлагын үлдэгдэл"],
+  ];
+  for (const g of groups) {
+    excelAoa.push([g.name]);
+    for (const a of g.accounts)
+      excelAoa.push([a.code, a.name, a.currency, xn(a.payable), xn(a.receivable)]);
+    excelAoa.push(["", "Харилцагчийн дүн:", "", xn(g.payTotal), xn(g.recvTotal)]);
+  }
+  excelAoa.push(["", `Нийт (${groups.length} харилцагч)`, "", xn(grandPay), xn(grandRecv)]);
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
@@ -183,6 +198,7 @@ export default async function PartnerBalanceDetailPage({
               Харах
             </button>
           </form>
+          <ExcelExportButton aoa={excelAoa} filename={`Харилцагчийн-үлдэгдэл_${to}`} sheet="Харилцагч" />
           <PrintButton />
         </div>
       </div>

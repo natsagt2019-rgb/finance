@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { ExcelExportButton } from "@/components/excel-export";
 import { isPayableAccount, isReceivableAccount, normalizePartner } from "@/lib/receivables-calc";
 import { EntryEditButton } from "./entry-edit";
 
@@ -216,6 +217,24 @@ export default async function PartnerStatementPage({
   const payBal = sections.filter((s) => !s.isRecv).reduce((s, x) => s + x.closing, 0);
   const partnerBal = recvBal - payBal;
 
+  // Excel aoa.
+  const xn = (x: number) => (Math.abs(x) < 0.005 ? "" : Math.round(x * 100) / 100);
+  const excelAoa: (string | number)[][] = [
+    [`Тооцооны үлдэгдлийн тайлан — ${partnerInput}`, `${from} → ${to}`],
+  ];
+  for (const s of sections) {
+    excelAoa.push([`${s.code} ${s.name} (${s.isRecv ? "Авлага" : "Өглөг"})`]);
+    excelAoa.push(["№", "Огноо", "Гүйлгээний утга", "Дебет", "Кредит", "Үлдэгдэл"]);
+    excelAoa.push(["", "", "Эхний үлдэгдэл", "", "", xn(s.opening)]);
+    s.lines.forEach((l, i) =>
+      excelAoa.push([i + 1, l.date, l.desc, xn(l.debit), xn(l.credit), xn(l.balance)]),
+    );
+    excelAoa.push(["", "", "Дансны дүн", xn(s.totalDebit), xn(s.totalCredit), xn(s.closing)]);
+    excelAoa.push([]);
+  }
+  excelAoa.push(["", "", "Авлагын үлдэгдэл", "", "", xn(recvBal)]);
+  excelAoa.push(["", "", "Өглөгийн үлдэгдэл", "", "", xn(payBal)]);
+
   // ── eBarimt (НӨАТ) баримт — тухайн харилцагчийнх (мэдээллийн, ледгерээс тусдаа) ──
   // vat_active = толгой/хаалтын давхардал хассан. Харилцагчийг partner_id эсвэл
   // partner_register-ээр тулгана. Огнооны мужид.
@@ -317,6 +336,13 @@ export default async function PartnerStatementPage({
               Харах
             </button>
           </form>
+          {sections.length > 0 && (
+            <ExcelExportButton
+              aoa={excelAoa}
+              filename={`Тооцооны-үлдэгдэл_${partnerInput}`.replace(/[\\/:*?"<>|]/g, "")}
+              sheet="Тооцоо"
+            />
+          )}
           <PrintButton />
         </div>
       </div>
