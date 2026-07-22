@@ -509,7 +509,7 @@ export function LandedCostClient({
             { key: "freight" as const, label: "Тээвэр", amount: freight, setAmount: setFreight, acct: freightAcct, setAcct: setFreightAcct, hint: "" },
             { key: "storage" as const, label: "Хадгалалт", amount: storage, setAmount: setStorage, acct: storageAcct, setAcct: setStorageAcct, hint: "" },
           ]).map((c) => {
-            const locked = checkedByRow[c.key].size > 0;
+            const picked = checkedByRow[c.key].size > 0;
             return (
             <div key={c.key}>
               <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[120px_1fr_minmax(160px,1.4fr)_auto]">
@@ -518,10 +518,9 @@ export function LandedCostClient({
                   type="number"
                   value={c.amount || ""}
                   placeholder={c.hint || "0"}
-                  readOnly={locked}
-                  title={locked ? `${checkedByRow[c.key].size} гүйлгээ сонгосон — цэвэрлэхийн тулд бүгдийг тайлна уу` : undefined}
+                  title={picked ? `${checkedByRow[c.key].size} гүйлгээ сонгосон — гараас засаж болно` : "Гараас бичих эсвэл «Гүйлгээ сонгох»"}
                   onChange={(e) => c.setAmount(Number(e.target.value) || 0)}
-                  className={numCls + (locked ? " bg-zinc-100 text-zinc-500" : "")}
+                  className={numCls + (picked ? " bg-green-50" : "")}
                 />
                 <select value={c.acct} onChange={(e) => c.setAcct(e.target.value)} className={inputCls} title="Эх данс (банк/касс эсвэл УТЗ 140200 / УТТ 140300)">
                   <option value="">— эх данс —</option>
@@ -591,7 +590,7 @@ export function LandedCostClient({
           );})}
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          «☑ Гүйлгээ сонгох» — тухайн дансны (УТЗ 140200 / УТТ 140300) гүйлгээнүүдээс чеклэн сонгоход дүн автоматаар нэмэгдэнэ (гараар засахгүй).
+          Дүнг <b>гараас шууд бичиж</b> болно. Эсвэл «☑ Гүйлгээ сонгох»-оор тухайн дансны (УТЗ 140200 / УТТ 140300) гүйлгээнүүдээс чеклэн сонгоход дүн автоматаар нэмэгдэнэ (сонгосны дараа ч гараас засаж болно).
           «↧ Үлдэгдэл» — дансны бүтэн үлдэгдлийг татна. Орлогод авахад тухайн данс кредитлэгдэнэ.
         </p>
       </div>
