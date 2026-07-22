@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { GeneralLedgerExport, type ExportRow } from "./gl-export";
 
 type SearchParams = { account?: string; from?: string; to?: string; view?: string };
 
@@ -131,6 +132,25 @@ export default async function GeneralLedgerPage({
   const detailTotalCr = detailRows.reduce((s, r) => s + r.credit, 0);
   const detailClosing = detailOpening + detailTotalDr - detailTotalCr;
 
+  // Excel export-д идэвхтэй горимын өгөгдлийг бэлдэнэ.
+  const exportRows: ExportRow[] =
+    view === "detail"
+      ? detailRows.map((r) => ({
+          date: r.date,
+          desc: r.desc,
+          code: r.contra_code,
+          name: r.contra_name,
+          debit: r.debit,
+          credit: r.credit,
+          balance: r.balance,
+        }))
+      : rows.map((r) => ({
+          code: r.contra_code,
+          name: r.contra_name ?? "—",
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+        }));
+
   // Горим хооронд сэлгэх линк (параметр хадгална).
   const modeHref = (v: string) => {
     const p = new URLSearchParams();
@@ -183,6 +203,18 @@ export default async function GeneralLedgerPage({
               Харах
             </button>
           </form>
+          {account && (
+            <GeneralLedgerExport
+              account={account}
+              accountName={selName}
+              dFrom={dFrom}
+              dTo={dTo}
+              view={view}
+              opening={view === "detail" ? detailOpening : opening}
+              closing={view === "detail" ? detailClosing : closing}
+              rows={exportRows}
+            />
+          )}
           <PrintButton />
         </div>
       </div>
