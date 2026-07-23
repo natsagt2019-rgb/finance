@@ -32,6 +32,7 @@ export type VatRow = {
   amount: number;
   vat_amount: number;
   total_amount: number;
+  journaled?: boolean; // ддтд журналын reference-д байгаа эсэх (журналлагдсан)
 };
 
 export type Acc = { code: string; name: string };
@@ -670,7 +671,7 @@ export function VatPurchasePanel({
             </tr>
           ) : (
             rows.map((v) => (
-              <tr key={v.id} className="hover:bg-zinc-50">
+              <tr key={v.id} className={v.journaled ? "bg-emerald-50/50" : "hover:bg-zinc-50"}>
                 <td className="px-2 py-1.5">
                   <input
                     type="checkbox"
@@ -680,6 +681,15 @@ export function VatPurchasePanel({
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{d(v.date)}</td>
                 <td className="px-3 py-1.5">
+                  {v.journaled ? (
+                    <span className="mr-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                      ✓ журналд
+                    </span>
+                  ) : (
+                    <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      холбоогүй
+                    </span>
+                  )}
                   {v.invoice_no && (
                     <span className="mr-1 rounded border border-zinc-200 px-1 text-xs text-zinc-500">
                       {v.invoice_no}
@@ -965,6 +975,9 @@ export function VatSalesPanel({
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
+  const allSaleSel = rows.length > 0 && rows.every((r) => saleSel.has(r.id));
+  const toggleSaleAll = () =>
+    setSaleSel(allSaleSel ? new Set() : new Set(rows.map((r) => r.id)));
 
   const submitSale = () => {
     start(async () => {
@@ -1032,25 +1045,38 @@ export function VatSalesPanel({
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-2 border-b border-zinc-100 px-3 py-1.5">
-        <button
-          onClick={() => setShowSale(true)}
-          disabled={rows.length === 0}
-          className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
-        >
-          🧾 Борлуулалт үүсгэх
-        </button>
-        <button
-          onClick={openLink}
-          className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
-        >
-          🔍 И баримт холбох
-        </button>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5">
+        <span className="text-xs text-zinc-400">
+          {saleSel.size > 0 ? `${saleSel.size} сонгосон` : "Мөр сонгож борлуулалт/холбох үйлдэл хий"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSale(true)}
+            disabled={rows.length === 0 || saleSel.size === 0}
+            className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+          >
+            🧾 Борлуулалт үүсгэх
+          </button>
+          <button
+            onClick={openLink}
+            className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
+          >
+            🔍 И баримт холбох
+          </button>
+        </div>
       </div>
 
       <table className="w-full text-sm">
         <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
           <tr>
+            <th className="w-8 px-2 py-2">
+              <input
+                type="checkbox"
+                checked={allSaleSel}
+                onChange={toggleSaleAll}
+                title="Бүгдийг сонгох"
+              />
+            </th>
             <th className="px-3 py-2">Огноо</th>
             <th className="px-3 py-2">Нэхэмжлэл / ДДТД</th>
             <th className="px-3 py-2 text-right">НӨАТ-гүй</th>
@@ -1061,15 +1087,31 @@ export function VatSalesPanel({
         <tbody className="divide-y divide-zinc-100">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-3 py-8 text-center text-sm text-zinc-400">
+              <td colSpan={6} className="px-3 py-8 text-center text-sm text-zinc-400">
                 Бичлэг байхгүй
               </td>
             </tr>
           ) : (
             rows.map((v) => (
-              <tr key={v.id} className="hover:bg-zinc-50">
+              <tr key={v.id} className={v.journaled ? "bg-emerald-50/50" : "hover:bg-zinc-50"}>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={saleSel.has(v.id)}
+                    onChange={() => toggleSale(v.id)}
+                  />
+                </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{d(v.date)}</td>
                 <td className="px-3 py-1.5">
+                  {v.journaled ? (
+                    <span className="mr-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                      ✓ журналд
+                    </span>
+                  ) : (
+                    <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      холбоогүй
+                    </span>
+                  )}
                   {v.invoice_no && (
                     <span className="mr-1 rounded border border-zinc-200 px-1 text-xs text-zinc-500">
                       {v.invoice_no}
@@ -1089,7 +1131,7 @@ export function VatSalesPanel({
         {rows.length > 0 && (
           <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
             <tr>
-              <td colSpan={4} className="px-3 py-2 text-right text-zinc-500">
+              <td colSpan={5} className="px-3 py-2 text-right text-zinc-500">
                 Нийт {rows.length}:
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-green-700">{f(total)}</td>

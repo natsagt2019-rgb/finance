@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { fetchUsedJournalRefs } from "@/lib/ebarimt-link";
 import { BankTxnTable, VatPurchasePanel, VatSalesPanel } from "./partner-client";
 
 // Хуучин TumenAccounting3-ийн харилцагчийн дэлгэрэнгүй (partner_view) загвар:
@@ -42,6 +43,7 @@ type VatRow = {
   vat_amount: number;
   total_amount: number;
   tax_type: string | null;
+  journaled?: boolean;
 };
 
 type TxnRow = {
@@ -116,6 +118,9 @@ export default async function PartnerDetailPage({
     }
   }
   const vatAll = [...vatById.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Журналлагдсан эсэх: ддтд нь журналын reference-д байвал «холбогдсон».
+  const usedRefs = await fetchUsedJournalRefs(supabase);
+  for (const v of vatAll) v.journaled = v.ddtd ? usedRefs.has(v.ddtd) : false;
   // Бодит орлого = анхны нэхэмжлэл (parent_ddtd хоосон), эсвэл эцэг нь
   // устгагдсан/олдоогүй хаалтын баримт (давхардал цэвэрлэгээний дараа дэд нь
   // цор ганц мөр болно). Эцэгтэйгээ хамт байгаа хаалтын баримт л тоологдохгүй.
