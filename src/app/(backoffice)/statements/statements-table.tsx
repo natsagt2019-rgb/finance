@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn } from "./actions";
+import { StatementSplitModal, type SplitTxn } from "./statement-split-modal";
 
 export type TxnRow = {
   id: number;
+  account_id: string;
   txn_date: string;
   bank: string | null;
   description: string | null;
@@ -18,6 +20,7 @@ export type TxnRow = {
   expense_code: string | null;
   debit_code: string | null;
   credit_code: string | null;
+  journal_id: number | null;
 };
 
 export type AccountOpt = { code: string; name: string };
@@ -39,13 +42,16 @@ export function StatementsTable({
   rows,
   accounts,
   partnerNames = [],
+  bankGlByAccount = {},
 }: {
   rows: TxnRow[];
   accounts: AccountOpt[];
   partnerNames?: string[];
+  bankGlByAccount?: Record<string, string | null>;
 }) {
   const [filters, setFilters] = useState(EMPTY);
   const [data, setData] = useState<TxnRow[]>(rows);
+  const [splitTxn, setSplitTxn] = useState<SplitTxn | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [editDt, setEditDt] = useState("");
   const [editKt, setEditKt] = useState("");
@@ -60,8 +66,13 @@ export function StatementsTable({
   const [expCode, setExpCode] = useState("");
   const router = useRouter();
 
-  // Сервер дахин ачаалахад (автомат холболтын дараа) өгөгдлийг шинэчилнэ.
-  useEffect(() => setData(rows), [rows]);
+  // Сервер дахин ачаалахад (автомат холболт/refresh) prop өөрчлөгдвөл дотоод
+  // өгөгдлийг рендерийн үед тэгшитгэнэ (эффектээс зайлсхийв).
+  const [seenRows, setSeenRows] = useState(rows);
+  if (rows !== seenRows) {
+    setSeenRows(rows);
+    setData(rows);
+  }
 
   function autoLink() {
     setMsg(null);
@@ -124,7 +135,7 @@ export function StatementsTable({
 
   // Сонгох боломжтой (зардал) мөрүүд — харагдаж буй.
   const selectableIds = useMemo(
-    () => filtered.filter((r) => Number(r.expense) > 0).map((r) => r.id),
+    () => filtered.filter((r) => Number(r.expense) > 0 && r.journal_id == null).map((r) => r.id),
     [filtered],
   );
   const allSelected =
@@ -175,6 +186,23 @@ export function StatementsTable({
     setEditKt(r.credit_code ?? "");
     setEditCp(r.counterparty ?? "");
     setMsg(null);
+  }
+
+  function openSplit(r: TxnRow) {
+    const rate = Number(r.exchange_rate) || 1;
+    const inc = Number(r.income) || 0;
+    const exp = Number(r.expense) || 0;
+    const amount = Math.round((inc || exp) * rate * 100) / 100;
+    setMsg(null);
+    setSplitTxn({
+      id: r.id,
+      date: r.txn_date,
+      description: r.description,
+      counterparty: r.counterparty,
+      amount,
+      dir: inc > 0 ? "in" : "out",
+      bankGl: bankGlByAccount[r.account_id] ?? null,
+    });
   }
 
   function remove(r: TxnRow) {
@@ -397,11 +425,21 @@ export function StatementsTable({
                       <button type="button" onClick={() => setEditId(null)} className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500">Болих</button>
                     </td>
                   </>
+                ) : r.journal_id != null ? (
+                  <>
+                    <td colSpan={2} className="whitespace-nowrap px-3 py-2">
+                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        📒 журналдсан
+                      </span>
+                    </td>
+                    <td className="px-2 py-1"></td>
+                  </>
                 ) : (
                   <>
                     <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{acctCell(r.debit_code)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{acctCell(r.credit_code)}</td>
                     <td className="whitespace-nowrap px-2 py-1">
+                      <button type="button" onClick={() => openSplit(r)} title="Задлах / И-баримт холбох" className="mr-1 rounded border border-blue-200 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50">⤴</button>
                       <button type="button" onClick={() => startEdit(r)} title="Засах" className="mr-1 rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50">✏</button>
                       <button type="button" disabled={pending} onClick={() => remove(r)} title="Устгах" className="rounded border border-red-200 px-2 py-1 text-xs text-red-500 hover:bg-red-50 disabled:opacity-50">🗑</button>
                     </td>
@@ -427,6 +465,21 @@ export function StatementsTable({
       <div className="border-t border-zinc-100 px-3 py-2 text-xs text-zinc-400">
         {filtered.length} / {data.length} мөр харагдаж байна.
       </div>
+
+      {splitTxn && (
+        <StatementSplitModal
+          txn={splitTxn}
+          accounts={accounts}
+          onClose={() => setSplitTxn(null)}
+          onSaved={(m, journalId) => {
+            const id = splitTxn.id;
+            setData((d) => d.map((r) => (r.id === id ? { ...r, journal_id: journalId } : r)));
+            setSplitTxn(null);
+            setMsg(m);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
