@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn } from "./actions";
+import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn, unlinkTxnSplit } from "./actions";
 import { StatementSplitModal, type SplitTxn } from "./statement-split-modal";
 
 export type TxnRow = {
@@ -219,6 +219,29 @@ export function StatementsTable({
           n.delete(r.id);
           return n;
         });
+      } else {
+        setMsg(res.error);
+      }
+    });
+  }
+
+  // Журналдсан (задалсан) гүйлгээг журналаас салгах — журнал устгаж, дахин
+  // задлах/кодлох боломжтой болгоно.
+  function unlinkSplit(r: TxnRow) {
+    if (
+      !window.confirm(
+        `Журналыг цуцалж, гүйлгээг задлагаас салгах уу?\nДараа нь дахин задлах/кодлох боломжтой болно.\n${r.txn_date.slice(0, 10)} · ${r.description ?? ""}`,
+      )
+    )
+      return;
+    setMsg(null);
+    start(async () => {
+      const res = await unlinkTxnSplit(r.id);
+      if (res.ok) {
+        setData((d) =>
+          d.map((x) => (x.id === r.id ? { ...x, journal_id: null, contra: [] } : x)),
+        );
+        router.refresh();
       } else {
         setMsg(res.error);
       }
@@ -443,7 +466,17 @@ export function StatementsTable({
                         ))}
                       </div>
                     </td>
-                    <td className="px-2 py-1"></td>
+                    <td className="whitespace-nowrap px-2 py-1">
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => unlinkSplit(r)}
+                        title="Журналыг цуцалж, дахин задлах/засах боломжтой болгох"
+                        className="rounded border border-amber-300 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        ↩ Салгах
+                      </button>
+                    </td>
                   </>
                 ) : (
                   <>
