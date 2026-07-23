@@ -46,6 +46,7 @@ export function StatementSplitModal({
     { code: "", amount: txn.amount.toFixed(2), description: txn.description ?? "" },
   ]);
   const [reference, setReference] = useState("");
+  const [journalDesc, setJournalDesc] = useState(txn.description ?? "");
   const [partnerId, setPartnerId] = useState<number | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +138,7 @@ export function StatementSplitModal({
         })),
         reference,
         partnerId,
-        description: null,
+        description: journalDesc,
       });
       if (res.ok) onSaved(`✓ Журнал ${res.number} үүсэж, гүйлгээ холбогдлоо.`, res.journalId);
       else setError(res.error);
@@ -280,6 +281,18 @@ export function StatementSplitModal({
               </tr>
             </tfoot>
           </table>
+
+          <label className="mt-3 block text-sm">
+            <span className="mb-1 block text-xs font-semibold text-zinc-600">
+              Гүйлгээний утга
+            </span>
+            <input
+              value={journalDesc}
+              onChange={(e) => setJournalDesc(e.target.value)}
+              placeholder="Журналын тайлбар"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </label>
 
           <label className="mt-3 block text-sm">
             <span className="mb-1 block text-xs font-semibold text-zinc-600">
