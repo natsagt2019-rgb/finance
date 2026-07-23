@@ -29,6 +29,7 @@ type Txn = {
   debit_code: string | null;
   credit_code: string | null;
   journal_id: number | null;
+  contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд) — журналын банк бус мөр
 };
 
 const YEARS = ["2026", "2025"];
@@ -112,6 +113,45 @@ export default async function StatementsPage({
   const sumExpense = mcRows.reduce((s, r) => s + (Number(r.total_expense) || 0), 0);
 
   const txns = (rows as Txn[] | null) ?? [];
+
+  // Журналдсан гүйлгээний харьцсан данс — журналын банк бус мөрийн код(ууд).
+  const bankGlSet = new Set(
+    Object.values(bankGlByAccount).filter((c): c is string => !!c),
+  );
+  const jIds = [
+    ...new Set(txns.map((t) => t.journal_id).filter((x): x is number => x != null)),
+  ];
+  if (jIds.length) {
+    const { data: jlRows } = await supabase
+      .from("journal_lines")
+      .select("journal_id, account_id")
+      .in("journal_id", jIds)
+      .limit(10000);
+    const jl =
+      (jlRows as { journal_id: number; account_id: number | null }[] | null) ?? [];
+    const accIds2 = [
+      ...new Set(jl.map((l) => l.account_id).filter((x): x is number => x != null)),
+    ];
+    const codeById = new Map<number, string>();
+    if (accIds2.length) {
+      const { data: ac } = await supabase
+        .from("accounts")
+        .select("id, code")
+        .in("id", accIds2);
+      for (const a of (ac as { id: number; code: string }[] | null) ?? [])
+        codeById.set(a.id, a.code);
+    }
+    const contraByJournal = new Map<number, string[]>();
+    for (const l of jl) {
+      const code = l.account_id != null ? codeById.get(l.account_id) : undefined;
+      if (!code || bankGlSet.has(code)) continue; // банкны тал биш = харьцсан данс
+      const arr = contraByJournal.get(l.journal_id) ?? [];
+      if (!arr.includes(code)) arr.push(code);
+      contraByJournal.set(l.journal_id, arr);
+    }
+    for (const t of txns)
+      if (t.journal_id != null) t.contra = contraByJournal.get(t.journal_id) ?? [];
+  }
 
   // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).
   // Холболтын шүүлт идэвхтэй үед monthly_cashflow тооцох боломжгүй тул

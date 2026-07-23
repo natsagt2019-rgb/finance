@@ -801,7 +801,10 @@ export function VatPurchasePanel({
               </table>
             </div>
             <div className="text-sm text-zinc-500">
-              Сонгосон: <strong>{paySel.size}</strong> баримт
+              Сонгосон: <strong>{paySel.size}</strong> баримт, нийт{" "}
+              <strong>
+                {f(rows.filter((r) => paySel.has(r.id)).reduce((s, r) => s + (Number(r.total_amount) || 0), 0))}₮
+              </strong>
             </div>
             <Msg msg={msg} />
             <div className="flex justify-end gap-2">
@@ -925,7 +928,10 @@ export function VatPurchasePanel({
               </table>
             </div>
             <div className="text-sm text-zinc-500">
-              Сонгосон: <strong>{linkSel.size}</strong> баримт
+              Сонгосон: <strong>{linkSel.size}</strong> баримт, нийт{" "}
+              <strong>
+                {f(unm.filter((v) => linkSel.has(v.id)).reduce((s, v) => s + (Number(v.total_amount) || 0), 0))}₮
+              </strong>
             </div>
             <Msg msg={msg} />
             <div className="flex justify-end gap-2">
@@ -1233,7 +1239,10 @@ export function VatSalesPanel({
               </table>
             </div>
             <div className="text-sm text-zinc-500">
-              Сонгосон: <strong>{saleSel.size}</strong> баримт
+              Сонгосон: <strong>{saleSel.size}</strong> баримт, нийт{" "}
+              <strong>
+                {f(rows.filter((r) => saleSel.has(r.id)).reduce((s, r) => s + (Number(r.total_amount) || 0), 0))}₮
+              </strong>
             </div>
             <Msg msg={msg} />
             <div className="flex justify-end gap-2">
@@ -1346,7 +1355,10 @@ export function VatSalesPanel({
               </table>
             </div>
             <div className="text-sm text-zinc-500">
-              Сонгосон: <strong>{linkSel.size}</strong> баримт
+              Сонгосон: <strong>{linkSel.size}</strong> баримт, нийт{" "}
+              <strong>
+                {f(unm.filter((v) => linkSel.has(v.id)).reduce((s, v) => s + (Number(v.total_amount) || 0), 0))}₮
+              </strong>
             </div>
             <Msg msg={msg} />
             <div className="flex justify-end gap-2">
