@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
+import { bankJournalStatus } from "@/lib/bank-journal-status";
+import { BankJournalBanner } from "../bank-journal-banner";
 import { GeneralLedgerExport, type ExportRow } from "./gl-export";
 
 type SearchParams = { account?: string; from?: string; to?: string; view?: string };
@@ -60,6 +62,11 @@ export default async function GeneralLedgerPage({
   const selName = accounts.find((a) => a.code === account)?.name ?? "";
   const nameByCode = new Map(accounts.map((a) => [a.code, a.name]));
 
+  // Банкны хуулга журналд бүрэн/шинэ тусаагүй бол энэ тайлан гүйлгээ дутуу
+  // харуулна (journal_entries-ээс уншдаг). Хуучирсан/кодгүй бол анхааруулна.
+  const glYear = Number(dFrom.slice(0, 4)) || new Date().getFullYear();
+  const bankStatus = await bankJournalStatus(supabase, glYear);
+
   // GL мөрүүд (данс сонгосон үед)
   let opening = 0;
   let rows: GLRow[] = [];
@@ -84,7 +91,7 @@ export default async function GeneralLedgerPage({
   const closing = opening + totalDebit - totalCredit;
 
   // ── Задаргаа (гүйлгээ тус бүр) — journal_entries шууд ──────────────────────
-  let detailRows: DetailRow[] = [];
+  const detailRows: DetailRow[] = [];
   let detailOpening = 0;
   if (account && view === "detail") {
     type JE = {
@@ -226,6 +233,8 @@ export default async function GeneralLedgerPage({
           {account} {selName} · {dFrom} → {dTo}
         </p>
       </div>
+
+      <BankJournalBanner year={glYear} status={bankStatus} />
 
       {!account ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-800">

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { mirrorToLedger, partnerNameById } from "@/lib/post-journal";
-import type { LineInput, TxnLink, UnlinkedTxn } from "./types";
+import { fetchUsedJournalRefs } from "@/lib/ebarimt-link";
+import type { LineInput, TxnLink, UnlinkedTxn, UnlinkedEbarimt } from "./types";
 
 export type ActionResult =
   | { ok: true; id: number; number: string }
@@ -111,16 +112,7 @@ export async function unlinkedTxnsForAccount(code: string): Promise<UnlinkedTxn[
 
   // ── eBarimt (журналд ороогүй = ДДТД нь журналын reference-д байхгүй) ──
   // Худ.авалт (type=in) → мөнгө гарна (Кт), борлуулалт (type=out) → мөнгө орно (Дт).
-  const { data: jr } = await supabase
-    .from("journals")
-    .select("reference")
-    .not("reference", "is", null)
-    .limit(100000);
-  const usedRefs = new Set(
-    ((jr as { reference: string | null }[] | null) ?? [])
-      .map((j) => j.reference)
-      .filter((r): r is string => !!r),
-  );
+  const usedRefs = await fetchUsedJournalRefs(supabase);
   const { data: vats } = await supabase
     .from("vat_records")
     .select("id, date, type, ddtd, partner_name, total_amount")
@@ -142,6 +134,45 @@ export async function unlinkedTxnsForAccount(code: string): Promise<UnlinkedTxn[
     });
   }
 
+  return out;
+}
+
+// ── Журналд ороогүй и-баримт (бүрэн дүнгээр) — журналын форм руу «дуудах» ──────
+// Журналын reference-д ДДТД нь байхгүй бол «ороогүй» гэж үзнэ. Хамгийн сүүлийн
+// огноогоор эрэмбэлж 1000-г буцаана (net/НӨАТ/нийт дүн задаргаатай).
+export async function unlinkedEbarimt(): Promise<UnlinkedEbarimt[]> {
+  const supabase = await requireAuth();
+
+  const usedRefs = await fetchUsedJournalRefs(supabase);
+
+  const { data: vats } = await supabase
+    .from("vat_records")
+    .select(
+      "id, date, type, ddtd, partner_id, partner_name, amount, vat_amount, total_amount",
+    )
+    .not("ddtd", "is", null)
+    .order("date", { ascending: false })
+    .limit(1000);
+
+  const out: UnlinkedEbarimt[] = [];
+  for (const v of (vats as {
+    id: number; date: string; type: string; ddtd: string | null;
+    partner_id: number | null; partner_name: string | null;
+    amount: number | null; vat_amount: number | null; total_amount: number | null;
+  }[] | null) ?? []) {
+    if (!v.ddtd || usedRefs.has(v.ddtd)) continue;
+    out.push({
+      id: v.id,
+      date: (v.date ?? "").slice(0, 10),
+      type: v.type === "in" ? "in" : "out",
+      ddtd: v.ddtd,
+      partner_id: v.partner_id,
+      partner_name: v.partner_name,
+      net: Number(v.amount) || 0,
+      vat: Number(v.vat_amount) || 0,
+      total: Number(v.total_amount) || 0,
+    });
+  }
   return out;
 }
 

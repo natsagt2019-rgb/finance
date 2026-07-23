@@ -60,3 +60,17 @@ export type UnlinkedTxn = {
   direction: "in" | "out"; // in = мөнгө орсон (Дт), out = гарсан (Кт)
   amount: number; // ₮
 };
+
+// Журналд ороогүй и-баримт (бүрэн дүнгээр) — журналын форм руу «дуудахад».
+// Нэг баримтаас бүтэн бичилт (цэвэр + НӨАТ + нийт) угсрахад ашиглана.
+export type UnlinkedEbarimt = {
+  id: number;
+  date: string; // YYYY-MM-DD
+  type: "in" | "out"; // in = худалдан авалт, out = борлуулалт
+  ddtd: string | null;
+  partner_id: number | null;
+  partner_name: string | null;
+  net: number; // НӨАТгүй дүн
+  vat: number; // НӨАТ дүн
+  total: number; // нийт дүн
+};

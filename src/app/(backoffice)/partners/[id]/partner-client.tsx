@@ -254,7 +254,6 @@ export function BankTxnTable({
   const [dt, setDt] = useState("");
   const [kt, setKt] = useState("310100");
   const [hasVat, setHasVat] = useState(false);
-  const [vatAcc, setVatAcc] = useState("330100");
 
   const total = rows.reduce(
     (s, t) => s + (Number(isExpense ? t.expense : t.income) || 0),
@@ -286,7 +285,7 @@ export function BankTxnTable({
         dtCode: dt,
         ktCode: kt,
         hasVat,
-        vatAccCode: vatAcc,
+        vatAccCode: "",
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) {
@@ -475,12 +474,7 @@ export function BankTxnTable({
             <AccDatalist id="exp-acc-dl" accounts={accounts} />
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input type="checkbox" checked={hasVat} onChange={(e) => setHasVat(e.target.checked)} />
-              Нийт дүнд НӨАТ багтсан (1/11) — Дт 130600 / Кт{" "}
-              <input
-                value={vatAcc}
-                onChange={(e) => setVatAcc(e.target.value)}
-                className="w-16 rounded border border-zinc-300 px-1 py-0.5 text-xs"
-              />
+              Нийт дүнд НӨАТ багтсан (1/11) — Дт 130600 НӨАТ-ын авлага / Кт дээрх «Кт данс»
             </label>
             <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
               Сонгосон: <strong>{sel.size}</strong> гүйлгээ, нийт{" "}
@@ -537,8 +531,6 @@ export function VatPurchasePanel({
   const [paySel, setPaySel] = useState<Set<number>>(new Set(rows.map((r) => r.id)));
   const [dt, setDt] = useState("");
   const [kt, setKt] = useState("310100");
-  const [splitVat, setSplitVat] = useState(false);
-  const [vatAcc, setVatAcc] = useState("330100");
   const [payDesc, setPayDesc] = useState("");
 
   const [showLink, setShowLink] = useState(false);
@@ -550,7 +542,6 @@ export function VatPurchasePanel({
   const [linkPartner, setLinkPartner] = useState(String(partnerId));
   const [linkDt, setLinkDt] = useState("");
   const [linkKt, setLinkKt] = useState("310100");
-  const [linkSplitVat, setLinkSplitVat] = useState(false);
 
   const total = rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 
@@ -568,8 +559,8 @@ export function VatPurchasePanel({
         vatIds: [...paySel],
         dtCode: dt,
         ktCode: kt,
-        splitVat,
-        vatAccCode: vatAcc,
+        splitVat: false,
+        vatAccCode: "",
         description: payDesc,
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
@@ -603,8 +594,8 @@ export function VatPurchasePanel({
         kind: "in",
         dtCode: linkDt,
         ktCode: linkKt,
-        splitVat: linkSplitVat,
-        vatAccCode: "330100",
+        splitVat: false,
+        vatAccCode: "",
         description: "",
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
@@ -720,16 +711,9 @@ export function VatPurchasePanel({
                 />
               </label>
             </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-700">
-              <input type="checkbox" checked={splitVat} onChange={(e) => setSplitVat(e.target.checked)} />
-              НӨАТ-ыг тусдаа өглөгт холбох (Дт 130600 / Кт{" "}
-              <input
-                value={vatAcc}
-                onChange={(e) => setVatAcc(e.target.value)}
-                className="w-16 rounded border border-zinc-300 px-1 py-0.5 text-xs"
-              />
-              )
-            </label>
+            <p className="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+              НӨАТ автоматаар: <span className="font-medium text-zinc-700">Дт 130600 НӨАТ-ын авлага</span> / Кт өглөг (нийт өглөгт НӨАТ багтана).
+            </p>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-zinc-600">
                 Гүйлгээний утга{" "}
@@ -826,10 +810,9 @@ export function VatPurchasePanel({
                 />
               </label>
               <AccDatalist id="link-acc-dl" accounts={accounts} />
-              <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-2">
-                <input type="checkbox" checked={linkSplitVat} onChange={(e) => setLinkSplitVat(e.target.checked)} />
-                НӨАТ-ыг тусдаа өглөгт холбох (Дт 130600 / Кт 330100)
-              </label>
+              <p className="rounded-lg bg-white px-3 py-2 text-xs text-zinc-500 sm:col-span-2">
+                НӨАТ автоматаар: <span className="font-medium text-zinc-700">Дт 130600 НӨАТ-ын авлага</span> / Кт өглөг (нийт өглөгт НӨАТ багтана).
+              </p>
             </div>
             <input
               value={q}

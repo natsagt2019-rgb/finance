@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
+import { fetchUsedJournalRefs } from "@/lib/ebarimt-link";
 import { VAT_SELECT, type VatRow, type VatType } from "./types";
 import { TypeToggle } from "./type-toggle";
 import { BulkTypeBar } from "./bulk-type-bar";
@@ -32,6 +33,7 @@ type SearchParams = {
   type?: string;
   month?: string;
   q?: string;
+  link?: string; // "" бүгд | "yes" холбогдсон | "no" холбогдоогүй
 };
 
 // vat_monthly_summary view-ийн мөр (server-side GROUP BY).
@@ -55,6 +57,8 @@ export default async function VatPage({
     sp.type === "out" || sp.type === "in" ? sp.type : "";
   const selMonth = sp.month && /^\d+$/.test(sp.month) ? Number(sp.month) : null;
   const search = (sp.q ?? "").trim();
+  const selLink: "" | "yes" | "no" =
+    sp.link === "yes" || sp.link === "no" ? sp.link : "";
 
   // ── Нэгтгэл: server-side GROUP BY view (max-rows cap-аас зайлсхийнэ) ──────
   const { data: sumData } = await supabase
@@ -105,37 +109,77 @@ export default async function VatPage({
     .filter((r) => r.type === "in")
     .reduce((s, r) => s + Number(r.cnt ?? 0), 0);
 
+  // ── Холбоосын төлөв: и-баримтын ДДТД журналын reference-д байвал «холбогдсон» ─
+  const usedRefs = await fetchUsedJournalRefs(supabase);
+  const isLinked = (r: VatRow) => !!r.ddtd && usedRefs.has(r.ddtd);
+
   // ── Баримтын жагсаалт (vat_active — хаалтаар орлуулагдсан толгойг хасна) ───
-  let query = supabase.from("vat_active").select(VAT_SELECT, { count: "exact" });
-  if (selType) query = query.eq("type", selType);
-  if (selMonth) query = query.eq("month", selMonth);
-  if (search) {
-    // Үргэлж нэр / ТТД / ДДТД-аар хайна.
-    const term = `%${search}%`;
-    const parts = [
-      `partner_name.ilike.${term}`,
-      `partner_register.ilike.${term}`,
-      `ddtd.ilike.${term}`,
-    ];
-    // Хэрэв тоо бол НЭМЭЛТээр дүн/НӨАТ/суурь дээр ±0.1% мужаар хайна.
-    const cleaned = search.replace(/[,₮\s]/g, "");
-    const asNum = Number(cleaned);
-    if (cleaned !== "" && Number.isFinite(asNum) && asNum !== 0) {
-      const lo = (asNum * 0.999).toFixed(2);
-      const hi = (asNum * 1.001).toFixed(2);
-      parts.push(`and(total_amount.gte.${lo},total_amount.lte.${hi})`);
-      parts.push(`and(vat_amount.gte.${lo},vat_amount.lte.${hi})`);
-      parts.push(`and(amount.gte.${lo},amount.lte.${hi})`);
+  // type/month/search шүүлтийг DB дээр хийнэ.
+  const buildBase = () => {
+    let q = supabase.from("vat_active").select(VAT_SELECT, { count: "exact" });
+    if (selType) q = q.eq("type", selType);
+    if (selMonth) q = q.eq("month", selMonth);
+    if (search) {
+      // Үргэлж нэр / ТТД / ДДТД-аар хайна.
+      const term = `%${search}%`;
+      const parts = [
+        `partner_name.ilike.${term}`,
+        `partner_register.ilike.${term}`,
+        `ddtd.ilike.${term}`,
+      ];
+      // Хэрэв тоо бол НЭМЭЛТээр дүн/НӨАТ/суурь дээр ±0.1% мужаар хайна.
+      const cleaned = search.replace(/[,₮\s]/g, "");
+      const asNum = Number(cleaned);
+      if (cleaned !== "" && Number.isFinite(asNum) && asNum !== 0) {
+        const lo = (asNum * 0.999).toFixed(2);
+        const hi = (asNum * 1.001).toFixed(2);
+        parts.push(`and(total_amount.gte.${lo},total_amount.lte.${hi})`);
+        parts.push(`and(vat_amount.gte.${lo},vat_amount.lte.${hi})`);
+        parts.push(`and(amount.gte.${lo},amount.lte.${hi})`);
+      }
+      q = q.or(parts.join(","));
     }
-    query = query.or(parts.join(","));
+    return q;
+  };
+
+  let records: VatRow[];
+  let totalCount: number;
+  let error: { message: string } | null = null;
+
+  if (selLink === "") {
+    // Холбоосоор шүүхгүй — DB-ийн count + ROW_LIMIT-ээр (хурдан зам). Холбоосын
+    // төлөвийг зөвхөн харуулж буй мөрүүдэд л тооцоолж харуулна.
+    const {
+      data,
+      error: e,
+      count,
+    } = await buildBase().order("date", { ascending: false }).limit(ROW_LIMIT);
+    error = e;
+    records = (data as unknown as VatRow[] | null) ?? [];
+    totalCount = count ?? records.length;
+  } else {
+    // Холбоосоор шүүх — vat_active-д холбоосын багана байхгүй тул шүүлтэд тохирох
+    // БҮХ мөрийг татаж JS дээр шүүнэ. (PostgREST 1000-cap → .range()-ээр хуудаслана.)
+    const PAGE = 1000;
+    const allRows: VatRow[] = [];
+    for (let from = 0; from < 1_000_000; from += PAGE) {
+      const { data, error: e } = await buildBase()
+        .order("date", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (e) {
+        error = e;
+        break;
+      }
+      const rows = (data as unknown as VatRow[] | null) ?? [];
+      allRows.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    const filtered = allRows.filter(
+      selLink === "yes" ? isLinked : (r) => !isLinked(r),
+    );
+    totalCount = filtered.length; // шүүлтэд тохирох жинхэнэ тоо
+    records = filtered.slice(0, ROW_LIMIT);
   }
-  const {
-    data: tableData,
-    error,
-    count,
-  } = await query.order("date", { ascending: false }).limit(ROW_LIMIT);
-  const records = (tableData as VatRow[] | null) ?? [];
-  const totalCount = count ?? records.length; // шүүлтэд тохирох жинхэнэ тоо
 
   return (
     <div>
@@ -335,6 +379,20 @@ export default async function VatPage({
             ))}
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-zinc-600">
+            Холбоос
+          </label>
+          <select
+            name="link"
+            defaultValue={selLink}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">— Бүгд —</option>
+            <option value="no">Холбогдоогүй</option>
+            <option value="yes">Холбогдсон</option>
+          </select>
+        </div>
         <div className="w-full sm:w-auto sm:min-w-[240px] sm:flex-1">
           <label className="mb-1 block text-xs font-semibold text-zinc-600">
             Хайх (харилцагч / ТТД / ДДТД / дүн)
@@ -407,6 +465,7 @@ export default async function VatPage({
                   <th className="px-3 py-2 text-right">НӨАТ</th>
                   <th className="px-3 py-2">Татварын төрөл</th>
                   <th className="px-3 py-2">Эх сурвалж</th>
+                  <th className="px-3 py-2">Холбоос</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -464,6 +523,17 @@ export default async function VatPage({
                       )}
                     </td>
                     <td className="px-3 py-2 text-zinc-500">{r.source ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      {isLinked(r) ? (
+                        <span className="whitespace-nowrap rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          🔗 Холбогдсон
+                        </span>
+                      ) : (
+                        <span className="whitespace-nowrap rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
+                          Холбогдоогүй
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
