@@ -335,8 +335,10 @@ export function BankTxnTable({
               </td>
             </tr>
           ) : (
-            rows.map((t) => (
-              <tr key={t.id} className="hover:bg-zinc-50">
+            rows.map((t) => {
+              const jn = !!(t.debit_code && t.credit_code);
+              return (
+              <tr key={t.id} className={jn ? "bg-emerald-50/50" : "hover:bg-zinc-50"}>
                 {isExpense && (
                   <td className="px-2 py-1.5">
                     <input
@@ -347,8 +349,21 @@ export function BankTxnTable({
                   </td>
                 )}
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{d(t.txn_date)}</td>
-                <td className="max-w-[14rem] truncate px-3 py-1.5 text-zinc-700" title={t.description ?? ""}>
-                  {t.description || "—"}
+                <td className="max-w-[14rem] px-3 py-1.5 text-zinc-700">
+                  <div className="flex items-center gap-1">
+                    {jn ? (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-medium text-emerald-700">
+                        ✓ журналд
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700">
+                        холбоогүй
+                      </span>
+                    )}
+                    <span className="truncate" title={t.description ?? ""}>
+                      {t.description || "—"}
+                    </span>
+                  </div>
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-xs">
                   {isExpense ? (
@@ -387,7 +402,8 @@ export function BankTxnTable({
                   </button>
                 </td>
               </tr>
-            ))
+              );
+            })
           )}
         </tbody>
         {rows.length > 0 && (

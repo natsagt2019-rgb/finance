@@ -306,11 +306,21 @@ export async function createTxnSplitJournal(input: {
   if (lines.length === 0)
     return { ok: false, error: "Дор хаяж нэг мөр (данс + дүн) оруулна уу." };
   const linesSum = r2(lines.reduce((s, l) => s + l.amount, 0));
-  if (Math.abs(linesSum - total) > 0.5)
+  const residual = r2(total - linesSum);
+  // ≤1₮ эвлүүлэлтийн (rounding) зөрүүг зөвшөөрнө — НӨАТ задаргаа/банкны бутархайгаас
+  // болж мөрүүдийн нийлбэр банкны дүнгээс 1₮-ээр зөрж болно.
+  if (Math.abs(residual) > 1)
     return {
       ok: false,
       error: `Мөрүүдийн нийлбэр (${linesSum.toLocaleString()}) гүйлгээний дүн (${total.toLocaleString()})-тэй тэнцэхгүй.`,
     };
+  // Үлдэгдэл зөрүүг хамгийн том мөрд шингээж, банктай яг тэнцүүлнэ (журнал баланслана).
+  if (residual !== 0) {
+    let maxI = 0;
+    for (let i = 1; i < lines.length; i++)
+      if (lines[i].amount > lines[maxI].amount) maxI = i;
+    lines[maxI].amount = r2(lines[maxI].amount + residual);
+  }
 
   // Банкны GL данс — гүйлгээний account_id (дансны дугаар)-аар.
   const { data: ba } = await supabase
