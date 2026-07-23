@@ -105,9 +105,10 @@ export default async function PartnerDetailPage({
     vatQueries.push(
       supabase.from("vat_records").select(vatSel).eq("partner_register", partner.register),
     );
-  if (partner.name)
+  // Нэр + alias-аар (банкны гүйлгээтэй ижил) — өөр бичигдсэн нэрийг ч таньна.
+  for (const nm of [partner.name, ...aliases].filter((n): n is string => !!n))
     vatQueries.push(
-      supabase.from("vat_records").select(vatSel).ilike("partner_name", partner.name),
+      supabase.from("vat_records").select(vatSel).ilike("partner_name", nm),
     );
   for (const q of vatQueries) {
     const { data } = await q.limit(NUM_LIMIT);
