@@ -11,6 +11,9 @@ export type NormalizedTxn = {
   currency?: string; // 'MNT' | 'USD' | 'EUR' … (анхдагч MNT)
   income: number | null;
   expense: number | null;
+  // Гүйлгээний дараах үлдэгдэл (хуулгаас). Давхардал таслахад мөр бүрийг ялгах
+  // өвөрмөц түлхүүр болгож ашиглана (ижил өдөр/дүнтэй жинхэнэ гүйлгээ нэгдэхгүй).
+  balance?: number | null;
   // apply_codes-ийн дараа нэмэгдэнэ
   income_code?: string | null;
   expense_code?: string | null;

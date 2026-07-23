@@ -147,6 +147,7 @@ export function parseTdb(
       currency,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
+      balance: toNum(cell(row, col.balance)) || null,
     });
   }
 
@@ -295,6 +296,7 @@ export function parseKhas(
       account_no: "",
       exchange_rate: 1.0,
       currency: account.currency || "MNT",
+      balance: khasNum(cell(row, 6)) || null,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
     });
@@ -346,6 +348,7 @@ export function parseKhan(
       account_no: acct,
       exchange_rate: 1.0,
       currency: account.currency || "MNT",
+      balance: toNum(cell(row, col.balance)) || null,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
     });
@@ -430,6 +433,7 @@ export function parseTdbCompact(
       currency,
       income: income > 0 ? income : null,
       expense: expense > 0 ? expense : null,
+      balance: toNum(cell(row, col.balance)) || null,
     });
   }
   return result;

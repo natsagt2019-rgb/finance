@@ -74,6 +74,7 @@ export type PreviewRow = {
   currency: string;
   income: number | null;
   expense: number | null;
+  balance: number | null; // гүйлгээний дараах үлдэгдэл — давхардал ялгах өвөрмөц түлхүүр
   income_code: string | null;
   expense_code: string | null;
   master_code: string | null;
@@ -112,6 +113,7 @@ function toPreviewRow(t: NormalizedTxn): PreviewRow {
     currency: t.currency ?? "MNT",
     income: t.income,
     expense: t.expense,
+    balance: t.balance ?? null,
     income_code: t.income_code ?? null,
     expense_code: t.expense_code ?? null,
     master_code: t.master_code ?? null,
@@ -300,8 +302,12 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
     const fp = fingerprint(
       r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty,
     );
-    r.isDuplicate = dbSet.has(fp) || seen.has(fp);
-    seen.add(fp);
+    // Багц доторх давхардлыг эцсийн үлдэгдлээр ялгана — ижил өдөр/дүн/утгатай
+    // ЖИНХЭНЭ давтагдсан гүйлгээ (ялангуяа нэргүй ХААН) нэгдэхгүй. DB-тэй тулгах
+    // нь балансгүй хэвээр (дахин импортод хуучин мөрийг таних).
+    const bk = fp + "|" + (r.balance ?? "");
+    r.isDuplicate = dbSet.has(fp) || seen.has(bk);
+    seen.add(bk);
   }
 
   // Файл бүрийн давхардлын тоог тоолно.
@@ -352,8 +358,10 @@ export async function commitImport(rows: PreviewRow[]): Promise<CommitResult> {
     const fp = fingerprint(
       r.account_id, r.txn_date, r.description, r.income, r.expense, r.counterparty,
     );
-    if (dbSet.has(fp) || seen.has(fp)) return false; // DB эсвэл багц доторх давхардал
-    seen.add(fp);
+    // Багц доторх давхардлыг эцсийн үлдэгдлээр ялгана (preview-тэй ижил).
+    const bk = fp + "|" + (r.balance ?? "");
+    if (dbSet.has(fp) || seen.has(bk)) return false; // DB эсвэл багц доторх давхардал
+    seen.add(bk);
     return true;
   });
 
