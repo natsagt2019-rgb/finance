@@ -68,11 +68,12 @@ export function BankJournalBanner({
           )}
           {stale && (
             <p>
-              Журналд бичигдсэн{" "}
-              <span className="font-semibold tabular-nums">{posted}</span> ≠ бичих
+              Гүйлгээний кодыг зассаны дараа журнал шинэчлэгдээгүй байна
+              (бичигдсэн{" "}
+              <span className="font-semibold tabular-nums">{posted}</span>, бичих
               ёстой{" "}
-              <span className="font-semibold tabular-nums">{postable}</span> — кодыг
-              зассаны дараа журнал шинэчлэгдээгүй байна.
+              <span className="font-semibold tabular-nums">{postable}</span>) —
+              журналд дахин бичихэд GL тайлан хуулгатай тулна.
             </p>
           )}
           {error && <p className="text-red-700">{error}</p>}

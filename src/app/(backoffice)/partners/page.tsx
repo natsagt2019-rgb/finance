@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
@@ -20,6 +21,19 @@ const TYPE_BADGE: Record<PartnerType, { label: string; cls: string }> = {
   supplier: { label: "Өглөг", cls: "bg-amber-100 text-amber-700" },
   both: { label: "Хоёул", cls: "bg-zinc-100 text-zinc-600" },
 };
+
+// Кодын угтвараар бүлэг тодорхойлно.
+type PartnerGroup = { key: string; label: string; order: number };
+const GROUP_OTHER: PartnerGroup = { key: "Z", label: "Бусад", order: 9 };
+function partnerGroup(code: string | null): PartnerGroup {
+  const c = (code ?? "").toUpperCase();
+  if (c.startsWith("AG-")) return { key: "AG", label: "Гадаад ажилтан", order: 5 };
+  if (c.startsWith("A-")) return { key: "A", label: "Дотоод (монгол) ажилтан", order: 4 };
+  if (c.startsWith("C-")) return { key: "C", label: "Байгууллага / компани", order: 1 };
+  if (c.startsWith("S-")) return { key: "S", label: "Гадаад нийлүүлэгч", order: 2 };
+  if (c.startsWith("E-")) return { key: "E", label: "Хувь хүн", order: 3 };
+  return GROUP_OTHER;
+}
 
 export default async function PartnersPage({
   searchParams,
@@ -51,6 +65,19 @@ export default async function PartnersPage({
     .limit(ROW_LIMIT);
 
   const partners = (rows as PartnerRow[] | null) ?? [];
+
+  // Бүлгээр эрэмбэлнэ (бүлгийн дараалал → код → нэр), бүлэг тус бүрийн тоог бодно.
+  partners.sort((a, b) => {
+    const ga = partnerGroup(a.code).order;
+    const gb = partnerGroup(b.code).order;
+    if (ga !== gb) return ga - gb;
+    return (a.code ?? "").localeCompare(b.code ?? "") || a.name.localeCompare(b.name);
+  });
+  const groupCounts = new Map<string, number>();
+  for (const p of partners) {
+    const k = partnerGroup(p.code).key;
+    groupCounts.set(k, (groupCounts.get(k) ?? 0) + 1);
+  }
 
   // ── Мөнгөн гүйлгээний нэгтгэл (code-оор) ─────────────────────────────────
   const { data: cfRows } = await supabase
@@ -181,11 +208,30 @@ export default async function PartnersPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {partners.map((p) => {
+                {(() => {
+                  let lastGroup = "";
+                  return partners.map((p) => {
                   const cf = p.code ? cashByCode.get(p.code) : undefined;
                   const badge = TYPE_BADGE[p.type] ?? TYPE_BADGE.both;
+                  const grp = partnerGroup(p.code);
+                  const showHeader = grp.key !== lastGroup;
+                  lastGroup = grp.key;
                   return (
-                    <tr key={p.id} className="hover:bg-zinc-50">
+                    <Fragment key={p.id}>
+                    {showHeader && (
+                      <tr className="bg-zinc-100">
+                        <td
+                          colSpan={8}
+                          className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                        >
+                          {grp.label}{" "}
+                          <span className="font-normal text-zinc-400">
+                            ({groupCounts.get(grp.key) ?? 0})
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="hover:bg-zinc-50">
                       <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-zinc-500">
                         {p.code || "—"}
                       </td>
@@ -238,8 +284,10 @@ export default async function PartnersPage({
                         <DeletePartnerButton id={p.id} name={p.name} />
                       </td>
                     </tr>
+                    </Fragment>
                   );
-                })}
+                  });
+                })()}
               </tbody>
               <tfoot className="border-t border-zinc-200 bg-zinc-50 text-sm font-semibold">
                 <tr>

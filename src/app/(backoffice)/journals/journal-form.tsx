@@ -3,8 +3,19 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { createJournal, updateJournal, unlinkedTxnsForAccount } from "./actions";
-import type { AccountOption, LineInput, TxnLink, UnlinkedTxn } from "./types";
+import {
+  createJournal,
+  updateJournal,
+  unlinkedTxnsForAccount,
+  unlinkedEbarimt,
+} from "./actions";
+import type {
+  AccountOption,
+  LineInput,
+  TxnLink,
+  UnlinkedTxn,
+  UnlinkedEbarimt,
+} from "./types";
 
 type Row = {
   account_id: string; // select value (string)
@@ -70,6 +81,15 @@ export function JournalForm({
     const code = codeById.get(accountId);
     return !!code && cbSet.has(code);
   };
+
+  // accounts.code → select value (id). И-баримтаас стандарт данс (НӨАТ/өглөг/авлага)
+  // урьдчилан сонгоход.
+  const idByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of accounts) m.set(a.code, String(a.id));
+    return m;
+  }, [accounts]);
+  const accId = (code: string) => idByCode.get(code) ?? "";
 
   // Гүйлгээ холбох picker.
   const [pickerRow, setPickerRow] = useState<number | null>(null);
@@ -142,6 +162,71 @@ export function JournalForm({
     setRows((prev) =>
       prev.length <= 2 ? prev : prev.filter((_, idx) => idx !== i),
     );
+  }
+
+  // ── И-баримт дуудах (журналд ороогүй) ──────────────────────────────────────
+  const [ebOpen, setEbOpen] = useState(false);
+  const [ebItems, setEbItems] = useState<UnlinkedEbarimt[]>([]);
+  const [ebLoading, setEbLoading] = useState(false);
+  const [ebSearch, setEbSearch] = useState("");
+
+  const ebFiltered = useMemo(() => {
+    const q = ebSearch.trim().toLowerCase();
+    if (!q) return ebItems;
+    return ebItems.filter(
+      (v) =>
+        (v.partner_name ?? "").toLowerCase().includes(q) ||
+        (v.ddtd ?? "").toLowerCase().includes(q),
+    );
+  }, [ebItems, ebSearch]);
+
+  function openEbarimt() {
+    setEbOpen(true);
+    setEbItems([]);
+    setEbSearch("");
+    setEbLoading(true);
+    unlinkedEbarimt()
+      .then((items) => setEbItems(items))
+      .finally(() => setEbLoading(false));
+  }
+
+  // Нэг и-баримтаас бүтэн бичилт угсарна:
+  //   Худ.авалт (in): Дт зардал (цэвэр) + Дт 130600 НӨАТ / Кт 310100 өглөг (нийт)
+  //   Борлуулалт (out): Дт 130100 авлага (нийт) / Кт орлого (цэвэр) + Кт 330100 НӨАТ
+  // Зардал/орлогын дансыг хэрэглэгч сонгоно (юу авсан/зарснаас хамаарна).
+  function pullEbarimt(v: UnlinkedEbarimt) {
+    const s = (n: number) => (n ? String(n) : "");
+    const name = v.partner_name ?? "";
+    const link: TxnLink = { source: "vat", id: v.id };
+
+    setDate(v.date || today);
+    setCurrency("MNT");
+    setRate("");
+    setReference(v.ddtd ?? "");
+    if (v.partner_id != null && partners.some((p) => p.id === v.partner_id)) {
+      setPartnerId(String(v.partner_id));
+    }
+
+    let next: Row[];
+    if (v.type === "in") {
+      setDescription(`Худалдан авалт: ${name}`.trim());
+      next = [
+        { account_id: "", debit: s(v.net), credit: "", description: `Худалдан авалт: ${name}`.trim(), link: null },
+      ];
+      if (v.vat > 0)
+        next.push({ account_id: accId("130600"), debit: s(v.vat), credit: "", description: "НӨАТ-ын авлага (130600)", link: null });
+      next.push({ account_id: accId("310100"), debit: "", credit: s(v.total), description: name || "Нийлүүлэгчийн өглөг", link });
+    } else {
+      setDescription(`Борлуулалт: ${name}`.trim());
+      next = [
+        { account_id: accId("130100"), debit: s(v.total), credit: "", description: name || "Худалдагчийн авлага", link },
+        { account_id: "", debit: "", credit: s(v.net), description: `Борлуулалт: ${name}`.trim(), link: null },
+      ];
+      if (v.vat > 0)
+        next.push({ account_id: accId("330100"), debit: "", credit: s(v.vat), description: "НӨАТ-ын өглөг (330100)", link: null });
+    }
+    setRows(next.length >= 2 ? next : [...next, { ...EMPTY_ROW }]);
+    setEbOpen(false);
   }
 
   function handleSubmit(status: "draft" | "posted") {
@@ -270,13 +355,23 @@ export function JournalForm({
           <span className="text-sm font-semibold text-zinc-700">
             Гүйлгээний мөрүүд
           </span>
-          <button
-            type="button"
-            onClick={addRow}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            + Мөр нэмэх
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openEbarimt}
+              className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+              title="Журналд ороогүй и-баримтаас бүтэн бичилт үүсгэх"
+            >
+              📄 И-баримт дуудах
+            </button>
+            <button
+              type="button"
+              onClick={addRow}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              + Мөр нэмэх
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -305,9 +400,17 @@ export function JournalForm({
                   <td className="px-3 py-1.5">
                     <select
                       value={r.account_id}
-                      onChange={(e) =>
-                        setRow(i, { account_id: e.target.value, link: null, debit: "", credit: "" })
-                      }
+                      onChange={(e) => {
+                        const nextId = e.target.value;
+                        // Касс/банк данс оролцсон үед л дүн/холбоосыг цэвэрлэнэ
+                        // (тэдгээрийн дүн зөвхөн холбосон гүйлгээнээс ирдэг). Бусад
+                        // данс хооронд солиход бөглөсөн дүнг хадгална.
+                        if (isCashBank(r.account_id) || isCashBank(nextId)) {
+                          setRow(i, { account_id: nextId, link: null, debit: "", credit: "" });
+                        } else {
+                          setRow(i, { account_id: nextId });
+                        }
+                      }}
                       className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
                     >
                       <option value="">— Данс сонгох —</option>
@@ -533,6 +636,112 @@ export function JournalForm({
                             className="rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700"
                           >
                             Сонгох
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* И-баримт дуудах picker */}
+      {ebOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setEbOpen(false)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <div>
+                <span className="text-sm font-semibold text-zinc-800">
+                  Журналд ороогүй и-баримт
+                </span>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Сонгосон баримтаас цэвэр дүн, НӨАТ, нийт дүнгээр бичилт автоматаар угсарна.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEbOpen(false)}
+                className="text-zinc-400 hover:text-zinc-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="border-b border-zinc-100 px-4 py-2">
+              <input
+                type="text"
+                value={ebSearch}
+                onChange={(e) => setEbSearch(e.target.value)}
+                placeholder="Харилцагч эсвэл ДДТД-аар хайх…"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="overflow-y-auto p-2">
+              {ebLoading ? (
+                <div className="py-8 text-center text-sm text-zinc-500">Ачааллаж байна…</div>
+              ) : ebFiltered.length === 0 ? (
+                <div className="py-8 text-center text-sm text-zinc-500">
+                  {ebSearch.trim()
+                    ? "Хайлтад тохирох и-баримт алга."
+                    : "Журналд ороогүй и-баримт алга."}
+                  <div className="mt-1 text-xs text-zinc-400">
+                    НӨАТ / И-баримт цэсээр баримт импортолсны дараа энд харагдана.
+                  </div>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs font-medium text-zinc-500">
+                    <tr>
+                      <th className="px-2 py-1">Огноо</th>
+                      <th className="px-2 py-1">Төрөл</th>
+                      <th className="px-2 py-1">Харилцагч / ДДТД</th>
+                      <th className="px-2 py-1 text-right">Цэвэр</th>
+                      <th className="px-2 py-1 text-right">НӨАТ</th>
+                      <th className="px-2 py-1 text-right">Нийт</th>
+                      <th className="px-2 py-1"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {ebFiltered.map((v) => (
+                      <tr key={v.id} className="hover:bg-zinc-50">
+                        <td className="whitespace-nowrap px-2 py-1.5 text-zinc-600">{v.date}</td>
+                        <td className="px-2 py-1.5">
+                          <span
+                            className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              v.type === "in"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-emerald-100 text-emerald-700"
+                            }`}
+                          >
+                            {v.type === "in" ? "Худ.авалт" : "Борлуулалт"}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-zinc-700">
+                          <div className="max-w-[16rem] truncate" title={v.partner_name ?? ""}>
+                            {v.partner_name || "—"}
+                          </div>
+                          {v.ddtd && (
+                            <div className="text-[10px] text-zinc-400">{v.ddtd}</div>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-zinc-600">{fmt(v.net)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-zinc-600">{fmt(v.vat)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-zinc-800">{fmt(v.total)}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => pullEbarimt(v)}
+                            className="rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700"
+                          >
+                            Дуудах
                           </button>
                         </td>
                       </tr>

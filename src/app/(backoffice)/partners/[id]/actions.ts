@@ -94,14 +94,22 @@ export async function listUnmatchedVat(
   }[]
 > {
   const supabase = await requireAuth();
-  const { data } = await supabase
-    .from("vat_records")
-    .select("id, date, partner_name, ddtd, amount, vat_amount, total_amount")
-    .is("partner_id", null)
-    .eq("type", type)
-    .order("date", { ascending: false })
-    .limit(500);
-  return (data as never) ?? [];
+  // Бүх холбогдоогүй баримтыг хуудаслаж авна (PostgREST 1000-cap-аас болж
+  // .limit(500) хийвэл хуучин сарын баримт таслагддаг байсан).
+  const out: unknown[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("vat_records")
+      .select("id, date, partner_name, ddtd, amount, vat_amount, total_amount")
+      .is("partner_id", null)
+      .eq("type", type)
+      .order("date", { ascending: false })
+      .range(from, from + 999);
+    if (error) break;
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return out as never;
 }
 
 // ── 3a. Ирсэн нэхэмжлэхээс (eBarimt худалдан авалт) өглөг үүсгэх ────────────
@@ -110,24 +118,26 @@ export async function createPayableFromVat(input: {
   vatIds: number[];
   dtCode: string; // зардлын данс (7xxx)
   ktCode: string; // өглөгийн данс (default 3310)
-  splitVat: boolean; // НӨАТ-ыг тусдаа өглөгт холбох
-  vatAccCode: string; // НӨАТ-ын өглөгийн данс (3152)
+  splitVat: boolean; // (ашиглагдахгүй) — худ.авалтын НӨАТ үргэлж Кт өглөгт нэгтгэнэ
+  vatAccCode: string; // (ашиглагдахгүй) — НӨАТ 330100 руу орохгүй
   description?: string; // гүйлгээний утга (хоосон бол автомат)
 }): Promise<ActionResult> {
   const supabase = await requireAuth();
   const dt = input.dtCode.trim();
   const kt = (input.ktCode || "3310").trim();
-  const vatAcc = (input.vatAccCode || "3152").trim();
   const desc = (input.description || "").trim();
   if (!dt) return { ok: false, error: "Зардлын данс (Дт) оруулна уу." };
   if (!input.vatIds.length) return { ok: false, error: "Баримт сонгоно уу." };
 
   // Оруулсан НӨАТ-ын (буцаан авах) данс — 130600 «НӨАТ-ын авлага».
-  const ids = await codeToId(supabase, [dt, kt, vatAcc, "130600"]);
+  // Худалдан авалтад НӨАТ ҮРГЭЛЖ Дт 130600 / Кт өглөг (нийлүүлэгчид өгөх нийт
+  // өглөгт НӨАТ багтана). 330100 (гарцын/борлуулалтын НӨАТ) руу КРЕДИТЛЭХГҮЙ —
+  // тэр нь худалдан авалтад буруу тул splitVat/vatAccCode-ыг эндээс үл хэрэгснэ.
+  const ids = await codeToId(supabase, [dt, kt, "130600"]);
   const dtId = ids.get(dt);
   const ktId = ids.get(kt);
   const vatDrId = ids.get("130600");
-  const vatCrId = input.splitVat ? ids.get(vatAcc) : ktId;
+  const vatCrId = ktId;
   if (!dtId) return { ok: false, error: `Данс ${dt} олдсонгүй.` };
   if (!ktId) return { ok: false, error: `Данс ${kt} олдсонгүй.` };
 
@@ -339,15 +349,13 @@ export async function recordBankExpense(input: {
   const supabase = await requireAuth();
   const dt = input.dtCode.trim();
   const kt = (input.ktCode || "3310").trim();
-  const vatAcc = (input.vatAccCode || "3152").trim();
   if (!dt) return { ok: false, error: "Зардлын данс (Дт) оруулна уу." };
   if (!input.txnIds.length) return { ok: false, error: "Гүйлгээ сонгоно уу." };
 
-  const ids = await codeToId(supabase, [dt, kt, vatAcc, "130600"]);
+  const ids = await codeToId(supabase, [dt, kt, "130600"]);
   const dtId = ids.get(dt);
   const ktId = ids.get(kt);
   const vatDrId = ids.get("130600");
-  const vatCrId = ids.get(vatAcc);
   if (!dtId) return { ok: false, error: `Данс ${dt} олдсонгүй.` };
   if (!ktId) return { ok: false, error: `Данс ${kt} олдсонгүй.` };
 
@@ -375,12 +383,13 @@ export async function recordBankExpense(input: {
     if (input.hasVat && vatDrId) {
       const vat = Math.round(total / 11);
       const net = total - vat;
-      const crId = vatCrId ?? ktId;
+      // Оруулсан НӨАТ: Дт 130600 / Кт төлбөрийн (Кт) данс. НӨАТ-ыг мөн Кт данс руу
+      // нэгтгэснээр банк/өглөг нийт дүнгээр (net+vat) хаагдана. 330100 руу орохгүй.
       lines = [
         { account_id: dtId, debit: net, credit: 0, description: t.description ?? "" },
         { account_id: ktId, debit: 0, credit: net, description: "" },
         { account_id: vatDrId, debit: vat, credit: 0, description: "Оруулсан НӨАТ" },
-        { account_id: crId, debit: 0, credit: vat, description: "НӨАТ" },
+        { account_id: ktId, debit: 0, credit: vat, description: "НӨАТ" },
       ];
     } else {
       lines = [
