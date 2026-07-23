@@ -56,6 +56,27 @@ export async function deleteTxn(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
+// Задлагыг цуцлах — тухайн гүйлгээний журналыг (толгой + мөр + GL толь) устгаж,
+// journal_id-г цэвэрлэнэ. Дараа нь гүйлгээ дахин задлагдах/кодлогдох боломжтой.
+export async function unlinkTxnSplit(txnId: number): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  const { data: t } = await supabase
+    .from("transactions")
+    .select("journal_id")
+    .eq("id", txnId)
+    .single();
+  const jid = (t as { journal_id: number | null } | null)?.journal_id;
+  if (!jid) return { ok: true }; // журналгүй — юу ч хийхгүй
+  // GL толь ба журналын мөрийг гараар устгана (FK cascade найдваргүй тул).
+  await supabase.from("journal_entries").delete().eq("journal_id", jid);
+  await supabase.from("journal_lines").delete().eq("journal_id", jid);
+  await supabase.from("transactions").update({ journal_id: null }).eq("journal_id", jid);
+  const { error } = await supabase.from("journals").delete().eq("id", jid);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/statements");
+  return { ok: true };
+}
+
 // ── Автомат холболт: нөгөө тал GL дансыг автоматаар оноох ────────────────────
 // Хоёр эх сурвалжтай зураглал ашиглана:
 //   1) СУРСАН дүрэм — одоо байгаа кодлогдсон гүйлгээнээс (ангилал→данс).
