@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadCompany } from "@/lib/company";
 import { PrintButton } from "@/components/print-button";
+import { isReceivableAccount, isPayableAccount } from "@/lib/receivables-calc";
 
 // НХМаягт ТМ-3 — Тооцооны үлдэгдлийн баталгаа (хуучин reconcile_act.html).
 // Дебит = нэхэмжлэл (авлага үүсэх), Кредит = банкны орлого (төлбөр).
@@ -55,57 +56,69 @@ export default async function ReconcileActPage({
   };
   const aliases = Array.isArray(partner.aliases) ? partner.aliases : [];
 
-  // Дебит — нэхэмжлэл.
-  let invQ = supabase
-    .from("invoices")
-    .select("invoice_no, inv_date, description, amount")
-    .eq("partner_id", pid)
-    .eq("is_active", true);
-  if (from) invQ = invQ.gte("inv_date", from);
-  if (to) invQ = invQ.lte("inv_date", to);
-  const { data: invData } = await invQ.limit(NUM_LIMIT);
+  // Тооцооны данс (авлага/өглөг) — /receivables, /payables тайлантай ижил дүрэм.
+  const { data: accData } = await supabase
+    .from("accounts")
+    .select("code, name, type, fs_line")
+    .eq("is_active", true)
+    .limit(NUM_LIMIT);
+  const settlement = new Set(
+    (
+      (accData as
+        | { code: string; name: string | null; type: string | null; fs_line: string | null }[]
+        | null) ?? []
+    )
+      .filter(
+        (a) =>
+          // НӨАТ (оролт/гарц) нь худалдааны бичилт дотор цэвэршдэг тул партнерийн
+          // тооцооны данс биш — 130600/330100-ыг хасна (эс бөгөөс өглөг/авлага гажина).
+          !`${a.name ?? ""}`.toLowerCase().includes("нөат") &&
+          (isReceivableAccount(a.name, a.type, a.fs_line) ||
+            isPayableAccount(a.name, a.type, a.fs_line)),
+      )
+      .map((a) => a.code),
+  );
 
-  // Кредит — банкны орлого (регистр/нэр/код-оор, дэлгэрэнгүй хуудастай адил).
-  type TxnLite = { id: number; txn_date: string; description: string | null; income: number | null; exchange_rate: number | null };
-  const txnById = new Map<number, TxnLite>();
-  const runTxn = async (col: string, value: string, exact: boolean) => {
-    let tq = supabase
-      .from("transactions")
-      .select("id, txn_date, description, income, exchange_rate")
-      .not("income", "is", null);
-    tq = exact ? tq.eq(col, value) : tq.ilike(col, `%${value}%`);
-    if (from) tq = tq.gte("txn_date", from);
-    if (to) tq = tq.lte("txn_date", `${to}T23:59:59+08:00`);
-    const { data } = await tq.limit(NUM_LIMIT);
-    for (const t of (data as TxnLite[] | null) ?? []) txnById.set(t.id, t);
+  // Гүйлгээ = нягтлан бодох бүртгэлийн бичилт (journal_entries) — харилцагчийн
+  // нэр (+alias)-аар, тооцооны данс оролцсон бичилтүүд. Тооцооны данс Дт талд
+  // бол авлага (дебит), Кт талд бол өглөг (кредит).
+  const names = [partner.name, ...aliases].filter((n): n is string => !!n);
+  type JE = {
+    txn_date: string;
+    description: string | null;
+    amount: number;
+    debit_code: string | null;
+    credit_code: string | null;
   };
-  if (partner.code) await runTxn("master_code", partner.code, true);
-  if (partner.register) {
-    await runTxn("description", partner.register, false);
-    await runTxn("counterparty", partner.register, false);
-  }
-  for (const nm of [partner.name, ...aliases].filter(Boolean)) {
-    await runTxn("counterparty", nm, false);
-    await runTxn("master_name", nm, false);
+  const je: JE[] = [];
+  if (names.length) {
+    for (let offset = 0; ; offset += 1000) {
+      let q = supabase
+        .from("journal_entries")
+        .select("txn_date, description, amount, debit_code, credit_code")
+        .in("partner_name", names);
+      if (from) q = q.gte("txn_date", from);
+      if (to) q = q.lte("txn_date", to);
+      const { data } = await q.range(offset, offset + 999);
+      const page = (data as JE[] | null) ?? [];
+      je.push(...page);
+      if (page.length < 1000) break;
+    }
   }
 
   const rows: Row[] = [];
-  for (const v of (invData as { invoice_no: string | null; inv_date: string; description: string | null; amount: number }[] | null) ?? []) {
+  for (const e of je) {
+    const amt = Number(e.amount) || 0;
+    if (amt === 0) continue;
+    const dr = !!e.debit_code && settlement.has(e.debit_code);
+    const cr = !!e.credit_code && settlement.has(e.credit_code);
+    if (!dr && !cr) continue; // тооцооны данс оролцоогүй бичилт — актад ордоггүй
     rows.push({
-      date: v.inv_date,
-      ref: v.invoice_no || "",
-      desc: v.description || `Нэхэмжлэл — ${partner.name}`,
-      debit: Number(v.amount) || 0,
-      credit: 0,
-    });
-  }
-  for (const t of txnById.values()) {
-    rows.push({
-      date: (t.txn_date || "").slice(0, 10),
+      date: (e.txn_date || "").slice(0, 10),
       ref: "",
-      desc: t.description || `Төлбөр — ${partner.name}`,
-      debit: 0,
-      credit: (Number(t.income) || 0) * (Number(t.exchange_rate) || 1),
+      desc: e.description || `Бичилт — ${partner.name}`,
+      debit: dr ? amt : 0,
+      credit: dr ? 0 : amt,
     });
   }
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
