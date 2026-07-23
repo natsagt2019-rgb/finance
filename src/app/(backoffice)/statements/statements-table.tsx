@@ -21,6 +21,7 @@ export type TxnRow = {
   debit_code: string | null;
   credit_code: string | null;
   journal_id: number | null;
+  contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд)
 };
 
 export type AccountOpt = { code: string; name: string };
@@ -428,9 +429,19 @@ export function StatementsTable({
                 ) : r.journal_id != null ? (
                   <>
                     <td colSpan={2} className="whitespace-nowrap px-3 py-2">
-                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        📒 журналдсан
-                      </span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          📒 журналдсан
+                        </span>
+                        {(r.contra ?? []).map((code) => (
+                          <span key={code} title={nameOf.get(code) ?? ""}>
+                            <span className="font-mono text-xs text-zinc-600">{code}</span>
+                            <span className="ml-1 text-zinc-400">
+                              {(nameOf.get(code) ?? "").slice(0, 14)}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-2 py-1"></td>
                   </>
