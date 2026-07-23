@@ -202,6 +202,21 @@ export function PartnerForm({ mode, partner, nextCode }: Props) {
             className={inputCls}
           />
         </div>
+
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Нэрний хувилбарууд (alias)</label>
+          <textarea
+            name="aliases"
+            rows={3}
+            defaultValue={(partner?.aliases ?? []).join("\n")}
+            placeholder={"Нэг мөрд нэг хувилбар. Жишээ:\nДелта логистик тээвэр ХХК\nДельта логистик"}
+            className={`${inputCls} resize-y`}
+          />
+          <p className="mt-1 text-xs text-zinc-400">
+            Банк/и-баримтад өөр бичигдсэн нэрсийг энд нэмбэл энэ харилцагч руу
+            автоматаар холбогдоно (нэг мөрд нэг нэр, эсвэл таслалаар).
+          </p>
+        </div>
       </div>
 
       {error && (

@@ -15,6 +15,7 @@ export type PartnerRow = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  aliases: string[] | null;
   is_active: boolean;
 };
 
@@ -64,6 +65,11 @@ function readForm(formData: FormData) {
   const typeRaw = get("type").toLowerCase();
   const type: PartnerType =
     typeRaw === "customer" || typeRaw === "supplier" ? typeRaw : "both";
+  // Нэрний хувилбарууд (alias): мөр эсвэл таслалаар тусгаарлана.
+  const aliasList = get("aliases")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     code: get("code") || null,
     name: get("name"),
@@ -72,6 +78,7 @@ function readForm(formData: FormData) {
     phone: get("phone") || null,
     email: get("email") || null,
     address: get("address") || null,
+    aliases: aliasList.length ? aliasList : null,
   };
 }
 

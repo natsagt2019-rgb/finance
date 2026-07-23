@@ -24,7 +24,10 @@ function num(v: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 function fmt(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export function StatementSplitModal({
@@ -39,7 +42,8 @@ export function StatementSplitModal({
   onSaved: (msg: string, journalId: number) => void;
 }) {
   const [lines, setLines] = useState<Line[]>([
-    { code: "", amount: String(Math.round(txn.amount)), description: "" },
+    // Тайлбар анхдагчаар банкны гүйлгээний утгыг авна.
+    { code: "", amount: txn.amount.toFixed(2), description: txn.description ?? "" },
   ]);
   const [reference, setReference] = useState("");
   const [partnerId, setPartnerId] = useState<number | null>(null);
@@ -62,7 +66,9 @@ export function StatementSplitModal({
     [lines],
   );
   const diff = Math.round((sum - txn.amount) * 100) / 100;
-  const balanced = Math.abs(diff) < 0.5 && sum > 0;
+  // Бутархай яг таарвал зөрүү 0. НӨАТ задаргаанаас ≤1₮ эвлүүлэлт үлдвэл
+  // хадгалахад хамгийн том мөрд шингээж банктай тэнцүүлнэ (actions.ts).
+  const balanced = Math.abs(diff) <= 1 && sum > 0;
 
   const contraSide = txn.dir === "out" ? "Дт" : "Кт";
   const bankSide = txn.dir === "out" ? "Кт" : "Дт";
@@ -102,14 +108,15 @@ export function StatementSplitModal({
     const nl: Line[] = [
       {
         code: "",
-        amount: String(Math.round(v.net)),
-        description: v.type === "in" ? "Худалдан авалт" : "Борлуулалт",
+        amount: v.net.toFixed(2),
+        // Банкны гүйлгээний утгыг тайлбар болгоно (хоосон бол төрлийн шошго).
+        description: txn.description || (v.type === "in" ? "Худалдан авалт" : "Борлуулалт"),
       },
     ];
     if (v.vat > 0)
       nl.push({
         code: v.type === "in" ? "130600" : "330100",
-        amount: String(Math.round(v.vat)),
+        amount: v.vat.toFixed(2),
         description: v.type === "in" ? "НӨАТ-ын авлага" : "НӨАТ-ын өглөг",
       });
     setLines(nl);
@@ -256,13 +263,17 @@ export function StatementSplitModal({
                 <td className="px-1 py-1.5 text-right text-zinc-500">Нийлбэр</td>
                 <td className="px-1 py-1.5 text-right tabular-nums text-zinc-800">{fmt(sum)}</td>
                 <td className="px-1 py-1.5" colSpan={2}>
-                  {balanced ? (
+                  {!balanced ? (
+                    <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">
+                      Зөрүү: {fmt(diff)}
+                    </span>
+                  ) : Math.abs(diff) < 0.005 ? (
                     <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
                       ✓ Тэнцсэн
                     </span>
                   ) : (
-                    <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">
-                      Зөрүү: {fmt(diff)}
+                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                      ≈ Тэнцсэн ({fmt(diff)}₮ эвлүүлэлт)
                     </span>
                   )}
                 </td>

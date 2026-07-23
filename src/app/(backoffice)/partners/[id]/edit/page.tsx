@@ -15,7 +15,7 @@ export default async function EditPartnerPage({
 
   const { data, error } = await supabase
     .from("partners")
-    .select("id, code, name, register, type, phone, email, address, is_active")
+    .select("id, code, name, register, type, phone, email, address, aliases, is_active")
     .eq("id", Number(id))
     .single();
 
