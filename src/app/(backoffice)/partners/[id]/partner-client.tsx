@@ -542,6 +542,7 @@ export function VatPurchasePanel({
   const [linkPartner, setLinkPartner] = useState(String(partnerId));
   const [linkDt, setLinkDt] = useState("");
   const [linkKt, setLinkKt] = useState("310100");
+  const [linkDesc, setLinkDesc] = useState("");
 
   const total = rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 
@@ -551,6 +552,9 @@ export function VatPurchasePanel({
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
+  const allPaySel = rows.length > 0 && rows.every((r) => paySel.has(r.id));
+  const togglePayAll = () =>
+    setPaySel(allPaySel ? new Set() : new Set(rows.map((r) => r.id)));
 
   const submitPay = () => {
     start(async () => {
@@ -596,7 +600,7 @@ export function VatPurchasePanel({
         ktCode: linkKt,
         splitVat: false,
         vatAccCode: "",
-        description: "",
+        description: linkDesc,
       });
       setMsg({ ok: r.ok, text: r.ok ? r.message : r.error });
       if (r.ok) {
@@ -618,25 +622,38 @@ export function VatPurchasePanel({
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-2 border-b border-zinc-100 px-3 py-1.5">
-        <button
-          onClick={() => setShowPay(true)}
-          disabled={rows.length === 0}
-          className="rounded-lg border border-orange-300 bg-white px-2.5 py-1 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
-        >
-          📄 Өглөг үүсгэх
-        </button>
-        <button
-          onClick={openLink}
-          className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
-        >
-          🔍 И баримт холбох
-        </button>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5">
+        <span className="text-xs text-zinc-400">
+          {paySel.size > 0 ? `${paySel.size} сонгосон` : "Мөр сонгож өглөг/холбох үйлдэл хий"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPay(true)}
+            disabled={rows.length === 0 || paySel.size === 0}
+            className="rounded-lg border border-orange-300 bg-white px-2.5 py-1 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
+          >
+            📄 Өглөг үүсгэх
+          </button>
+          <button
+            onClick={openLink}
+            className="rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50"
+          >
+            🔍 И баримт холбох
+          </button>
+        </div>
       </div>
 
       <table className="w-full text-sm">
         <thead className="bg-zinc-50 text-left text-xs font-medium text-zinc-500">
           <tr>
+            <th className="w-8 px-2 py-2">
+              <input
+                type="checkbox"
+                checked={allPaySel}
+                onChange={togglePayAll}
+                title="Бүгдийг сонгох"
+              />
+            </th>
             <th className="px-3 py-2">Огноо</th>
             <th className="px-3 py-2">Нэхэмжлэл / ДДТД</th>
             <th className="px-3 py-2 text-right">НӨАТ-гүй</th>
@@ -647,13 +664,20 @@ export function VatPurchasePanel({
         <tbody className="divide-y divide-zinc-100">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-3 py-8 text-center text-sm text-zinc-400">
+              <td colSpan={6} className="px-3 py-8 text-center text-sm text-zinc-400">
                 Бичлэг байхгүй
               </td>
             </tr>
           ) : (
             rows.map((v) => (
               <tr key={v.id} className="hover:bg-zinc-50">
+                <td className="px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={paySel.has(v.id)}
+                    onChange={() => togglePay(v.id)}
+                  />
+                </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">{d(v.date)}</td>
                 <td className="px-3 py-1.5">
                   {v.invoice_no && (
@@ -675,7 +699,7 @@ export function VatPurchasePanel({
         {rows.length > 0 && (
           <tfoot className="border-t border-zinc-200 bg-zinc-50 font-semibold">
             <tr>
-              <td colSpan={4} className="px-3 py-2 text-right text-zinc-500">
+              <td colSpan={5} className="px-3 py-2 text-right text-zinc-500">
                 Нийт {rows.length}:
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-orange-700">{f(total)}</td>
@@ -814,6 +838,18 @@ export function VatPurchasePanel({
                 НӨАТ автоматаар: <span className="font-medium text-zinc-700">Дт 130600 НӨАТ-ын авлага</span> / Кт өглөг (нийт өглөгт НӨАТ багтана).
               </p>
             </div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-zinc-600">
+                Гүйлгээний утга{" "}
+                <span className="font-normal text-zinc-400">(хоосон бол автомат)</span>
+              </span>
+              <input
+                value={linkDesc}
+                onChange={(e) => setLinkDesc(e.target.value)}
+                placeholder="Жишээ: 2026 оны худалдан авалт"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </label>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}

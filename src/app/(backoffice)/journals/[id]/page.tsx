@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { JournalForm, type JournalInitial } from "../journal-form";
+import { DeleteJournalButton } from "../delete-button";
 import type { AccountOption } from "../types";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -171,9 +172,16 @@ export default async function EditJournalPage({
         <span>›</span>
         <span className="text-zinc-700">{jrn.number ?? "Засах"}</span>
       </div>
-      <h1 className="mt-2 text-2xl font-semibold text-zinc-900">
-        Журнал засах — {jrn.number ?? ""}
-      </h1>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-zinc-900">
+          Журнал засах — {jrn.number ?? ""}
+        </h1>
+        <DeleteJournalButton
+          id={journalId}
+          number={(jrn.number as string | null) ?? ""}
+          redirectTo="/journals"
+        />
+      </div>
 
       {!isManual ? (
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

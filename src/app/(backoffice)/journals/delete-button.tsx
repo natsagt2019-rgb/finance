@@ -8,9 +8,11 @@ import { deleteJournal } from "./actions";
 export function DeleteJournalButton({
   id,
   number,
+  redirectTo,
 }: {
   id: number;
   number: string;
+  redirectTo?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -19,8 +21,10 @@ export function DeleteJournalButton({
     if (!confirm(`${number || "Энэ журнал"}-ыг устгах уу?`)) return;
     startTransition(async () => {
       const res = await deleteJournal(id);
-      if (res.ok) router.refresh();
-      else alert(res.error ?? "Алдаа гарлаа");
+      if (res.ok) {
+        if (redirectTo) router.push(redirectTo);
+        else router.refresh();
+      } else alert(res.error ?? "Алдаа гарлаа");
     });
   }
 

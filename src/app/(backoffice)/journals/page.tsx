@@ -201,12 +201,20 @@ export default async function JournalsPage({
                       {j.number ?? "—"}
                     </td>
                     <td className="px-4 py-2 text-zinc-800">
-                      {j.description ?? "—"}
-                      {j.reference ? (
-                        <span className="ml-2 text-xs text-zinc-400">
-                          {j.reference}
-                        </span>
-                      ) : null}
+                      <Link
+                        href={`/journals/${j.id}`}
+                        className="block max-w-[260px] hover:text-zinc-900"
+                        title="Дарж засах / устгах"
+                      >
+                        <div className="truncate font-medium hover:underline">
+                          {j.description ?? "—"}
+                        </div>
+                        {j.reference ? (
+                          <div className="truncate text-xs text-zinc-400">
+                            {j.reference}
+                          </div>
+                        ) : null}
+                      </Link>
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {(linesByJournal.get(j.id) ?? []).length === 0 ? (
