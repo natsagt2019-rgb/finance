@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { loadRegistry } from "@/lib/bank-registry";
 import { companyCode } from "@/lib/bank-importer/config";
+import { postJournal } from "@/lib/post-journal";
+import type { LineInput } from "@/app/(backoffice)/journals/types";
 
 export type ActionResult =
   | { ok: true }
@@ -255,4 +257,136 @@ export async function bulkSetDebitCode(
   }
   revalidatePath("/statements");
   return { ok: true };
+}
+
+// ── Нэг гүйлгээг олон мөрт (split) журнал болгох + и-баримт холбох ────────────
+// Нэг банкны гүйлгээг олон харьцах данст (зардал + НӨАТ г.м.) задалж жинхэнэ
+// журнал (journals + journal_lines + journal_entries толь) үүсгэнэ. transactions.
+// journal_id-г тэмдэглэх тул postBankJournal (journal_id-тайг алгасдаг) давхар
+// бичихгүй. Reference-т ДДТД тавибал и-баримт «холбогдсон» болно.
+export type SplitLineInput = { code: string; amount: number; description?: string };
+
+export async function createTxnSplitJournal(input: {
+  txnId: number;
+  lines: SplitLineInput[];
+  reference?: string | null;
+  partnerId?: number | null;
+  description?: string | null;
+}): Promise<
+  { ok: true; journalId: number; number: string } | { ok: false; error: string }
+> {
+  const supabase = await requireAuth();
+  const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+  const { data: txn } = await supabase
+    .from("transactions")
+    .select(
+      "id, account_id, txn_date, description, counterparty, income, expense, exchange_rate, journal_id",
+    )
+    .eq("id", input.txnId)
+    .single();
+  if (!txn) return { ok: false, error: "Гүйлгээ олдсонгүй." };
+  if ((txn as { journal_id: number | null }).journal_id != null)
+    return { ok: false, error: "Энэ гүйлгээ аль хэдийн журналдсан байна." };
+
+  const rate = Number(txn.exchange_rate) || 1;
+  const income = Number(txn.income) || 0;
+  const expense = Number(txn.expense) || 0;
+  const dir: "in" | "out" = income > 0 ? "in" : "out";
+  const total = r2((income || expense) * rate);
+  if (total <= 0) return { ok: false, error: "Гүйлгээний дүн 0 байна." };
+
+  const lines = input.lines
+    .map((l) => ({
+      code: (l.code || "").trim(),
+      amount: r2(l.amount),
+      description: (l.description ?? "").trim() || null,
+    }))
+    .filter((l) => l.code && l.amount > 0);
+  if (lines.length === 0)
+    return { ok: false, error: "Дор хаяж нэг мөр (данс + дүн) оруулна уу." };
+  const linesSum = r2(lines.reduce((s, l) => s + l.amount, 0));
+  if (Math.abs(linesSum - total) > 0.5)
+    return {
+      ok: false,
+      error: `Мөрүүдийн нийлбэр (${linesSum.toLocaleString()}) гүйлгээний дүн (${total.toLocaleString()})-тэй тэнцэхгүй.`,
+    };
+
+  // Банкны GL данс — гүйлгээний account_id (дансны дугаар)-аар.
+  const { data: ba } = await supabase
+    .from("bank_accounts")
+    .select("gl_code")
+    .eq("account_no", txn.account_id)
+    .maybeSingle();
+  const bankGl = (ba as { gl_code: string | null } | null)?.gl_code;
+  if (!bankGl)
+    return { ok: false, error: "Энэ дансны банкны GL код тодорхойлогдсонгүй." };
+
+  // Код → id.
+  const codes = [...new Set([bankGl, ...lines.map((l) => l.code)])];
+  const { data: accs } = await supabase
+    .from("accounts")
+    .select("id, code")
+    .in("code", codes);
+  const idOf = new Map(
+    ((accs as { id: number; code: string }[] | null) ?? []).map((a) => [a.code, a.id]),
+  );
+  const bankId = idOf.get(bankGl);
+  if (!bankId) return { ok: false, error: `Банкны данс ${bankGl} бүртгэлд алга.` };
+  for (const l of lines)
+    if (!idOf.get(l.code))
+      return { ok: false, error: `Данс ${l.code} бүртгэлд алга.` };
+
+  // Журналын мөрүүд: зарлага → харьцах тал Дт / банк Кт; орлого → эсрэгээр.
+  const jl: LineInput[] = lines.map((l) => ({
+    account_id: idOf.get(l.code)!,
+    debit: dir === "out" ? l.amount : 0,
+    credit: dir === "in" ? l.amount : 0,
+    description: l.description ?? "",
+  }));
+  jl.push({
+    account_id: bankId,
+    debit: dir === "in" ? total : 0,
+    credit: dir === "out" ? total : 0,
+    description: "Банк",
+  });
+
+  // Харилцагч: өгсөн, эс бөгөөс counterparty нэрээр тааруулна.
+  let partnerId = input.partnerId ?? null;
+  if (partnerId == null && txn.counterparty) {
+    const { data: p } = await supabase
+      .from("partners")
+      .select("id")
+      .ilike("name", String(txn.counterparty).trim())
+      .limit(1);
+    partnerId = ((p as { id: number }[] | null) ?? [])[0]?.id ?? null;
+  }
+
+  const res = await postJournal(supabase, {
+    date: String(txn.txn_date || "").slice(0, 10),
+    description:
+      (input.description ?? "").trim() ||
+      (txn.description as string | null) ||
+      "Банкны гүйлгээ (задаргаа)",
+    reference: (input.reference ?? "").trim() || null,
+    partner_id: partnerId,
+    source: "manual",
+    lines: jl,
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const { error: ue } = await supabase
+    .from("transactions")
+    .update({ journal_id: res.id })
+    .eq("id", input.txnId);
+  if (ue) {
+    // journal_id тэмдэглэж чадаагүй бол шинэ журналыг буцаан устгана (давхардлаас сэргийлнэ).
+    await supabase.from("journal_entries").delete().eq("journal_id", res.id);
+    await supabase.from("journal_lines").delete().eq("journal_id", res.id);
+    await supabase.from("journals").delete().eq("id", res.id);
+    return { ok: false, error: `journal_id тэмдэглэхэд алдаа: ${ue.message}` };
+  }
+
+  revalidatePath("/statements");
+  return { ok: true, journalId: res.id, number: res.number };
 }

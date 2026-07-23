@@ -28,6 +28,7 @@ type Txn = {
   expense_code: string | null;
   debit_code: string | null;
   credit_code: string | null;
+  journal_id: number | null;
 };
 
 const YEARS = ["2026", "2025"];
@@ -53,12 +54,16 @@ export default async function StatementsPage({
   const registry = await loadRegistry(supabase);
   const accountList = registry.map((a) => ({ id: a.accountNo, label: a.label }));
   const ACCOUNTS = registry.map((a) => a.accountNo);
+  // Дансны дугаар → банкны GL код (split журналын банкны талд).
+  const bankGlByAccount: Record<string, string | null> = Object.fromEntries(
+    registry.map((a) => [a.accountNo, a.glCode]),
+  );
 
   // Жагсаалтын query — шүүлтийг order/limit-аас өмнө тавина.
   let rowsQuery = supabase
     .from("transactions")
     .select(
-      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,exchange_rate,income_code,expense_code,debit_code,credit_code",
+      "id,account_id,company,bank,txn_date,description,counterparty,income,expense,exchange_rate,income_code,expense_code,debit_code,credit_code,journal_id",
     );
   if (sp.account) rowsQuery = rowsQuery.eq("account_id", sp.account);
   if (sp.year) rowsQuery = rowsQuery.eq("year", Number(sp.year));
@@ -66,7 +71,8 @@ export default async function StatementsPage({
   if (sp.dir === "income") rowsQuery = rowsQuery.not("income", "is", null);
   if (sp.dir === "expense") rowsQuery = rowsQuery.not("expense", "is", null);
   if (sp.coded === "no") {
-    rowsQuery = rowsQuery.or(UNCODED_OR);
+    // Журналдсан (задалсан/и-баримт холбосон) гүйлгээг «дутуу»-д тооцохгүй.
+    rowsQuery = rowsQuery.or(UNCODED_OR).is("journal_id", null);
   } else if (sp.coded === "yes") {
     rowsQuery = rowsQuery
       .not("debit_code", "is", null)
@@ -83,7 +89,8 @@ export default async function StatementsPage({
   let cntQuery = supabase
     .from("transactions")
     .select("id", { count: "exact", head: true })
-    .or(UNCODED_OR);
+    .or(UNCODED_OR)
+    .is("journal_id", null);
   if (sp.account) cntQuery = cntQuery.eq("account_id", sp.account);
   if (sp.year) cntQuery = cntQuery.eq("year", Number(sp.year));
   if (sp.month) cntQuery = cntQuery.eq("month", Number(sp.month));
@@ -374,7 +381,12 @@ export default async function StatementsPage({
           </div>
         ) : (
           <>
-            <StatementsTable rows={txns} accounts={accounts} partnerNames={partnerNames} />
+            <StatementsTable
+              rows={txns}
+              accounts={accounts}
+              partnerNames={partnerNames}
+              bankGlByAccount={bankGlByAccount}
+            />
             {txns.length === ROW_LIMIT && (
               <div className="border-t border-zinc-100 px-6 py-3 text-xs text-zinc-400">
                 Зөвхөн сүүлийн {ROW_LIMIT} мөр харагдаж байна. Нэгтгэл нь бүх
