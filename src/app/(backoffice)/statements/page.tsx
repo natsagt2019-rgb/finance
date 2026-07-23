@@ -8,6 +8,7 @@ type SearchParams = {
   month?: string;
   dir?: string;
   coded?: string; // "" бүгд | "no" холболт хийгээгүй | "yes" хийсэн
+  page?: string; // 1-ээс эхэлсэн хуудасны дугаар (500 мөр/хуудас)
 };
 
 // Холболт хийгээгүй (Дт эсвэл Кт код дутуу) гүйлгээний PostgREST нөхцөл.
@@ -60,11 +61,16 @@ export default async function StatementsPage({
     registry.map((a) => [a.accountNo, a.glCode]),
   );
 
-  // Жагсаалтын query — шүүлтийг order/limit-аас өмнө тавина.
+  // Хуудаслалт: 500 мөр/хуудас.
+  const page = Math.max(1, Number(sp.page) || 1);
+  const offset = (page - 1) * ROW_LIMIT;
+
+  // Жагсаалтын query — шүүлтийг order/range-аас өмнө тавина. Нийт тоог count-аар авна.
   let rowsQuery = supabase
     .from("transactions")
     .select(
       "id,account_id,company,bank,txn_date,description,counterparty,income,expense,exchange_rate,income_code,expense_code,debit_code,credit_code,journal_id",
+      { count: "exact" },
     );
   if (sp.account) rowsQuery = rowsQuery.eq("account_id", sp.account);
   if (sp.year) rowsQuery = rowsQuery.eq("year", Number(sp.year));
@@ -82,9 +88,11 @@ export default async function StatementsPage({
       .neq("credit_code", "");
   }
 
-  const { data: rows, error } = await rowsQuery
+  const { data: rows, error, count: totalRows } = await rowsQuery
     .order("txn_date", { ascending: false })
-    .limit(ROW_LIMIT);
+    .range(offset, offset + ROW_LIMIT - 1);
+  const totalCount = totalRows ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / ROW_LIMIT));
 
   // Холболт хийгээгүй гүйлгээний нийт тоо (одоогийн данс/он/сар шүүлтэд).
   let cntQuery = supabase
@@ -245,6 +253,24 @@ export default async function StatementsPage({
 
   // Бүх шүүлт хадгалсан select-ийн утга
   const sel = (name: keyof SearchParams) => sp[name] ?? "";
+
+  // Хуудасны холбоос — бүх шүүлтийг хадгална.
+  const pageUrl = (p: number) => {
+    const params = new URLSearchParams();
+    if (sp.account) params.set("account", sp.account);
+    if (sp.year) params.set("year", sp.year);
+    if (sp.month) params.set("month", sp.month);
+    if (sp.dir) params.set("dir", sp.dir);
+    if (sp.coded) params.set("coded", sp.coded);
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/statements?${qs}` : "/statements";
+  };
+  // Харуулах хуудасны цонх (одоогийн ±2, эхэн/төгсгөл).
+  const pageWindow: number[] = [];
+  for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) {
+    pageWindow.push(p);
+  }
 
   return (
     <div>
@@ -427,15 +453,72 @@ export default async function StatementsPage({
               partnerNames={partnerNames}
               bankGlByAccount={bankGlByAccount}
             />
-            {txns.length === ROW_LIMIT && (
-              <div className="border-t border-zinc-100 px-6 py-3 text-xs text-zinc-400">
-                Зөвхөн сүүлийн {ROW_LIMIT} мөр харагдаж байна. Нэгтгэл нь бүх
-                шүүсэн мөрийг тооцсон.
-              </div>
-            )}
+            {/* Хуудаслалт */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 px-6 py-3 text-sm">
+              <span className="text-xs text-zinc-500">
+                Нийт {totalCount.toLocaleString("en-US")} мөр · {offset + 1}–
+                {Math.min(offset + txns.length, totalCount)} харагдаж байна · Хуудас {page}/{totalPages}
+              </span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <PageLink href={pageUrl(page - 1)} disabled={page <= 1} label="‹ Өмнөх" />
+                  {pageWindow[0] > 1 && (
+                    <>
+                      <PageLink href={pageUrl(1)} label="1" />
+                      {pageWindow[0] > 2 && <span className="px-1 text-zinc-400">…</span>}
+                    </>
+                  )}
+                  {pageWindow.map((p) => (
+                    <PageLink key={p} href={pageUrl(p)} label={String(p)} active={p === page} />
+                  ))}
+                  {pageWindow[pageWindow.length - 1] < totalPages && (
+                    <>
+                      {pageWindow[pageWindow.length - 1] < totalPages - 1 && (
+                        <span className="px-1 text-zinc-400">…</span>
+                      )}
+                      <PageLink href={pageUrl(totalPages)} label={String(totalPages)} />
+                    </>
+                  )}
+                  <PageLink href={pageUrl(page + 1)} disabled={page >= totalPages} label="Дараах ›" />
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+// Хуудасны товч (холбоос). idactive → идэвхтэй, disabled → идэвхгүй.
+function PageLink({
+  href,
+  label,
+  active = false,
+  disabled = false,
+}: {
+  href: string;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  if (disabled) {
+    return (
+      <span className="rounded-lg border border-zinc-100 px-3 py-1.5 text-sm text-zinc-300">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={href}
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+        active
+          ? "bg-zinc-900 text-white"
+          : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+      }`}
+    >
+      {label}
+    </a>
   );
 }
