@@ -20,7 +20,7 @@ export type PartnerRow = {
 };
 
 export type ActionResult =
-  | { ok: true; id: number; name: string }
+  | { ok: true; id: number; name: string; linked?: number }
   | { ok: false; error: string };
 
 // Бүх action нэвтэрсэн хэрэглэгч шаардана.
@@ -65,11 +65,19 @@ function readForm(formData: FormData) {
   const typeRaw = get("type").toLowerCase();
   const type: PartnerType =
     typeRaw === "customer" || typeRaw === "supplier" ? typeRaw : "both";
-  // Нэрний хувилбарууд (alias): мөр эсвэл таслалаар тусгаарлана.
+  // Нэрний хувилбарууд (alias): мөр эсвэл таслалаар тусгаарлана. Давхардлыг
+  // (том/жижиг үсэг, илүү зайг үл харгалзан) арилгана.
+  const aliasSeen = new Set<string>();
   const aliasList = get("aliases")
     .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+    .map((s) => s.trim().replace(/\s+/g, " "))
+    .filter((s) => {
+      if (!s) return false;
+      const k = s.toUpperCase();
+      if (aliasSeen.has(k)) return false;
+      aliasSeen.add(k);
+      return true;
+    });
   return {
     code: get("code") || null,
     name: get("name"),
@@ -80,6 +88,34 @@ function readForm(formData: FormData) {
     address: get("address") || null,
     aliases: aliasList.length ? aliasList : null,
   };
+}
+
+// Нэр/alias-аар холбогдоогүй (partner_id хоосон) и-баримтуудыг энэ харилцагчид
+// оноож холбоно. Зөвхөн ЭЗЭНГҮЙ (partner_id null) баримтад хийнэ — өөр
+// харилцагчид оногдсоныг булаахгүй. partner_name-ийг том/жижиг үсэг үл
+// харгалзан яг тааруулна (ilike).
+async function linkVatByNames(
+  supabase: Awaited<ReturnType<typeof requireAuth>>["supabase"],
+  partnerId: number,
+  names: (string | null | undefined)[],
+): Promise<number> {
+  let linked = 0;
+  const seen = new Set<string>();
+  for (const nm of names) {
+    const clean = (nm ?? "").trim().replace(/\s+/g, " ");
+    if (!clean) continue;
+    const k = clean.toUpperCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const { data } = await supabase
+      .from("vat_records")
+      .update({ partner_id: partnerId })
+      .is("partner_id", null)
+      .ilike("partner_name", clean)
+      .select("id");
+    linked += (data as { id: number }[] | null)?.length ?? 0;
+  }
+  return linked;
 }
 
 // ── Шинэ харилцагч нэмэх ──────────────────────────────────────────────────
@@ -104,8 +140,12 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
       .single();
 
     if (!error) {
+      const linked = await linkVatByNames(supabase, data.id as number, [
+        v.name,
+        ...(v.aliases ?? []),
+      ]);
       revalidatePath("/partners");
-      return { ok: true, id: data.id as number, name: data.name as string };
+      return { ok: true, id: data.id as number, name: data.name as string, linked };
     }
 
     const dup = /duplicate|unique/i.test(error.message);
@@ -186,6 +226,8 @@ export async function updatePartner(
     return { ok: false, error: msg };
   }
 
+  const linked = await linkVatByNames(supabase, id, [v.name, ...(v.aliases ?? [])]);
   revalidatePath("/partners");
-  return { ok: true, id: data.id as number, name: data.name as string };
+  revalidatePath(`/partners/${id}`);
+  return { ok: true, id: data.id as number, name: data.name as string, linked };
 }
