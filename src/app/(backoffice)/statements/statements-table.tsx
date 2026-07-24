@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn, unlinkTxnSplit } from "./actions";
+import { updateTxnAccounts, bulkSetDebitCode, autoLinkAccounts, deleteTxn, unlinkTxnSplit, confirmTxnReview } from "./actions";
 import { StatementSplitModal, type SplitTxn } from "./statement-split-modal";
 
 export type TxnRow = {
@@ -22,7 +22,7 @@ export type TxnRow = {
   credit_code: string | null;
   journal_id: number | null;
   contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд)
-  draft?: boolean; // түр холболт (ноорог журнал) — тайланд ороогүй
+  review?: boolean; // түр тэмдэглэгээ — тайланд орсон ч шалгаж эцэслэн батална
 };
 
 export type AccountOpt = { code: string; name: string };
@@ -249,6 +249,21 @@ export function StatementsTable({
     });
   }
 
+  // Түр тэмдэглэгээг арилгах — шалгаж дууссаны дараа эцэслэн батлах.
+  function confirmReview(r: TxnRow) {
+    setMsg(null);
+    start(async () => {
+      const res = await confirmTxnReview(r.id);
+      if (res.ok) {
+        setData((d) => d.map((x) => (x.id === r.id ? { ...x, review: false } : x)));
+        setMsg("✓ Эцэслэн батлагдлаа.");
+        router.refresh();
+      } else {
+        setMsg(res.error);
+      }
+    });
+  }
+
   function save(id: number) {
     start(async () => {
       const res = await updateTxnAccounts(id, editDt || null, editKt || null, editCp);
@@ -454,12 +469,12 @@ export function StatementsTable({
                   <>
                     <td colSpan={2} className="whitespace-nowrap px-3 py-2">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {r.draft ? (
+                        {r.review ? (
                           <span
-                            title="Түр холболт — ноорог журнал, тайланд ороогүй. /journals дээр батална."
+                            title="Түр — журнал тайланд ОРСОН, гэхдээ шалгаж эцэслэн батлах шаардлагатай."
                             className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
                           >
-                            ⏳ түр холболт
+                            ⏳ түр
                           </span>
                         ) : (
                           <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
@@ -477,6 +492,17 @@ export function StatementsTable({
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-2 py-1">
+                      {r.review && (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => confirmReview(r)}
+                          title="Шалгаж дууссан — түр тэмдэглэгээг арилгаж эцэслэн батлах"
+                          className="mr-1 rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
+                        >
+                          ✓ Батлах
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={pending}
