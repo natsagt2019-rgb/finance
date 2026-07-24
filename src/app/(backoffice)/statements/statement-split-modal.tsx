@@ -47,6 +47,9 @@ export function StatementSplitModal({
   ]);
   const [reference, setReference] = useState("");
   const [journalDesc, setJournalDesc] = useState(txn.description ?? "");
+  // Эргэлзээтэй — журнал батлагдаж ТАЙЛАНД ОРНО, зөвхөн «дараа шалгах» гэж
+  // тэмдэглэгдэнэ (шүүж олоод эцэслэн батална).
+  const [needsReview, setNeedsReview] = useState(false);
   const [partnerId, setPartnerId] = useState<number | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -139,8 +142,15 @@ export function StatementSplitModal({
         reference,
         partnerId,
         description: journalDesc,
+        needsReview,
       });
-      if (res.ok) onSaved(`✓ Журнал ${res.number} үүсэж, гүйлгээ холбогдлоо.`, res.journalId);
+      if (res.ok)
+        onSaved(
+          needsReview
+            ? `⏳ Журнал ${res.number} үүслээ (тайланд орсон) — «түр» гэж тэмдэглэв.`
+            : `✓ Журнал ${res.number} үүсэж, гүйлгээ холбогдлоо.`,
+          res.journalId,
+        );
       else setError(res.error);
     });
   }
@@ -306,6 +316,22 @@ export function StatementSplitModal({
             />
           </label>
 
+          <label className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={needsReview}
+              onChange={(e) => setNeedsReview(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+            />
+            <span className="text-amber-800">
+              <span className="font-medium">⏳ Түр холболт — дараа шалгах</span>
+              <span className="block text-xs text-amber-700">
+                Журнал батлагдаж <b>тайланд орно</b>. Зөвхөн «түр» гэж тэмдэглэгдэж,
+                Дансны хуулга дээр <b>Холболт → ⏳ Түр</b> шүүлтээр олоод эцэслэн батална.
+              </span>
+            </span>
+          </label>
+
           {error && (
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
@@ -393,7 +419,7 @@ export function StatementSplitModal({
             disabled={pending || !balanced}
             className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
           >
-            {pending ? "Хадгалж байна…" : "Журнал үүсгэх"}
+            {pending ? "Хадгалж байна…" : needsReview ? "⏳ Түр үүсгэх" : "Журнал үүсгэх"}
           </button>
         </div>
 

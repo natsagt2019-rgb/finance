@@ -77,6 +77,26 @@ export async function unlinkTxnSplit(txnId: number): Promise<ActionResult> {
   return { ok: true };
 }
 
+// Эргэлзээтэй тэмдэглэгээг арилгах — шалгаж дууссаны дараа ЭЦЭСЛЭН БАТЛАХ.
+// (Журнал аль хэдийн тайланд орсон, зөвхөн тэмдэглэгээ арилна.)
+export async function confirmTxnReview(txnId: number): Promise<ActionResult> {
+  const supabase = await requireAuth();
+  const { data: t } = await supabase
+    .from("transactions")
+    .select("journal_id")
+    .eq("id", txnId)
+    .single();
+  const jid = (t as { journal_id: number | null } | null)?.journal_id;
+  if (!jid) return { ok: false, error: "Энэ гүйлгээ журналдаагүй байна." };
+  const { error } = await supabase
+    .from("journals")
+    .update({ needs_review: false })
+    .eq("id", jid);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/statements");
+  return { ok: true };
+}
+
 // ── Автомат холболт: нөгөө тал GL дансыг автоматаар оноох ────────────────────
 // Хоёр эх сурвалжтай зураглал ашиглана:
 //   1) СУРСАН дүрэм — одоо байгаа кодлогдсон гүйлгээнээс (ангилал→данс).
@@ -293,6 +313,9 @@ export async function createTxnSplitJournal(input: {
   reference?: string | null;
   partnerId?: number | null;
   description?: string | null;
+  // Эргэлзээтэй: журнал БАТЛАГДАЖ тайланд орно, гэхдээ needs_review тэмдэглэгээтэй
+  // болж, дараа шүүж эцэслэн батлах боломжтой болно.
+  needsReview?: boolean;
 }): Promise<
   { ok: true; journalId: number; number: string } | { ok: false; error: string }
 > {
@@ -405,6 +428,12 @@ export async function createTxnSplitJournal(input: {
     lines: jl,
   });
   if (!res.ok) return { ok: false, error: res.error };
+
+  // Эргэлзээтэй тэмдэглэгээ — журнал батлагдсан (тайланд орсон) хэвээр, зөвхөн
+  // «дараа шалгах» гэж тэмдэглэнэ. /statements-д шүүж, эцэслэн батална.
+  if (input.needsReview) {
+    await supabase.from("journals").update({ needs_review: true }).eq("id", res.id);
+  }
 
   const { error: ue } = await supabase
     .from("transactions")

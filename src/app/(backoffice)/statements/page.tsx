@@ -30,6 +30,7 @@ type Txn = {
   credit_code: string | null;
   journal_id: number | null;
   contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд) — журналын банк бус мөр
+  review?: boolean; // эргэлзээтэй — тайланд орсон ч «дараа шалгах» тэмдэглэгээтэй
 };
 
 const YEARS = ["2026", "2025"];
@@ -80,6 +81,17 @@ export default async function StatementsPage({
       .neq("debit_code", "")
       .not("credit_code", "is", null)
       .neq("credit_code", "");
+  } else if (sp.coded === "review") {
+    // Эргэлзээтэй — needs_review тэмдэглэгээтэй журналд холбогдсон гүйлгээ.
+    const { data: rj } = await supabase
+      .from("journals")
+      .select("id")
+      .eq("needs_review", true)
+      .limit(10000);
+    const rjIds = ((rj as { id: number }[] | null) ?? []).map((j) => j.id);
+    rowsQuery = rjIds.length
+      ? rowsQuery.in("journal_id", rjIds)
+      : rowsQuery.eq("id", -1); // тэмдэглэгээтэй журнал алга → хоосон
   }
 
   const { data: rows, error } = await rowsQuery
@@ -149,8 +161,21 @@ export default async function StatementsPage({
       if (!arr.includes(code)) arr.push(code);
       contraByJournal.set(l.journal_id, arr);
     }
+    // Эргэлзээтэй (needs_review) журналуудыг тэмдэглэнэ — тайланд орсон ч шалгах.
+    const { data: jStat } = await supabase
+      .from("journals")
+      .select("id, needs_review")
+      .in("id", jIds);
+    const reviewSet = new Set(
+      ((jStat as { id: number; needs_review: boolean }[] | null) ?? [])
+        .filter((j) => j.needs_review)
+        .map((j) => j.id),
+    );
     for (const t of txns)
-      if (t.journal_id != null) t.contra = contraByJournal.get(t.journal_id) ?? [];
+      if (t.journal_id != null) {
+        t.contra = contraByJournal.get(t.journal_id) ?? [];
+        t.review = reviewSet.has(t.journal_id);
+      }
   }
 
   // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).
@@ -158,7 +183,7 @@ export default async function StatementsPage({
   // нэгтгэлийг шүүсэн мөрүүдээс гаргана.
   let totalIncome: number;
   let totalExpense: number;
-  if (sp.coded === "no" || sp.coded === "yes") {
+  if (sp.coded === "no" || sp.coded === "yes" || sp.coded === "review") {
     // Валютын гүйлгээг ханшаар MNT болгож нэгтгэнэ (rate=1 бол төгрөг хэвээр).
     const mnt = (v: number | null, rate: number | null) =>
       (Number(v) || 0) * (Number(rate) || 1);
@@ -326,6 +351,7 @@ export default async function StatementsPage({
             <option value="">Бүгд</option>
             <option value="no">Хийгээгүй (дутуу)</option>
             <option value="yes">Хийсэн</option>
+            <option value="review">⏳ Түр (шалгах)</option>
           </select>
         </label>
 
