@@ -34,7 +34,7 @@ export default async function EditJournalPage({
     supabase
       .from("journals")
       .select(
-        "id, date, number, description, reference, status, source, partner_id, currency, exchange_rate, fx_amount",
+        "id, date, number, description, reference, status, source, partner_id, currency, exchange_rate, fx_amount, needs_review",
       )
       .eq("id", journalId)
       .maybeSingle(),
@@ -136,6 +136,7 @@ export default async function EditJournalPage({
     reference: (jrn.reference as string | null) ?? "",
     partner_id: (jrn.partner_id as number | null) ?? null,
     status: (jrn.status as "draft" | "posted") ?? "posted",
+    needs_review: (jrn.needs_review as boolean | null) ?? false,
     currency,
     exchange_rate: rate,
     rows:
