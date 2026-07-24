@@ -30,6 +30,7 @@ type Txn = {
   credit_code: string | null;
   journal_id: number | null;
   contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд) — журналын банк бус мөр
+  draft?: boolean; // түр холболт (ноорог журнал) — тайланд ороогүй
 };
 
 const YEARS = ["2026", "2025"];
@@ -149,8 +150,21 @@ export default async function StatementsPage({
       if (!arr.includes(code)) arr.push(code);
       contraByJournal.set(l.journal_id, arr);
     }
+    // Ноорог журнал = «түр холболт» (тайланд ороогүй, дараа батлагдана).
+    const { data: jStat } = await supabase
+      .from("journals")
+      .select("id, status")
+      .in("id", jIds);
+    const draftSet = new Set(
+      ((jStat as { id: number; status: string }[] | null) ?? [])
+        .filter((j) => j.status === "draft")
+        .map((j) => j.id),
+    );
     for (const t of txns)
-      if (t.journal_id != null) t.contra = contraByJournal.get(t.journal_id) ?? [];
+      if (t.journal_id != null) {
+        t.contra = contraByJournal.get(t.journal_id) ?? [];
+        t.draft = draftSet.has(t.journal_id);
+      }
   }
 
   // dir шүүлт: зөвхөн орлого/зарлага харуулах горим (жагсаалттай нийцүүлэв).

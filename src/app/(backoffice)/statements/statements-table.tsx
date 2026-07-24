@@ -22,6 +22,7 @@ export type TxnRow = {
   credit_code: string | null;
   journal_id: number | null;
   contra?: string[]; // журналдсан гүйлгээний харьцсан данс(ууд)
+  draft?: boolean; // түр холболт (ноорог журнал) — тайланд ороогүй
 };
 
 export type AccountOpt = { code: string; name: string };
@@ -453,9 +454,18 @@ export function StatementsTable({
                   <>
                     <td colSpan={2} className="whitespace-nowrap px-3 py-2">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          📒 журналдсан
-                        </span>
+                        {r.draft ? (
+                          <span
+                            title="Түр холболт — ноорог журнал, тайланд ороогүй. /journals дээр батална."
+                            className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                          >
+                            ⏳ түр холболт
+                          </span>
+                        ) : (
+                          <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            📒 журналдсан
+                          </span>
+                        )}
                         {(r.contra ?? []).map((code) => (
                           <span key={code} title={nameOf.get(code) ?? ""}>
                             <span className="font-mono text-xs text-zinc-600">{code}</span>

@@ -293,6 +293,9 @@ export async function createTxnSplitJournal(input: {
   reference?: string | null;
   partnerId?: number | null;
   description?: string | null;
+  // Түр холболт: журналыг НООРОГ (draft) болгож үүсгэнэ — GL толинд бичигдэхгүй
+  // (тайланд орохгүй), /journals дээр ноороогоор хүлээгдэж дараа батлагдана.
+  draft?: boolean;
 }): Promise<
   { ok: true; journalId: number; number: string } | { ok: false; error: string }
 > {
@@ -403,6 +406,7 @@ export async function createTxnSplitJournal(input: {
     partner_id: partnerId,
     source: "manual",
     lines: jl,
+    status: input.draft ? "draft" : "posted",
   });
   if (!res.ok) return { ok: false, error: res.error };
 
