@@ -214,6 +214,9 @@ export async function createJournal(input: {
   lines: LineInput[];
   currency?: string;
   exchange_rate?: number;
+  // «Түр» тэмдэглэгээ — журнал батлагдаж тайланд орно, гэхдээ дараа шүүж
+  // эцэслэн батлахаар тэмдэглэгдэнэ.
+  needs_review?: boolean;
 }): Promise<ActionResult> {
   const supabase = await requireAuth();
 
@@ -250,6 +253,7 @@ export async function createJournal(input: {
       currency: fx.currency,
       exchange_rate: fx.rate,
       fx_amount: fx.currency === "MNT" ? null : fxTotal,
+      needs_review: input.needs_review ?? false,
     })
     .select("id, number")
     .single();
@@ -356,6 +360,7 @@ export async function updateJournal(
     lines: LineInput[];
     currency?: string;
     exchange_rate?: number;
+    needs_review?: boolean;
   },
 ): Promise<ActionResult> {
   const supabase = await requireAuth();
@@ -404,6 +409,7 @@ export async function updateJournal(
       currency: fx.currency,
       exchange_rate: fx.rate,
       fx_amount: fx.currency === "MNT" ? null : fxTotal,
+      needs_review: input.needs_review ?? false,
     })
     .eq("id", id);
   if (e1) return { ok: false, error: e1.message };
@@ -462,4 +468,14 @@ export async function deleteJournal(id: number): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
   revalidatePath("/journals");
   return { ok: true, id: data.id as number, number: (data.number as string) ?? "" };
+}
+
+// ── «Түр» тэмдэглэгээг арилгах (эцэслэн батлах) — жагсаалтын формоос дуудна ──
+// Журнал аль хэдийн батлагдаж тайланд орсон; зөвхөн тэмдэглэгээ арилна.
+export async function confirmJournalReview(formData: FormData): Promise<void> {
+  const supabase = await requireAuth();
+  const id = Number(formData.get("id"));
+  if (!Number.isFinite(id) || id <= 0) return;
+  await supabase.from("journals").update({ needs_review: false }).eq("id", id);
+  revalidatePath("/journals");
 }

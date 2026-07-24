@@ -37,6 +37,7 @@ export type JournalInitial = {
   rows: Row[];
   currency?: string;
   exchange_rate?: number;
+  needs_review?: boolean;
 };
 
 const CURRENCIES = ["MNT", "CNY", "USD", "EUR", "JPY", "RUB", "KRW"];
@@ -123,6 +124,8 @@ export function JournalForm({
   const [partnerId, setPartnerId] = useState(
     initial?.partner_id != null ? String(initial.partner_id) : "",
   );
+  // «Түр» тэмдэглэгээ — журнал батлагдаж тайланд орно, дараа шүүж эцэслэн батална.
+  const [needsReview, setNeedsReview] = useState(initial?.needs_review ?? false);
   const [currency, setCurrency] = useState(initial?.currency ?? "MNT");
   const [rate, setRate] = useState(
     initial?.exchange_rate && initial.exchange_rate !== 1
@@ -249,6 +252,7 @@ export function JournalForm({
         lines,
         currency,
         exchange_rate: isForeign ? rateNum : 1,
+        needs_review: needsReview,
       };
       const res = isEdit
         ? await updateJournal(journalId!, payload)
@@ -544,6 +548,23 @@ export function JournalForm({
           {error}
         </div>
       )}
+
+      {/* «Түр» тэмдэглэгээ */}
+      <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+        <input
+          type="checkbox"
+          checked={needsReview}
+          onChange={(e) => setNeedsReview(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+        />
+        <span className="text-amber-800">
+          <span className="font-medium">⏳ Түр — дараа шалгах</span>
+          <span className="block text-xs text-amber-700">
+            Журнал батлагдаж <b>тайланд орно</b>. Зөвхөн «түр» гэж тэмдэглэгдэж,
+            Журналын жагсаалтаас <b>⏳ Түр</b> шүүлтээр олоод эцэслэн батална.
+          </span>
+        </span>
+      </label>
 
       {/* Үйлдэл */}
       <div className="flex items-center gap-3">

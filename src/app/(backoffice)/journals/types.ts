@@ -15,11 +15,12 @@ export type JournalRow = {
   currency: string; // 'MNT' | 'CNY' | 'USD' ...
   exchange_rate: number; // 1 нэгж валют → ₮ (MNT бол 1)
   fx_amount: number | null; // валютаараа илэрхийлсэн нийт дүн
+  needs_review?: boolean; // «түр» тэмдэглэгээ — тайланд орсон ч дараа шалгаж батална
 };
 
 export const JOURNAL_SELECT =
   "id, date, number, description, reference, status, source, " +
-  "partner_id, total_amount, month, currency, exchange_rate, fx_amount";
+  "partner_id, total_amount, month, currency, exchange_rate, fx_amount, needs_review";
 
 // Журналын мөр (гүйлгээний нэг мөр).
 export type JournalLineRow = {

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { JOURNAL_SELECT, type JournalRow } from "./types";
+import { confirmJournalReview } from "./actions";
 import { DeleteJournalButton } from "./delete-button";
 import { JournalsFilter } from "./journals-filter";
 
@@ -18,7 +19,7 @@ const SOURCE_LABEL: Record<string, string> = {
   bank: "Банк",
 };
 
-type SearchParams = { q?: string; from?: string; to?: string };
+type SearchParams = { q?: string; from?: string; to?: string; review?: string };
 
 export default async function JournalsPage({
   searchParams,
@@ -38,6 +39,9 @@ export default async function JournalsPage({
 
   if (from) query = query.gte("date", from);
   if (to) query = query.lte("date", to);
+  // «Түр» тэмдэглэгээтэй (дараа шалгах) журналуудыг шүүх.
+  const onlyReview = sp.review === "1";
+  if (onlyReview) query = query.eq("needs_review", true);
   if (q) {
     // PostgREST or()-д тусгай тэмдэгт асуудал үүсгэхээс сэргийлж цэвэрлэнэ.
     const safe = q.replace(/[,()*]/g, " ").trim();
@@ -137,12 +141,30 @@ export default async function JournalsPage({
             Ерөнхий дэвтрийн бичилтүүд — гар болон автомат журнал.
           </p>
         </div>
-        <Link
-          href="/journals/new"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-        >
-          + Гар бичилт
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/journals?${new URLSearchParams({
+              ...(q ? { q } : {}),
+              ...(from ? { from } : {}),
+              ...(to ? { to } : {}),
+              ...(onlyReview ? {} : { review: "1" }),
+            }).toString()}`}
+            title="«Түр» тэмдэглэгээтэй (дараа шалгах) журналуудыг шүүх"
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+              onlyReview
+                ? "border-amber-400 bg-amber-100 text-amber-800"
+                : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+            }`}
+          >
+            ⏳ Түр{onlyReview ? " ✕" : ""}
+          </Link>
+          <Link
+            href="/journals/new"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            + Гар бичилт
+          </Link>
+        </div>
       </div>
 
       <div className="mt-5">
@@ -266,7 +288,14 @@ export default async function JournalsPage({
                       </span>
                     </td>
                     <td className="px-4 py-2">
-                      {j.status === "posted" ? (
+                      {j.needs_review ? (
+                        <span
+                          title="Түр — тайланд орсон, гэхдээ шалгаж эцэслэн батлах шаардлагатай."
+                          className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                        >
+                          ⏳ Түр
+                        </span>
+                      ) : j.status === "posted" ? (
                         <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                           Батлагдсан
                         </span>
@@ -277,6 +306,18 @@ export default async function JournalsPage({
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
+                      {j.needs_review && (
+                        <form action={confirmJournalReview} className="mr-1 inline">
+                          <input type="hidden" name="id" value={j.id} />
+                          <button
+                            type="submit"
+                            title="Шалгаж дууссан — «түр» тэмдэглэгээг арилгаж эцэслэн батлах"
+                            className="rounded-lg border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50"
+                          >
+                            ✓ Батлах
+                          </button>
+                        </form>
+                      )}
                       {["manual", "payable", "receivable", "expense"].includes(j.source) && (
                         <Link
                           href={`/journals/${j.id}`}
