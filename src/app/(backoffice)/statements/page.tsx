@@ -7,7 +7,9 @@ type SearchParams = {
   year?: string;
   month?: string;
   dir?: string;
-  coded?: string; // "" бүгд | "no" холболт хийгээгүй | "yes" хийсэн
+  coded?: string; // "" бүгд | "no" холболт хийгээгүй | "yes" хийсэн | "review" түр
+  page?: string; // хуудасны дугаар (1-ээс)
+  size?: string; // хуудасны хэмжээ (200/500/1000/2000)
 };
 
 // Холболт хийгээгүй (Дт эсвэл Кт код дутуу) гүйлгээний PostgREST нөхцөл.
@@ -61,11 +63,29 @@ export default async function StatementsPage({
     registry.map((a) => [a.accountNo, a.glCode]),
   );
 
-  // Жагсаалтын query — шүүлтийг order/limit-аас өмнө тавина.
+  // ── Хуудаслалт ──
+  const SIZES = [200, 500, 1000, 2000];
+  const PAGE = SIZES.includes(Number(sp.size)) ? Number(sp.size) : ROW_LIMIT;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const offset = (page - 1) * PAGE;
+
+  // coded=review-ийн журнал ид-ууд (жагсаалт ба нэгтгэлд ашиглана).
+  let rjIds: number[] = [];
+  if (sp.coded === "review") {
+    const { data: rj } = await supabase
+      .from("journals")
+      .select("id")
+      .eq("needs_review", true)
+      .limit(10000);
+    rjIds = ((rj as { id: number }[] | null) ?? []).map((j) => j.id);
+  }
+
+  // Жагсаалтын query — count-оор нийт тоог авч, range-ээр хуудаслана.
   let rowsQuery = supabase
     .from("transactions")
     .select(
       "id,account_id,company,bank,txn_date,description,counterparty,income,expense,exchange_rate,income_code,expense_code,debit_code,credit_code,journal_id",
+      { count: "exact" },
     );
   if (sp.account) rowsQuery = rowsQuery.eq("account_id", sp.account);
   if (sp.year) rowsQuery = rowsQuery.eq("year", Number(sp.year));
@@ -73,7 +93,6 @@ export default async function StatementsPage({
   if (sp.dir === "income") rowsQuery = rowsQuery.not("income", "is", null);
   if (sp.dir === "expense") rowsQuery = rowsQuery.not("expense", "is", null);
   if (sp.coded === "no") {
-    // Журналдсан (задалсан/и-баримт холбосон) гүйлгээг «дутуу»-д тооцохгүй.
     rowsQuery = rowsQuery.or(UNCODED_OR).is("journal_id", null);
   } else if (sp.coded === "yes") {
     rowsQuery = rowsQuery
@@ -82,21 +101,18 @@ export default async function StatementsPage({
       .not("credit_code", "is", null)
       .neq("credit_code", "");
   } else if (sp.coded === "review") {
-    // Эргэлзээтэй — needs_review тэмдэглэгээтэй журналд холбогдсон гүйлгээ.
-    const { data: rj } = await supabase
-      .from("journals")
-      .select("id")
-      .eq("needs_review", true)
-      .limit(10000);
-    const rjIds = ((rj as { id: number }[] | null) ?? []).map((j) => j.id);
     rowsQuery = rjIds.length
       ? rowsQuery.in("journal_id", rjIds)
-      : rowsQuery.eq("id", -1); // тэмдэглэгээтэй журнал алга → хоосон
+      : rowsQuery.eq("id", -1);
   }
 
-  const { data: rows, error } = await rowsQuery
+  const {
+    data: rows,
+    error,
+    count: totalRows,
+  } = await rowsQuery
     .order("txn_date", { ascending: false })
-    .limit(ROW_LIMIT);
+    .range(offset, offset + PAGE - 1);
 
   // Холболт хийгээгүй гүйлгээний нийт тоо (одоогийн данс/он/сар шүүлтэд).
   let cntQuery = supabase
@@ -187,15 +203,55 @@ export default async function StatementsPage({
     // Валютын гүйлгээг ханшаар MNT болгож нэгтгэнэ (rate=1 бол төгрөг хэвээр).
     const mnt = (v: number | null, rate: number | null) =>
       (Number(v) || 0) * (Number(rate) || 1);
+    // Нэгтгэлийг БҮХ шүүсэн мөрөөс тооцно (зөвхөн харагдаж буй хуудсаас биш).
+    type SumRow = { income: number | null; expense: number | null; exchange_rate: number | null };
+    const sumRows: SumRow[] = [];
+    for (let f = 0; f < 1_000_000; f += 1000) {
+      let sq = supabase.from("transactions").select("income,expense,exchange_rate");
+      if (sp.account) sq = sq.eq("account_id", sp.account);
+      if (sp.year) sq = sq.eq("year", Number(sp.year));
+      if (sp.month) sq = sq.eq("month", Number(sp.month));
+      if (sp.dir === "income") sq = sq.not("income", "is", null);
+      if (sp.dir === "expense") sq = sq.not("expense", "is", null);
+      if (sp.coded === "no") sq = sq.or(UNCODED_OR).is("journal_id", null);
+      else if (sp.coded === "yes")
+        sq = sq
+          .not("debit_code", "is", null)
+          .neq("debit_code", "")
+          .not("credit_code", "is", null)
+          .neq("credit_code", "");
+      else if (sp.coded === "review")
+        sq = rjIds.length ? sq.in("journal_id", rjIds) : sq.eq("id", -1);
+      const { data: sd } = await sq.range(f, f + 999);
+      const pg = (sd as unknown as SumRow[] | null) ?? [];
+      sumRows.push(...pg);
+      if (pg.length < 1000) break;
+    }
     totalIncome =
-      sp.dir === "expense" ? 0 : txns.reduce((s, r) => s + mnt(r.income, r.exchange_rate), 0);
+      sp.dir === "expense" ? 0 : sumRows.reduce((s, r) => s + mnt(r.income, r.exchange_rate), 0);
     totalExpense =
-      sp.dir === "income" ? 0 : txns.reduce((s, r) => s + mnt(r.expense, r.exchange_rate), 0);
+      sp.dir === "income" ? 0 : sumRows.reduce((s, r) => s + mnt(r.expense, r.exchange_rate), 0);
   } else {
     totalIncome = sp.dir === "expense" ? 0 : sumIncome;
     totalExpense = sp.dir === "income" ? 0 : sumExpense;
   }
   const net = totalIncome - totalExpense;
+
+  // Хуудаслалтын тооцоо + шүүлт хадгалсан линк.
+  const totalCount = totalRows ?? txns.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE));
+  const pageHref = (p: number, s: number = PAGE) => {
+    const params = new URLSearchParams();
+    if (sp.account) params.set("account", sp.account);
+    if (sp.year) params.set("year", sp.year);
+    if (sp.month) params.set("month", sp.month);
+    if (sp.dir) params.set("dir", sp.dir);
+    if (sp.coded) params.set("coded", sp.coded);
+    if (p > 1) params.set("page", String(p));
+    if (s !== ROW_LIMIT) params.set("size", String(s));
+    const qs = params.toString();
+    return `/statements${qs ? `?${qs}` : ""}`;
+  };
 
   // Дансны сонголтын жагсаалт (Дт/Кт засахад).
   const { data: accRows } = await supabase
@@ -453,12 +509,43 @@ export default async function StatementsPage({
               partnerNames={partnerNames}
               bankGlByAccount={bankGlByAccount}
             />
-            {txns.length === ROW_LIMIT && (
-              <div className="border-t border-zinc-100 px-6 py-3 text-xs text-zinc-400">
-                Зөвхөн сүүлийн {ROW_LIMIT} мөр харагдаж байна. Нэгтгэл нь бүх
-                шүүсэн мөрийг тооцсон.
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 px-6 py-3 text-xs text-zinc-500">
+              <span>
+                Нийт <strong>{totalCount.toLocaleString("en-US")}</strong> мөр · хуудас{" "}
+                <strong>{page}</strong>/{totalPages} ({txns.length} харуулав)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-zinc-400">Хуудсанд:</span>
+                {SIZES.map((s) => (
+                  <a
+                    key={s}
+                    href={pageHref(1, s)}
+                    className={`rounded px-2 py-1 ${
+                      PAGE === s
+                        ? "bg-zinc-900 text-white"
+                        : "border border-zinc-200 hover:bg-zinc-50"
+                    }`}
+                  >
+                    {s}
+                  </a>
+                ))}
+                <span className="mx-1 text-zinc-300">|</span>
+                {page > 1 ? (
+                  <a href={pageHref(page - 1)} className="rounded border border-zinc-200 px-2 py-1 hover:bg-zinc-50">
+                    ← Өмнөх
+                  </a>
+                ) : (
+                  <span className="rounded border border-zinc-100 px-2 py-1 text-zinc-300">← Өмнөх</span>
+                )}
+                {page < totalPages ? (
+                  <a href={pageHref(page + 1)} className="rounded border border-zinc-200 px-2 py-1 hover:bg-zinc-50">
+                    Дараах →
+                  </a>
+                ) : (
+                  <span className="rounded border border-zinc-100 px-2 py-1 text-zinc-300">Дараах →</span>
+                )}
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
